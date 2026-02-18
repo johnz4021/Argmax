@@ -155,13 +155,14 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
         positions: input.positions || graph.positions,
       };
       sendJSON(ws, { type: 'create_graph', graph: graphData });
+      session.currentGraph = graphData;
       return { success: true, message: 'Graph created and displayed to learner.' };
     }
 
     case 'run_algorithm': {
       const algo = input.algorithm || algorithm;
       const src = input.source || source;
-      const trace = runAlgorithm(algo, graph, src);
+      const trace = runAlgorithm(algo, session.currentGraph || graph, src);
       return {
         success: true,
         algorithm: algo,

@@ -34,7 +34,22 @@ Rules:
 - Use show_path at the end to highlight shortest paths
 - Use reset_highlights before showing final results
 - Set appropriate phase labels to track progress
-- Keep delay_ms between 300-1000 depending on complexity`;
+- Keep delay_ms between 300-1000 depending on complexity
+
+HANDLING INTERRUPTS:
+When a learner interrupts with a question, choose the right explanation_mode:
+- "overlay" for "why did we pick X?" or "how does X relate to Y?" — spotlight the relevant nodes/edges, dim everything else, add annotation labels explaining the reasoning
+- "rewind" for "what just happened?" or "I'm confused" or "can you repeat that?" — rewind 1-3 steps and re-explain with different, clearer wording
+- "ghost_alternative" for "what if we went through B instead?" or "why not this path?" — show the alternative path as a ghost overlay alongside the actual chosen path, with cost labels
+- "none" for simple factual questions that don't need visual explanation
+
+After your explanation, emit a bridging segment: "Alright, back to where we were..." and continue the algorithm.
+
+When using overlay mode, be specific about which nodes and edges to spotlight — only the ones directly relevant to the question. Add 1-2 short annotations that explain the key insight.
+
+When using rewind mode, your re-narration should use DIFFERENT words than the original — if the learner didn't understand the first time, repeating the same words won't help. Use simpler language, analogies, or break the step into smaller pieces.
+
+When using ghost_alternative mode, always include both the ghost (rejected) path and the actual (chosen) path so the learner can visually compare costs.`;
 
 function sendJSON(ws, obj) {
   if (ws.readyState === ws.OPEN) {
@@ -205,17 +220,33 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
       sendJSON(ws, {
         type: 'interrupt_response',
         answer: input.answer,
+        explanation_mode: input.explanation_mode || 'none',
+        overlay: input.overlay || null,
+        rewind: input.rewind || null,
+        ghost_alternative: input.ghost_alternative || null,
         viz_actions: input.viz_actions || [],
       });
 
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn);
+
+      // If rewind mode, also narrate each replayed step
+      if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
+        for (const stepNarration of input.rewind.narration_per_step) {
+          await new Promise((r) => setTimeout(r, 800));
+          sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
+          await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn);
+        }
+      }
+
+      // Signal explanation complete so frontend can clean up
       await new Promise((resolve) => setTimeout(resolve, 500));
+      sendJSON(ws, { type: 'explanation_complete' });
 
       return {
         success: true,
-        message: 'Interrupt response delivered. Continue teaching from where you left off.',
+        message: 'Interrupt response delivered with explanation. Continue teaching.',
       };
     }
 

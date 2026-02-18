@@ -1,6 +1,14 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import cytoscape from 'cytoscape';
-import { applyVizActions } from '../lib/vizActions';
+import {
+  applyVizActions,
+  takeSnapshot,
+  restoreSnapshot,
+  applyOverlay,
+  removeOverlay,
+  applyGhostAlternative,
+  removeGhostAlternative,
+} from '../lib/vizActions';
 
 const CYTOSCAPE_STYLE = [
   {
@@ -91,11 +99,47 @@ const CYTOSCAPE_STYLE = [
       opacity: 0.3,
     },
   },
+  {
+    selector: '.dimmed',
+    style: { opacity: 0.15 },
+  },
+  {
+    selector: '.spotlit',
+    style: {
+      opacity: 1,
+      'border-width': 4,
+      'border-color': '#60a5fa',
+      'z-index': 999,
+    },
+  },
+  {
+    selector: 'edge.spotlit',
+    style: {
+      opacity: 1,
+      'line-color': '#60a5fa',
+      'target-arrow-color': '#60a5fa',
+      width: 4,
+      'z-index': 999,
+    },
+  },
+  {
+    selector: '.ghost-alt',
+    style: {
+      'line-color': '#f87171',
+      'target-arrow-color': '#f87171',
+      'line-style': 'dashed',
+      opacity: 0.4,
+      width: 3,
+    },
+  },
 ];
 
-export default function GraphView({ graph, vizActions, phase }) {
+export default function GraphView({ graph, vizActions, phase, explanationMode, segmentCount }) {
   const containerRef = useRef(null);
   const cyRef = useRef(null);
+  const snapshotsRef = useRef([]);
+  const preExplanationSnapshotRef = useRef(null);
+  const [annotations, setAnnotations] = useState([]);
 
   // Initialize Cytoscape
   useEffect(() => {
@@ -124,6 +168,7 @@ export default function GraphView({ graph, vizActions, phase }) {
     if (!cy || !graph) return;
 
     cy.elements().remove();
+    snapshotsRef.current = [];
 
     const elements = [];
     for (const node of graph.nodes) {
@@ -156,6 +201,73 @@ export default function GraphView({ graph, vizActions, phase }) {
     }
   }, [vizActions]);
 
+  // Take snapshot after each segment completes
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || segmentCount === undefined || segmentCount === 0) return;
+    snapshotsRef.current.push(takeSnapshot(cy));
+  }, [segmentCount]);
+
+  // Recompute annotation positions on viewport changes
+  const updateAnnotationPositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy || annotations.length === 0) return;
+
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        const ele = cy.getElementById(ann.target);
+        if (!ele || ele.length === 0) return ann;
+        const pos = ele.renderedPosition();
+        return { ...ann, x: pos.x, y: pos.y };
+      })
+    );
+  }, [annotations.length]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    cy.on('viewport', updateAnnotationPositions);
+    return () => cy.off('viewport', updateAnnotationPositions);
+  }, [updateAnnotationPositions]);
+
+  // Handle explanation mode changes
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    if (explanationMode?.mode === 'overlay') {
+      preExplanationSnapshotRef.current = takeSnapshot(cy);
+      applyOverlay(cy, explanationMode.config);
+      if (explanationMode.config?.annotations) {
+        const annots = explanationMode.config.annotations.map((a) => {
+          const ele = cy.getElementById(a.target);
+          const pos = ele.renderedPosition();
+          return { ...a, x: pos.x, y: pos.y };
+        });
+        setAnnotations(annots);
+      }
+    } else if (explanationMode?.mode === 'ghost_alternative') {
+      preExplanationSnapshotRef.current = takeSnapshot(cy);
+      applyGhostAlternative(cy, explanationMode.config);
+    } else if (explanationMode?.mode === 'rewind') {
+      preExplanationSnapshotRef.current = takeSnapshot(cy);
+      const idx = Math.max(
+        0,
+        snapshotsRef.current.length - (explanationMode.config?.steps_back || 2)
+      );
+      if (snapshotsRef.current[idx]) {
+        restoreSnapshot(cy, snapshotsRef.current[idx]);
+      }
+    } else if (explanationMode === null && preExplanationSnapshotRef.current) {
+      removeOverlay(cy);
+      removeGhostAlternative(cy);
+      restoreSnapshot(cy, preExplanationSnapshotRef.current);
+      preExplanationSnapshotRef.current = null;
+      setAnnotations([]);
+    }
+  }, [explanationMode]);
+
   return (
     <div className="relative h-full">
       {phase && (
@@ -164,6 +276,26 @@ export default function GraphView({ graph, vizActions, phase }) {
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />
+
+      {explanationMode && (
+        <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+          Explaining...
+        </div>
+      )}
+
+      {annotations.map((ann, i) => (
+        <div
+          key={i}
+          className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none max-w-[180px]"
+          style={{
+            left: ann.x + (ann.position === 'right' ? 35 : ann.position === 'left' ? -150 : -40),
+            top: ann.y + (ann.position === 'bottom' ? 35 : ann.position === 'top' ? -40 : -10),
+          }}
+        >
+          {ann.text}
+        </div>
+      ))}
     </div>
   );
 }

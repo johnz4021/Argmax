@@ -23,6 +23,18 @@ export default function App() {
       if (msg.type === 'interrupt_response' && msg.viz_actions?.length > 0) {
         setVizActions(msg.viz_actions);
       }
+      if (msg.type === 'explanation_complete') {
+        processMessage(msg);
+      }
+      if (msg.type === 'rewind_step_narration') {
+        processMessage({
+          type: 'segment_start',
+          segment_id: 'rewind_' + Date.now(),
+          narration: msg.narration,
+          phase: 'Replaying step...',
+          viz_actions: [],
+        });
+      }
     },
     [processMessage]
   );
@@ -116,6 +128,8 @@ export default function App() {
                 graph={state.graph}
                 vizActions={vizActions}
                 phase={state.currentPhase}
+                explanationMode={state.explanationMode}
+                segmentCount={state.segmentCount}
               />
             </div>
 
@@ -134,6 +148,7 @@ export default function App() {
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
+                explanationMode={state.explanationMode}
               />
             </div>
           </>

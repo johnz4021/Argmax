@@ -8,6 +8,8 @@ const initialState = {
   currentPhase: '',
   distanceTable: null,
   error: null,
+  explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
+  segmentCount: 0,
 };
 
 function reducer(state, action) {
@@ -40,6 +42,7 @@ function reducer(state, action) {
     case 'SEGMENT_END':
       return {
         ...state,
+        segmentCount: state.segmentCount + 1,
         segments: state.segments.map((s) =>
           s.id === action.segment_id ? { ...s, active: false } : s
         ),
@@ -49,6 +52,13 @@ function reducer(state, action) {
       return {
         ...state,
         status: 'teaching',
+        explanationMode:
+          action.explanation_mode !== 'none'
+            ? {
+                mode: action.explanation_mode,
+                config: action[action.explanation_mode] || {},
+              }
+            : null,
         segments: [
           ...state.segments,
           {
@@ -59,6 +69,12 @@ function reducer(state, action) {
           },
         ],
       };
+
+    case 'SET_EXPLANATION_MODE':
+      return { ...state, explanationMode: action.explanationMode };
+
+    case 'CLEAR_EXPLANATION_MODE':
+      return { ...state, explanationMode: null };
 
     case 'LESSON_COMPLETE':
       return { ...state, status: 'complete' };
@@ -128,7 +144,17 @@ export function useTutorState() {
         dispatch({ type: 'SEGMENT_END', segment_id: msg.segment_id });
         break;
       case 'interrupt_response':
-        dispatch({ type: 'INTERRUPT_RESPONSE', answer: msg.answer });
+        dispatch({
+          type: 'INTERRUPT_RESPONSE',
+          answer: msg.answer,
+          explanation_mode: msg.explanation_mode || 'none',
+          overlay: msg.overlay,
+          rewind: msg.rewind,
+          ghost_alternative: msg.ghost_alternative,
+        });
+        break;
+      case 'explanation_complete':
+        dispatch({ type: 'CLEAR_EXPLANATION_MODE' });
         break;
       case 'paused':
         dispatch({ type: 'SET_PAUSED' });

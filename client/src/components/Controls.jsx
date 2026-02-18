@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 
-export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange }) {
+export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode }) {
   const [question, setQuestion] = useState('');
   const [pausePending, setPausePending] = useState(false);
   const { isListening, transcript, isSupported, start, stop, clearTranscript } = useSpeechToText();
@@ -121,6 +121,13 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
       {status === 'interrupted' && (
         <p className="text-sm text-yellow-400 animate-pulse">
           Waiting for answer...
+        </p>
+      )}
+
+      {explanationMode && (
+        <p className="text-sm text-purple-400 flex items-center gap-2">
+          <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+          Showing explanation...
         </p>
       )}
 

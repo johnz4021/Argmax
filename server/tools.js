@@ -123,13 +123,95 @@ export const tools = [
   {
     name: 'respond_to_interrupt',
     description:
-      'Respond to a learner question that interrupted the lesson. After answering, continue teaching from where you left off.',
+      'Respond to a learner question using visual explanation. Pick the right mode based on the question type:\n- "overlay": for "why?" questions — dims irrelevant elements, spotlights relevant ones, adds annotations\n- "rewind": for "what just happened?" — replays recent steps more slowly\n- "ghost_alternative": for "what if?" — shows alternative paths as ghost overlays\nAfter the explanation, continue teaching from where you left off.',
     input_schema: {
       type: 'object',
       properties: {
         answer: {
           type: 'string',
-          description: 'Answer to the learner question',
+          description: 'Spoken answer to the learner',
+        },
+        explanation_mode: {
+          type: 'string',
+          enum: ['overlay', 'rewind', 'ghost_alternative', 'none'],
+          description: 'Visual explanation mode. Use "none" for simple verbal answers.',
+        },
+        overlay: {
+          type: 'object',
+          description: 'Config for overlay mode. Required when explanation_mode is "overlay".',
+          properties: {
+            spotlight_nodes: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Node IDs to spotlight',
+            },
+            spotlight_edges: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  from: { type: 'string' },
+                  to: { type: 'string' },
+                },
+                required: ['from', 'to'],
+              },
+              description: 'Edges to spotlight',
+            },
+            annotations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  target: { type: 'string', description: 'Node or edge ID to anchor to' },
+                  text: { type: 'string' },
+                  position: {
+                    type: 'string',
+                    enum: ['top', 'bottom', 'left', 'right'],
+                    description: 'Relative to target',
+                  },
+                },
+                required: ['target', 'text'],
+              },
+            },
+          },
+        },
+        rewind: {
+          type: 'object',
+          description: 'Config for rewind mode. Required when explanation_mode is "rewind".',
+          properties: {
+            steps_back: { type: 'number', description: 'How many segments to rewind (1-5)' },
+            narration_per_step: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Re-narration text for each replayed step, using different/clearer wording',
+            },
+          },
+        },
+        ghost_alternative: {
+          type: 'object',
+          description:
+            'Config for ghost_alternative mode. Required when explanation_mode is "ghost_alternative".',
+          properties: {
+            ghost_path: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Node IDs forming the alternative path (e.g., ["A", "B", "D"])',
+            },
+            ghost_label: {
+              type: 'string',
+              description: 'Label for the ghost path (e.g., "cost: 7")',
+            },
+            actual_path: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Node IDs of the actual chosen path for comparison',
+            },
+            actual_label: {
+              type: 'string',
+              description: 'Label for the actual path (e.g., "cost: 6")',
+            },
+          },
         },
         viz_actions: {
           type: 'array',
@@ -147,9 +229,11 @@ export const tools = [
             },
             required: ['action'],
           },
+          description:
+            'Additional viz actions (same as emit_segment). Applied AFTER explanation mode setup.',
         },
       },
-      required: ['answer'],
+      required: ['answer', 'explanation_mode'],
     },
   },
 ];

@@ -47,10 +47,20 @@ export default function App() {
     [send, reset, audioPlayer]
   );
 
+  const handlePause = useCallback(() => {
+    send({ type: 'pause' });
+  }, [send]);
+
+  const handleResume = useCallback(() => {
+    send({ type: 'resume' });
+    processMessage({ type: 'resumed' });
+  }, [send, processMessage]);
+
   const handleInterrupt = useCallback(
     (question) => {
       interrupt(question);
       send({ type: 'interrupt', question });
+      send({ type: 'resume' });
     },
     [send, interrupt]
   );
@@ -120,6 +130,8 @@ export default function App() {
               <Controls
                 status={state.status}
                 onInterrupt={handleInterrupt}
+                onPause={handlePause}
+                onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
               />

@@ -23,6 +23,8 @@ wss.on('connection', (ws) => {
     id: sessionId,
     ws,
     interruptFlag: null,
+    pauseFlag: false,
+    pauseResolver: null,
     active: false,
     speedMultiplier: 1,
   };
@@ -62,6 +64,22 @@ wss.on('connection', (ws) => {
             timestamp: Date.now(),
           };
           console.log(`[WS] Interrupt queued: "${msg.question}"`);
+          break;
+        }
+
+        case 'pause': {
+          if (!session.active) return;
+          session.pauseFlag = true;
+          console.log(`[WS] Pause requested`);
+          break;
+        }
+
+        case 'resume': {
+          if (session.pauseResolver) {
+            session.pauseResolver();
+            session.pauseResolver = null;
+          }
+          console.log(`[WS] Resume requested`);
           break;
         }
 

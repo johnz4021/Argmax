@@ -94,6 +94,20 @@ export async function startAgentSession(session, algorithm, graph, source) {
           content: JSON.stringify(result),
         });
 
+        // Check for pause after emit_segment
+        if (block.name === 'emit_segment' && session.pauseFlag) {
+          session.pauseFlag = false;
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => {
+            session.pauseResolver = resolve;
+          });
+          session.pauseResolver = null;
+          // If no interrupt was submitted during pause, send resumed
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
+        }
+
         // Check for interrupt after emit_segment
         if (block.name === 'emit_segment' && session.interruptFlag) {
           const interrupt = session.interruptFlag;
@@ -169,13 +183,14 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
         phase: input.phase || '',
       });
 
-      // TTS or simulated delay
+      // TTS or simulated delay (synthesizeAndStream waits for playback to finish)
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn);
 
-      const delayMs = (input.delay_ms || 500) / session.speedMultiplier;
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      // Small buffer between segments for natural pacing
+      const gapMs = 300 / session.speedMultiplier;
+      await new Promise((resolve) => setTimeout(resolve, gapMs));
 
       sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
 

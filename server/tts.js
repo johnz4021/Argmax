@@ -24,8 +24,11 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
 
   const wsUrl = `wss://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}/stream-input?model_id=eleven_turbo_v2_5&output_format=pcm_24000`;
 
+  const streamStartTime = Date.now();
+
   return new Promise((resolve) => {
     let receivedAudio = false;
+    let totalAudioBytes = 0;
     let timeoutId = null;
 
     const elWs = new WebSocket(wsUrl);
@@ -47,6 +50,8 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,
+          },
+          generation_config: {
             speed: speedMultiplier,
           },
           xi_api_key: ELEVENLABS_API_KEY,
@@ -72,6 +77,7 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
             }
           }
           const audioBuffer = Buffer.from(msg.audio, 'base64');
+          totalAudioBytes += audioBuffer.length;
           sendBinaryFn(audioBuffer);
         }
         if (msg.isFinal) {
@@ -85,11 +91,17 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
 
     elWs.on('close', (code, reason) => {
       clearTimeout(timeoutId);
+      // PCM 24000 Hz, 16-bit mono = 2 bytes per sample
+      const audioDurationMs = (totalAudioBytes / (24000 * 2)) * 1000;
+      const elapsedMs = Date.now() - streamStartTime;
+      const remainingMs = Math.max(0, audioDurationMs - elapsedMs);
       console.log('[TTS] ElevenLabs WS closed, code:', code, 'reason:', reason?.toString() || '(none)');
+      console.log(`[TTS] Audio duration: ${Math.round(audioDurationMs)}ms, elapsed: ${Math.round(elapsedMs)}ms, waiting: ${Math.round(remainingMs)}ms`);
       if (sendJsonFn && receivedAudio) {
         sendJsonFn({ type: 'audio_end' });
       }
-      resolve();
+      // Wait for client to finish playing queued audio
+      setTimeout(() => resolve(audioDurationMs), remainingMs);
     });
 
     elWs.on('error', (err) => {

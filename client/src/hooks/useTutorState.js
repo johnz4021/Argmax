@@ -1,7 +1,7 @@
 import { useReducer, useCallback } from 'react';
 
 const initialState = {
-  status: 'idle', // idle | connecting | teaching | interrupted | complete | error
+  status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error
   algorithm: null,
   graph: null,
   segments: [],
@@ -63,6 +63,12 @@ function reducer(state, action) {
     case 'LESSON_COMPLETE':
       return { ...state, status: 'complete' };
 
+    case 'SET_PAUSED':
+      return { ...state, status: 'paused' };
+
+    case 'SET_RESUMED':
+      return { ...state, status: 'teaching' };
+
     case 'SET_INTERRUPTED':
       return {
         ...state,
@@ -123,6 +129,12 @@ export function useTutorState() {
         break;
       case 'interrupt_response':
         dispatch({ type: 'INTERRUPT_RESPONSE', answer: msg.answer });
+        break;
+      case 'paused':
+        dispatch({ type: 'SET_PAUSED' });
+        break;
+      case 'resumed':
+        dispatch({ type: 'SET_RESUMED' });
         break;
       case 'lesson_complete':
         dispatch({ type: 'LESSON_COMPLETE' });

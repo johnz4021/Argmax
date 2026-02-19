@@ -336,7 +336,7 @@ export default function GraphRenderer({
       {annotations.map((ann, i) => (
         <div
           key={i}
-          className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none max-w-[180px]"
+          className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-sm px-3 py-2 rounded-md shadow-lg pointer-events-none max-w-[240px]"
           style={{
             left: ann.x + (ann.position === 'right' ? 35 : ann.position === 'left' ? -150 : -40),
             top: ann.y + (ann.position === 'bottom' ? 35 : ann.position === 'top' ? -40 : -10),

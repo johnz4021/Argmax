@@ -282,7 +282,7 @@ export default function LinkedRenderer({
               const leftPct = ((ann.index + 0.5) / nodes.length) * 100;
               return (
                 <div key={i}
-                  className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none whitespace-nowrap"
+                  className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-sm px-3 py-2 rounded-md shadow-lg pointer-events-none max-w-[240px]"
                   style={{
                     left: `${leftPct}%`, transform: 'translateX(-50%)',
                     ...(ann.position === 'bottom' ? { bottom: '-24px' } : { top: '-24px' }),

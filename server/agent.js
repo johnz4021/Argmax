@@ -43,6 +43,7 @@ SEARCHING ALGORITHMS (renderer: 'array'):
 DYNAMIC PROGRAMMING (renderer: 'table'):
   Use create_visualization with renderer:'table'.
   Actions: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, mark_optimal, reset.
+  IMPORTANT: The trace's init_table step includes rowLabels and colLabels with descriptive names (e.g. item names for knapsack, substrings for LCS). Always pass these as row_headers and col_headers in your init_grid call so the learner can see what each row/column represents.
   The key teaching strategy for DP:
   1. Explain the subproblem structure first (what does dp[i][j] mean?)
   2. Show the recurrence relation

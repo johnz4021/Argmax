@@ -185,7 +185,7 @@ export default function TableRenderer({
   }, [explanationMode, takeTableSnapshot, restoreTableSnapshot]);
 
   return (
-    <div className="relative h-full flex flex-col items-center justify-center p-4 overflow-auto">
+    <div className="relative h-full flex flex-col items-center justify-center p-8 overflow-auto">
       {phase && (
         <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
           {phase}
@@ -202,7 +202,7 @@ export default function TableRenderer({
       {grid.length === 0 ? (
         <p className="text-gray-500">Waiting for table data...</p>
       ) : (
-        <div className="relative overflow-auto max-h-full max-w-full">
+        <div className="relative overflow-auto max-h-full w-full flex items-center justify-center">
           {/* Overlay annotations */}
           {overlayState?.annotations?.map((ann, i) => {
             const target = ann.target;
@@ -220,7 +220,7 @@ export default function TableRenderer({
             const topPct = ((row + 1.5) / (rows + 1)) * 100;
             return (
               <div key={i}
-                className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none whitespace-nowrap"
+                className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-sm px-3 py-2 rounded-md shadow-lg pointer-events-none max-w-[240px]"
                 style={{
                   left: `${leftPct}%`, top: `${topPct}%`,
                   transform: 'translate(-50%, -50%)',
@@ -229,14 +229,14 @@ export default function TableRenderer({
               </div>
             );
           })}
-          <table className="border-collapse">
+          <table className="border-collapse w-full max-w-4xl">
             <thead>
               <tr>
                 <th className="p-1" />
                 {colHeaders.map((h, ci) => (
                   <th
                     key={ci}
-                    className="px-2 py-1 text-[10px] text-gray-400 font-mono font-normal text-center min-w-[40px] max-w-[80px] truncate"
+                    className="px-4 py-3 text-sm text-gray-400 font-mono font-normal text-center truncate"
                   >
                     {h}
                   </th>
@@ -246,7 +246,7 @@ export default function TableRenderer({
             <tbody>
               {grid.map((row, ri) => (
                 <tr key={ri}>
-                  <td className="px-2 py-1 text-[10px] text-gray-400 font-mono text-right max-w-[100px] truncate">
+                  <td className="px-4 py-3 text-sm text-gray-400 font-mono text-right whitespace-nowrap">
                     {rowHeaders[ri]}
                   </td>
                   {row.map((cell, ci) => {
@@ -258,7 +258,7 @@ export default function TableRenderer({
                     return (
                       <td
                         key={ci}
-                        className={`px-2 py-1 text-center text-xs font-mono border border-gray-700 min-w-[40px] transition-all duration-300 ${colorClass} ${isDimmed ? 'opacity-[0.15]' : ''} ${isSpotlit ? 'ring-2 ring-blue-400' : ''}`}
+                        className={`px-5 py-4 text-center text-base font-mono border border-gray-700 transition-all duration-300 ${colorClass} ${isDimmed ? 'opacity-[0.15]' : ''} ${isSpotlit ? 'ring-2 ring-blue-400' : ''}`}
                       >
                         {cell !== null ? cell : ''}
                       </td>

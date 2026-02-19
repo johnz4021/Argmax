@@ -130,7 +130,7 @@ export default function App() {
         ) : (
           <>
             {/* Visualization panel - 60% */}
-            <div className="w-3/5 border-r border-gray-800">
+            <div className="w-2/3 border-r border-gray-800">
               {useVizLayout ? (
                 <VizLayout
                   panels={state.vizPanels}
@@ -148,7 +148,7 @@ export default function App() {
             </div>
 
             {/* Transcript panel - 40% */}
-            <div className="w-2/5 flex flex-col">
+            <div className="w-1/3 flex flex-col">
               <div className="flex-1 overflow-hidden">
                 <Transcript
                   segments={state.segments}

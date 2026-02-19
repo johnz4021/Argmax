@@ -27,7 +27,10 @@ SORTING ALGORITHMS (renderer: 'array'):
   Use create_visualization with renderer:'array'.
   Run the algorithm to get the trace, then narrate each step.
   Viz actions use the new format: { renderer: 'array', action: '...', params: {...} }
-  Actions: set_data, highlight, swap, compare, partition, mark_sorted, set_pointer, clear_pointers, reset.
+  Actions: set_data, highlight, swap, compare, place, partition, mark_sorted, set_pointer, clear_pointers, reset.
+  - swap: { i, j } — swap two elements in-place (e.g. quicksort, bubble sort)
+  - place: { index, value } — put a value at a specific index (e.g. mergesort merge step)
+  - set_data: { values: [...] } — replace the entire array (use sparingly, e.g. after a full merge pass)
   When narrating swaps, always mention BOTH the values being swapped and WHY.
   When narrating comparisons, state the result and its implication.
   Mark elements as sorted when they reach their final position.
@@ -64,32 +67,9 @@ For ALL algorithms:
 
 CRITICAL: Every emit_segment MUST include viz_actions to animate the visualization. Without viz_actions, the learner sees nothing.
 
-Example for DP (knapsack) — after calling run_algorithm and getting the trace:
-
-  First segment: set up the grid:
-    viz_actions: [{ renderer: "table", action: "init_grid", params: { rows: 5, cols: 8, row_headers: ["", "Item 1", "Item 2", "Item 3", "Item 4"], col_headers: ["0", "1", "2", "3", "4", "5", "6", "7"] } }]
-
-  For each fill step from the trace:
-    viz_actions: [{ renderer: "table", action: "fill_cell", params: { row: 1, col: 3, value: 4 } }]
-
-  For traceback:
-    viz_actions: [{ renderer: "table", action: "mark_optimal", params: { cells: [{ row: 4, col: 7 }, { row: 2, col: 4 }] } }]
-
-Example for sorting (quicksort):
-  First segment: set up the array:
-    viz_actions: [{ renderer: "array", action: "set_data", params: { values: [38, 27, 43, 3, 9, 82, 10] } }]
-
-  For each compare step:
-    viz_actions: [{ renderer: "array", action: "compare", params: { i: 0, j: 6 } }]
-
-  For each swap:
-    viz_actions: [{ renderer: "array", action: "swap", params: { i: 2, j: 5 } }]
-
-Example for mergesort:
-  Use the 'place' action to put merged values into position:
-    viz_actions: [{ renderer: "array", action: "place", params: { index: 2, value: 3 } }]
-  Or use 'set_data' to update the entire array after a merge:
-    viz_actions: [{ renderer: "array", action: "set_data", params: { values: [3, 27, 38, 43, 9, 82, 10] } }]
+Example viz_actions format:
+  viz_actions: [{ renderer: "array", action: "swap", params: { i: 2, j: 5 } }]
+  viz_actions: [{ renderer: "table", action: "fill_cell", params: { row: 1, col: 3, value: 4 } }]
 
 Rules:
 - ALWAYS call run_algorithm to get the real trace. Never make up algorithm results.

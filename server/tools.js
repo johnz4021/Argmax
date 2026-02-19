@@ -184,7 +184,7 @@ export const tools = [
             spotlight_nodes: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Node IDs to spotlight',
+              description: 'Node IDs to spotlight (graph + tree renderers)',
             },
             spotlight_edges: {
               type: 'array',
@@ -196,14 +196,31 @@ export const tools = [
                 },
                 required: ['from', 'to'],
               },
-              description: 'Edges to spotlight',
+              description: 'Edges to spotlight (graph + tree renderers)',
+            },
+            spotlight_indices: {
+              type: 'array',
+              items: { type: 'number' },
+              description: '0-based indices to spotlight (array + linked renderers)',
+            },
+            spotlight_cells: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  row: { type: 'number' },
+                  col: { type: 'number' },
+                },
+                required: ['row', 'col'],
+              },
+              description: 'Cells to spotlight (table renderer)',
             },
             annotations: {
               type: 'array',
               items: {
                 type: 'object',
                 properties: {
-                  target: { type: 'string', description: 'Node or edge ID to anchor to' },
+                  target: { type: 'string', description: 'Node ID, index number, or "row-col" string to anchor to' },
                   text: { type: 'string' },
                   position: {
                     type: 'string',
@@ -237,20 +254,30 @@ export const tools = [
             ghost_path: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Node IDs forming the alternative path (e.g., ["A", "B", "D"])',
-            },
-            ghost_label: {
-              type: 'string',
-              description: 'Label for the ghost path (e.g., "cost: 7")',
+              description: 'Node IDs forming the alternative path (graph + tree renderers)',
             },
             actual_path: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Node IDs of the actual chosen path for comparison',
+              description: 'Node IDs of the actual chosen path (graph + tree renderers)',
+            },
+            ghost_indices: {
+              type: 'array',
+              items: { type: 'number' },
+              description: '0-based indices for the alternative choice (array + linked renderers)',
+            },
+            actual_indices: {
+              type: 'array',
+              items: { type: 'number' },
+              description: '0-based indices for the actual choice (array + linked renderers)',
+            },
+            ghost_label: {
+              type: 'string',
+              description: 'Label for the ghost/alternative (e.g., "cost: 7")',
             },
             actual_label: {
               type: 'string',
-              description: 'Label for the actual path (e.g., "cost: 6")',
+              description: 'Label for the actual choice (e.g., "cost: 6")',
             },
           },
         },

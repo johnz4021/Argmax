@@ -20,6 +20,7 @@ export default function TableRenderer({
   const [rowHeaders, setRowHeaders] = useState([]);
   const [colHeaders, setColHeaders] = useState([]);
   const [depArrows, setDepArrows] = useState([]);
+  const [overlayState, setOverlayState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
 
@@ -158,14 +159,26 @@ export default function TableRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || grid.length === 0) return;
+    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeTableSnapshot());
-  }, [segmentCount, takeTableSnapshot]);
+  }, [segmentCount, takeTableSnapshot, explanationMode]);
 
   // Handle explanation mode
   useEffect(() => {
-    if (explanationMode?.mode && !preExplanationRef.current) {
+    if (explanationMode?.mode === 'rewind') {
       preExplanationRef.current = takeTableSnapshot();
+      const stepsBack = explanationMode.config?.steps_back || 2;
+      const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      if (snapshotsRef.current[idx]) {
+        restoreTableSnapshot(snapshotsRef.current[idx]);
+      }
+    } else if (explanationMode?.mode === 'overlay') {
+      preExplanationRef.current = takeTableSnapshot();
+      const config = explanationMode.config;
+      const spotlit = new Set((config.spotlight_cells || []).map(c => `${c.row}-${c.col}`));
+      setOverlayState({ spotlit, annotations: config.annotations || [] });
     } else if (explanationMode === null && preExplanationRef.current) {
+      setOverlayState(null);
       restoreTableSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
     }
@@ -189,7 +202,33 @@ export default function TableRenderer({
       {grid.length === 0 ? (
         <p className="text-gray-500">Waiting for table data...</p>
       ) : (
-        <div className="overflow-auto max-h-full max-w-full">
+        <div className="relative overflow-auto max-h-full max-w-full">
+          {/* Overlay annotations */}
+          {overlayState?.annotations?.map((ann, i) => {
+            const target = ann.target;
+            let row, col;
+            if (typeof target === 'object' && target.row !== undefined) {
+              row = target.row;
+              col = target.col;
+            } else if (typeof target === 'string' && target.includes('-')) {
+              [row, col] = target.split('-').map(Number);
+            }
+            if (row === undefined || col === undefined) return null;
+            const cols = grid[0]?.length || 1;
+            const rows = grid.length || 1;
+            const leftPct = ((col + 1.5) / (cols + 1)) * 100;
+            const topPct = ((row + 1.5) / (rows + 1)) * 100;
+            return (
+              <div key={i}
+                className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none whitespace-nowrap"
+                style={{
+                  left: `${leftPct}%`, top: `${topPct}%`,
+                  transform: 'translate(-50%, -50%)',
+                }}>
+                {ann.text}
+              </div>
+            );
+          })}
           <table className="border-collapse">
             <thead>
               <tr>
@@ -213,10 +252,13 @@ export default function TableRenderer({
                   {row.map((cell, ci) => {
                     const cls = cellClasses[ri]?.[ci] || 'empty';
                     const colorClass = CELL_COLORS[cls] || CELL_COLORS.empty;
+                    const cellKey = `${ri}-${ci}`;
+                    const isDimmed = overlayState && !overlayState.spotlit.has(cellKey);
+                    const isSpotlit = overlayState?.spotlit.has(cellKey);
                     return (
                       <td
                         key={ci}
-                        className={`px-2 py-1 text-center text-xs font-mono border border-gray-700 min-w-[40px] transition-all duration-300 ${colorClass}`}
+                        className={`px-2 py-1 text-center text-xs font-mono border border-gray-700 min-w-[40px] transition-all duration-300 ${colorClass} ${isDimmed ? 'opacity-[0.15]' : ''} ${isSpotlit ? 'ring-2 ring-blue-400' : ''}`}
                       >
                         {cell !== null ? cell : ''}
                       </td>

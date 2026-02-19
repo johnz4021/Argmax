@@ -20,6 +20,8 @@ export default function LinkedRenderer({
   const [classes, setClasses] = useState([]);
   const [pointers, setPointers] = useState({});
   const [mode, setMode] = useState('list'); // 'list' | 'stack' | 'queue'
+  const [overlayState, setOverlayState] = useState(null);
+  const [ghostState, setGhostState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
 
@@ -181,14 +183,43 @@ export default function LinkedRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || nodes.length === 0) return;
+    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeLinkedSnapshot());
-  }, [segmentCount, takeLinkedSnapshot]);
+  }, [segmentCount, takeLinkedSnapshot, explanationMode]);
 
   // Handle explanation mode
   useEffect(() => {
-    if (explanationMode?.mode && !preExplanationRef.current) {
+    if (explanationMode?.mode === 'rewind') {
       preExplanationRef.current = takeLinkedSnapshot();
+      const stepsBack = explanationMode.config?.steps_back || 2;
+      const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      if (snapshotsRef.current[idx]) {
+        restoreLinkedSnapshot(snapshotsRef.current[idx]);
+      }
+    } else if (explanationMode?.mode === 'overlay') {
+      preExplanationRef.current = takeLinkedSnapshot();
+      const config = explanationMode.config;
+      const spotlit = new Set(config.spotlight_indices || []);
+      setOverlayState({
+        spotlit,
+        annotations: (config.annotations || []).map(a => ({
+          index: typeof a.target === 'number' ? a.target : parseInt(a.target),
+          text: a.text,
+          position: a.position || 'top',
+        })),
+      });
+    } else if (explanationMode?.mode === 'ghost_alternative') {
+      preExplanationRef.current = takeLinkedSnapshot();
+      const config = explanationMode.config;
+      setGhostState({
+        ghost: new Set(config.ghost_indices || []),
+        actual: new Set(config.actual_indices || []),
+        ghostLabel: config.ghost_label,
+        actualLabel: config.actual_label,
+      });
     } else if (explanationMode === null && preExplanationRef.current) {
+      setOverlayState(null);
+      setGhostState(null);
       restoreLinkedSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
     }
@@ -221,13 +252,21 @@ export default function LinkedRenderer({
           </div>
 
           {/* Nodes chain */}
-          <div className={`flex ${isVertical ? 'flex-col' : 'flex-row flex-wrap'} items-center justify-center gap-1`}>
+          <div className={`relative flex ${isVertical ? 'flex-col' : 'flex-row flex-wrap'} items-center justify-center gap-1`}>
             {nodes.map((value, idx) => {
               const colorClass = NODE_COLORS[classes[idx]] || NODE_COLORS.default;
+              const isDimmed = (overlayState && !overlayState.spotlit.has(idx)) || (ghostState && !ghostState.ghost.has(idx) && !ghostState.actual.has(idx));
+              const isSpotlit = overlayState?.spotlit.has(idx);
+              const isGhost = ghostState?.ghost.has(idx);
+              const isActual = ghostState?.actual.has(idx);
               return (
                 <div key={`${idx}-${value}`} className="flex items-center gap-1">
                   <div
-                    className={`flex items-center justify-center rounded-lg border-2 px-4 py-2 min-w-[48px] transition-all duration-300 ${colorClass}`}
+                    className={`flex items-center justify-center rounded-lg border-2 px-4 py-2 min-w-[48px] transition-all duration-300 ${colorClass} ${isSpotlit ? 'ring-2 ring-blue-400' : ''} ${isActual ? 'ring-2 ring-blue-400' : ''}`}
+                    style={{
+                      ...(isDimmed ? { opacity: 0.15 } : {}),
+                      ...(isGhost ? { opacity: 0.4, borderStyle: 'dashed', borderColor: '#ef4444' } : {}),
+                    }}
                   >
                     <span className="text-sm font-mono text-white font-bold">{value}</span>
                   </div>
@@ -238,6 +277,20 @@ export default function LinkedRenderer({
               );
             })}
             <span className="text-gray-600 text-sm ml-1">null</span>
+            {/* Overlay annotations */}
+            {overlayState?.annotations?.map((ann, i) => {
+              const leftPct = ((ann.index + 0.5) / nodes.length) * 100;
+              return (
+                <div key={i}
+                  className="absolute z-20 bg-gray-900/95 border border-blue-500 text-blue-200 text-xs px-2 py-1 rounded-md shadow-lg pointer-events-none whitespace-nowrap"
+                  style={{
+                    left: `${leftPct}%`, transform: 'translateX(-50%)',
+                    ...(ann.position === 'bottom' ? { bottom: '-24px' } : { top: '-24px' }),
+                  }}>
+                  {ann.text}
+                </div>
+              );
+            })}
           </div>
 
           {/* Pointers */}

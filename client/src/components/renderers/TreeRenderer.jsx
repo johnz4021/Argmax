@@ -86,6 +86,15 @@ function buildHierarchy(nodes, edges, rootId) {
   return root;
 }
 
+/** Build edge keys from a path array, e.g. ['A','B','C'] -> ['A-B','B-C'] */
+function buildEdgeKeys(path) {
+  const keys = [];
+  for (let i = 0; i < path.length - 1; i++) {
+    keys.push(`${path[i]}-${path[i + 1]}`);
+  }
+  return keys;
+}
+
 export default function TreeRenderer({
   rendererId = 'tree',
   phase,
@@ -99,6 +108,8 @@ export default function TreeRenderer({
   const [nodeColors, setNodeColors] = useState({}); // id -> 'red'|'black' for RB trees
   const [heapArray, setHeapArray] = useState(null); // array representation for heaps
   const [levelHighlight, setLevelHighlight] = useState(null);
+  const [overlayState, setOverlayState] = useState(null);
+  const [ghostState, setGhostState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
 
@@ -290,14 +301,41 @@ export default function TreeRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || !treeData) return;
+    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeTreeSnapshot());
-  }, [segmentCount, takeTreeSnapshot]);
+  }, [segmentCount, takeTreeSnapshot, explanationMode]);
 
   // Handle explanation mode
   useEffect(() => {
-    if (explanationMode?.mode && !preExplanationRef.current) {
+    if (explanationMode?.mode === 'rewind') {
       preExplanationRef.current = takeTreeSnapshot();
+      const stepsBack = explanationMode.config?.steps_back || 2;
+      const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      if (snapshotsRef.current[idx]) {
+        restoreTreeSnapshot(snapshotsRef.current[idx]);
+      }
+    } else if (explanationMode?.mode === 'overlay') {
+      preExplanationRef.current = takeTreeSnapshot();
+      const config = explanationMode.config;
+      setOverlayState({
+        spotlitNodes: new Set(config.spotlight_nodes || []),
+        spotlitEdges: new Set((config.spotlight_edges || []).map(e => `${e.from}-${e.to}`)),
+        annotations: config.annotations || [],
+      });
+    } else if (explanationMode?.mode === 'ghost_alternative') {
+      preExplanationRef.current = takeTreeSnapshot();
+      const config = explanationMode.config;
+      setGhostState({
+        ghostPath: new Set(config.ghost_path || []),
+        actualPath: new Set(config.actual_path || []),
+        ghostEdges: new Set(buildEdgeKeys(config.ghost_path || [])),
+        actualEdges: new Set(buildEdgeKeys(config.actual_path || [])),
+        ghostLabel: config.ghost_label,
+        actualLabel: config.actual_label,
+      });
     } else if (explanationMode === null && preExplanationRef.current) {
+      setOverlayState(null);
+      setGhostState(null);
       restoreTreeSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
     }
@@ -342,14 +380,37 @@ export default function TreeRenderer({
       .attr('y2', d => d.target.y)
       .attr('stroke', d => {
         const key = `${d.source.data.id}-${d.target.data.id}`;
+        if (ghostState?.actualEdges.has(key)) return '#60a5fa';
+        if (ghostState?.ghostEdges.has(key)) return '#ef4444';
+        if (overlayState?.spotlitEdges.has(key)) return '#60a5fa';
         const cls = edgeClasses[key] || 'default';
         return EDGE_COLORS[cls] || EDGE_COLORS.default;
       })
       .attr('stroke-width', d => {
         const key = `${d.source.data.id}-${d.target.data.id}`;
+        if (ghostState?.actualEdges.has(key) || ghostState?.ghostEdges.has(key)) return 3;
+        if (overlayState?.spotlitEdges.has(key)) return 3;
         return edgeClasses[key] ? 3 : 2;
       })
-      .attr('opacity', 0.8);
+      .attr('stroke-dasharray', d => {
+        const key = `${d.source.data.id}-${d.target.data.id}`;
+        if (ghostState?.ghostEdges.has(key)) return '6,3';
+        return null;
+      })
+      .attr('opacity', d => {
+        const key = `${d.source.data.id}-${d.target.data.id}`;
+        const nodeId = d.target.data.id;
+        if (ghostState) {
+          if (ghostState.ghostEdges.has(key)) return 0.4;
+          if (ghostState.actualEdges.has(key)) return 1;
+          return 0.15;
+        }
+        if (overlayState) {
+          if (overlayState.spotlitEdges.has(key)) return 1;
+          return 0.15;
+        }
+        return 0.8;
+      });
 
     // Draw nodes
     const nodeGroups = g.selectAll('.tree-node')
@@ -366,10 +427,34 @@ export default function TreeRenderer({
         return (NODE_COLORS[cls] || NODE_COLORS.default).fill;
       })
       .attr('stroke', d => {
-        const cls = nodeClasses[d.data.id] || 'default';
+        const id = d.data.id;
+        if (ghostState?.actualPath.has(id)) return '#60a5fa';
+        if (ghostState?.ghostPath.has(id)) return '#ef4444';
+        if (overlayState?.spotlitNodes.has(id)) return '#60a5fa';
+        const cls = nodeClasses[id] || 'default';
         return (NODE_COLORS[cls] || NODE_COLORS.default).stroke;
       })
-      .attr('stroke-width', 2.5)
+      .attr('stroke-width', d => {
+        const id = d.data.id;
+        if (overlayState?.spotlitNodes.has(id) || ghostState?.actualPath.has(id) || ghostState?.ghostPath.has(id)) return 4;
+        return 2.5;
+      })
+      .attr('stroke-dasharray', d => {
+        if (ghostState?.ghostPath.has(d.data.id)) return '6,3';
+        return null;
+      })
+      .attr('opacity', d => {
+        const id = d.data.id;
+        if (ghostState) {
+          if (ghostState.ghostPath.has(id)) return 0.4;
+          if (ghostState.actualPath.has(id)) return 1;
+          return 0.15;
+        }
+        if (overlayState) {
+          return overlayState.spotlitNodes.has(id) ? 1 : 0.15;
+        }
+        return 1;
+      })
       .style('transition', 'fill 0.3s, stroke 0.3s');
 
     // Red-black tree color indicators
@@ -394,7 +479,47 @@ export default function TreeRenderer({
       .attr('font-size', '14px')
       .attr('font-weight', 'bold')
       .attr('font-family', 'monospace')
+      .attr('opacity', d => {
+        const id = d.data.id;
+        if (ghostState) {
+          if (ghostState.ghostPath.has(id)) return 0.4;
+          if (ghostState.actualPath.has(id)) return 1;
+          return 0.15;
+        }
+        if (overlayState) {
+          return overlayState.spotlitNodes.has(id) ? 1 : 0.15;
+        }
+        return 1;
+      })
       .text(d => d.data.value);
+
+    // Overlay annotations
+    if (overlayState?.annotations?.length) {
+      const nodePositions = {};
+      hierarchy.descendants().forEach(d => { nodePositions[d.data.id] = { x: d.x, y: d.y }; });
+      for (const ann of overlayState.annotations) {
+        const pos = nodePositions[ann.target];
+        if (!pos) continue;
+        const offsetX = ann.position === 'left' ? -80 : ann.position === 'right' ? 40 : 0;
+        const offsetY = ann.position === 'top' ? -(NODE_RADIUS + 30) : ann.position === 'bottom' ? (NODE_RADIUS + 10) : -(NODE_RADIUS + 30);
+        g.append('foreignObject')
+          .attr('x', pos.x + offsetX - 60)
+          .attr('y', pos.y + offsetY)
+          .attr('width', 140)
+          .attr('height', 40)
+          .append('xhtml:div')
+          .style('background', 'rgba(17,24,39,0.95)')
+          .style('border', '1px solid #3b82f6')
+          .style('color', '#93c5fd')
+          .style('font-size', '11px')
+          .style('padding', '2px 6px')
+          .style('border-radius', '4px')
+          .style('text-align', 'center')
+          .style('pointer-events', 'none')
+          .style('white-space', 'nowrap')
+          .text(ann.text);
+      }
+    }
 
     // Level highlight
     if (levelHighlight !== null) {
@@ -415,7 +540,7 @@ export default function TreeRenderer({
       }
     }
 
-  }, [treeData, nodeClasses, edgeClasses, nodeColors, levelHighlight]);
+  }, [treeData, nodeClasses, edgeClasses, nodeColors, levelHighlight, overlayState, ghostState]);
 
   return (
     <div className="relative h-full flex flex-col">

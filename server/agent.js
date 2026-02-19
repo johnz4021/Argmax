@@ -53,10 +53,20 @@ DYNAMIC PROGRAMMING (renderer: 'table'):
 TREES (renderer: 'tree'):
   Use create_visualization with renderer:'tree'.
   Actions: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset.
+  - set_tree: { nodes: [{id, value}], edges: [{from, to, side:'left'|'right'}], root: id } — replace entire tree. The trace's 'tree' field can be passed directly.
+  - insert_node: { id, value, parent, side } — add one node. Omit parent for root.
+  - highlight_node: { id, className } — className: 'current', 'comparing', 'inserted', etc.
+  - highlight_edge: { from, to, className }
+  For BST insertion, the trace includes a full 'tree' snapshot at each insert step. Use set_tree with it to keep the visualization in sync.
 
 LINKED STRUCTURES (renderer: 'linked'):
   Use create_visualization with renderer:'linked'.
   Actions: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset.
+  - set_list: { values: [1, 2, 3], mode: 'list'|'stack'|'queue' } — set the full list
+  - highlight_node: { indices: [0, 1], className } — highlight nodes by index
+  - insert_after: { index, value } — insert a new node after the given index
+  - delete_node: { index } — delete node at index
+  - set_pointer: { name, index } — show a named pointer (e.g. 'prev', 'curr') at index
 
 For ALL algorithms:
   1. Call create_visualization (or create_graph for graph algorithms) first
@@ -79,18 +89,29 @@ Rules:
 
 HANDLING INTERRUPTS:
 When a learner interrupts with a question, choose the right explanation_mode:
-- "overlay" for "why did we pick X?" or "how does X relate to Y?" — spotlight the relevant nodes/edges, dim everything else, add annotation labels explaining the reasoning
-- "rewind" for "what just happened?" or "I'm confused" or "can you repeat that?" — rewind 1-3 steps and re-explain with different, clearer wording
-- "ghost_alternative" for "what if we went through B instead?" or "why not this path?" — show the alternative path as a ghost overlay alongside the actual chosen path, with cost labels
-- "none" for simple factual questions that don't need visual explanation
+
+- "overlay" — spotlight relevant elements, dim everything else, add annotation labels.
+  For graphs/trees: use spotlight_nodes (ID strings) and spotlight_edges ({from, to}).
+  For arrays/linked lists: use spotlight_indices (0-based index array).
+  For tables: use spotlight_cells (array of {row, col}).
+  Always include 1-2 annotations with the key insight.
+
+- "rewind" — rewind 1-3 steps and re-explain with different, simpler wording. Works for all renderers.
+
+- "ghost_alternative" — compare the actual choice vs an alternative.
+  For graphs/trees: use ghost_path/actual_path (node ID arrays).
+  For arrays/linked lists: use ghost_indices/actual_indices (index arrays).
+  Include ghost_label and actual_label to explain the comparison.
+
+- "none" — simple factual questions with no visual needs.
 
 After your explanation, emit a bridging segment: "Alright, back to where we were..." and continue the algorithm.
 
-When using overlay mode, be specific about which nodes and edges to spotlight — only the ones directly relevant to the question. Add 1-2 short annotations that explain the key insight.
+When using overlay mode, be specific about which elements to spotlight — only the ones directly relevant to the question. Add 1-2 short annotations that explain the key insight.
 
 When using rewind mode, your re-narration should use DIFFERENT words than the original — if the learner didn't understand the first time, repeating the same words won't help. Use simpler language, analogies, or break the step into smaller pieces.
 
-When using ghost_alternative mode, always include both the ghost (rejected) path and the actual (chosen) path so the learner can visually compare costs.`;
+When using ghost_alternative mode, always include both the ghost (rejected) choice and the actual (chosen) choice so the learner can visually compare.`;
 
 function sendJSON(ws, obj) {
   if (ws.readyState === ws.OPEN) {

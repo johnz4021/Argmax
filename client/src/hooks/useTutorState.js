@@ -4,6 +4,7 @@ const initialState = {
   status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error
   algorithm: null,
   graph: null,
+  vizPanels: null, // [{ id, renderer, props }] — drives VizLayout
   segments: [],
   currentPhase: '',
   distanceTable: null,
@@ -11,6 +12,19 @@ const initialState = {
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
 };
+
+/**
+ * Normalize viz actions: wrap legacy format (no `renderer` field) for graph renderer.
+ */
+export function normalizeVizActions(actions) {
+  if (!actions) return [];
+  return actions.map((a) => {
+    if (a.renderer) return a; // already new format
+    // Legacy format — wrap for graph renderer
+    const { action, ...rest } = a;
+    return { renderer: 'graph', action, params: rest };
+  });
+}
 
 function reducer(state, action) {
   switch (action.type) {
@@ -22,7 +36,15 @@ function reducer(state, action) {
       };
 
     case 'CREATE_GRAPH':
-      return { ...state, graph: action.graph };
+      return {
+        ...state,
+        graph: action.graph,
+        // Auto-create a graph panel when create_graph is used (backward compat)
+        vizPanels: [{ id: 'graph', renderer: 'graph', props: { graph: action.graph } }],
+      };
+
+    case 'SET_VIZ_PANELS':
+      return { ...state, vizPanels: action.panels };
 
     case 'SEGMENT_START':
       return {
@@ -125,6 +147,16 @@ export function useTutorState() {
       case 'create_graph':
         dispatch({ type: 'CREATE_GRAPH', graph: msg.graph });
         break;
+      case 'create_visualization': {
+        const panels = (msg.panels || []).map((p, i) => ({
+          id: p.renderer + '_' + i,
+          renderer: p.renderer,
+          props: p.config || {},
+        }));
+        console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
+        dispatch({ type: 'SET_VIZ_PANELS', panels });
+        break;
+      }
       case 'segment_start':
         dispatch({
           type: 'SEGMENT_START',

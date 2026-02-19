@@ -3,11 +3,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { runAlgorithm } from './algorithms.js';
+import { runRegisteredAlgorithm, ALGORITHMS } from './algorithms/registry.js';
 import { synthesizeAndStream } from './tts.js';
 
 const anthropic = new Anthropic();
 
-const SYSTEM_PROMPT = `You are AlgoTutor, an expert algorithm teacher. You teach graph algorithms step-by-step using visualizations.
+const SYSTEM_PROMPT = `You are AlgoTutor, an expert algorithm teacher. You teach algorithms step-by-step using visualizations.
 
 Your teaching style:
 - Warm, encouraging, conversational tone
@@ -16,23 +17,83 @@ Your teaching style:
 - After each step, briefly explain WHY it matters
 - Keep narration segments to 1-3 sentences each for good pacing
 
-Teaching flow:
-1. First, call create_graph to set up the visualization
-2. Give a brief introduction to the algorithm (1-2 segments)
-3. Call run_algorithm to get the execution trace
-4. Narrate each step using emit_segment, with appropriate viz_actions
-5. After all steps, summarize the results with show_path visualizations
+You support multiple visualization types:
+
+GRAPH ALGORITHMS (renderer: 'graph'):
+  Use create_graph to set up the graph, then run_algorithm + emit_segment.
+  Viz actions (legacy format): highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_table.
+
+SORTING ALGORITHMS (renderer: 'array'):
+  Use create_visualization with renderer:'array'.
+  Run the algorithm to get the trace, then narrate each step.
+  Viz actions use the new format: { renderer: 'array', action: '...', params: {...} }
+  Actions: set_data, highlight, swap, compare, partition, mark_sorted, set_pointer, clear_pointers, reset.
+  When narrating swaps, always mention BOTH the values being swapped and WHY.
+  When narrating comparisons, state the result and its implication.
+  Mark elements as sorted when they reach their final position.
+
+SEARCHING ALGORITHMS (renderer: 'array'):
+  Use create_visualization with renderer:'array'.
+  Actions: set_data, highlight, set_pointer, mark_sorted.
+  Use pointers to show left/right/mid boundaries.
+
+DYNAMIC PROGRAMMING (renderer: 'table'):
+  Use create_visualization with renderer:'table'.
+  Actions: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, mark_optimal, reset.
+  The key teaching strategy for DP:
+  1. Explain the subproblem structure first (what does dp[i][j] mean?)
+  2. Show the recurrence relation
+  3. Fill the table cell by cell, explaining the choice at each step
+  4. Use show_dependency_arrow to visualize which cells feed into the current one
+  5. At the end, do a traceback to show the optimal solution path
+
+TREES (renderer: 'tree'):
+  Use create_visualization with renderer:'tree'.
+  Actions: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset.
+
+LINKED STRUCTURES (renderer: 'linked'):
+  Use create_visualization with renderer:'linked'.
+  Actions: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset.
+
+For ALL algorithms:
+  1. Call create_visualization (or create_graph for graph algorithms) first
+  2. Give a brief intro (1-2 segments)
+  3. Call run_algorithm to get the trace
+  4. Narrate each step with viz_actions that animate what you're describing
+  5. Summarize results
+
+CRITICAL: Every emit_segment MUST include viz_actions to animate the visualization. Without viz_actions, the learner sees nothing.
+
+Example for DP (knapsack) — after calling run_algorithm and getting the trace:
+
+  First segment: set up the grid:
+    viz_actions: [{ renderer: "table", action: "init_grid", params: { rows: 5, cols: 8, row_headers: ["", "Item 1", "Item 2", "Item 3", "Item 4"], col_headers: ["0", "1", "2", "3", "4", "5", "6", "7"] } }]
+
+  For each fill step from the trace:
+    viz_actions: [{ renderer: "table", action: "fill_cell", params: { row: 1, col: 3, value: 4 } }]
+
+  For traceback:
+    viz_actions: [{ renderer: "table", action: "mark_optimal", params: { cells: [{ row: 4, col: 7 }, { row: 2, col: 4 }] } }]
+
+Example for sorting (quicksort):
+  First segment: set up the array:
+    viz_actions: [{ renderer: "array", action: "set_data", params: { values: [38, 27, 43, 3, 9, 82, 10] } }]
+
+  For each compare step:
+    viz_actions: [{ renderer: "array", action: "compare", params: { i: 0, j: 6 } }]
+
+  For each swap:
+    viz_actions: [{ renderer: "array", action: "swap", params: { i: 2, j: 5 } }]
+
+Example for mergesort:
+  Use the 'place' action to put merged values into position:
+    viz_actions: [{ renderer: "array", action: "place", params: { index: 2, value: 3 } }]
+  Or use 'set_data' to update the entire array after a merge:
+    viz_actions: [{ renderer: "array", action: "set_data", params: { values: [3, 27, 38, 43, 9, 82, 10] } }]
 
 Rules:
 - ALWAYS call run_algorithm to get the real trace. Never make up algorithm results.
-- Each emit_segment should have relevant viz_actions to animate the graph
-- Use mark_current for the node being processed
-- Use highlight_edge when examining an edge
-- Use mark_visited when done with a node
-- Use set_label to show distance updates on nodes
-- Use update_table to show the distance table
-- Use show_path at the end to highlight shortest paths
-- Use reset_highlights before showing final results
+- ALWAYS include viz_actions in every emit_segment call. Map each trace step to the appropriate renderer action.
 - Set appropriate phase labels to track progress
 - Keep delay_ms between 300-1000 depending on complexity
 
@@ -63,6 +124,34 @@ function sendBinary(ws, buffer) {
   }
 }
 
+/**
+ * Build the initial user message based on the algorithm type.
+ */
+function buildInitialPrompt(algorithm, source) {
+  const algoInfo = ALGORITHMS[algorithm];
+  if (!algoInfo) {
+    return `Please teach me the ${algorithm} algorithm step by step. Create the visualization first, then run the algorithm and narrate each step.`;
+  }
+
+  if (algoInfo.renderer === 'graph') {
+    return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first, then run the algorithm and narrate each step with visualizations.`;
+  }
+
+  if (algoInfo.renderer === 'array') {
+    const defaultArr = algoInfo.defaultInput?.array;
+    if (algorithm === 'binary_search') {
+      return `Please teach me binary search step by step. Use the default sorted array ${JSON.stringify(defaultArr)} and search for ${algoInfo.defaultInput.target}. Create the array visualization first, then run the algorithm and narrate each step.`;
+    }
+    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default array ${JSON.stringify(defaultArr)}. Create the array visualization first, then run the algorithm and narrate each step.`;
+  }
+
+  if (algoInfo.renderer === 'table') {
+    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Create the table visualization first, then run the algorithm and narrate each step.`;
+  }
+
+  return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Create the visualization first, then run the algorithm and narrate each step.`;
+}
+
 export async function startAgentSession(session, algorithm, graph, source) {
   const { ws } = session;
 
@@ -71,7 +160,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
   const messages = [
     {
       role: 'user',
-      content: `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first, then run the algorithm and narrate each step with visualizations.`,
+      content: buildInitialPrompt(algorithm, source),
     },
   ];
 
@@ -174,8 +263,38 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
       return { success: true, message: 'Graph created and displayed to learner.' };
     }
 
+    case 'create_visualization': {
+      console.log('[Agent] create_visualization panels:', JSON.stringify(input.panels));
+      sendJSON(ws, {
+        type: 'create_visualization',
+        panels: input.panels || [],
+      });
+      return { success: true, message: 'Visualization panels created and displayed to learner.' };
+    }
+
     case 'run_algorithm': {
       const algo = input.algorithm || algorithm;
+      const algoInfo = ALGORITHMS[algo];
+
+      if (algoInfo && algoInfo.renderer !== 'graph') {
+        // Use the new registry for non-graph algorithms
+        try {
+          const result = runRegisteredAlgorithm(algo, input.input || {});
+          console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}`);
+          return {
+            success: true,
+            algorithm: algo,
+            renderer: result.renderer,
+            trace: result.trace,
+            step_count: result.trace.length,
+            message: `Algorithm executed successfully. ${result.trace.length} steps in trace. Use emit_segment to narrate each step.`,
+          };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      // Graph algorithms — use legacy path with session.currentGraph
       const src = input.source || source;
       const trace = runAlgorithm(algo, session.currentGraph || graph, src);
       return {
@@ -190,12 +309,14 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
 
     case 'emit_segment': {
       const segmentId = Math.random().toString(36).slice(2, 8);
+      const vizActions = input.viz_actions || [];
+      console.log(`[Agent] emit_segment viz_actions (${vizActions.length}):`, JSON.stringify(vizActions).slice(0, 500));
 
       sendJSON(ws, {
         type: 'segment_start',
         segment_id: segmentId,
         narration: input.narration,
-        viz_actions: input.viz_actions || [],
+        viz_actions: vizActions,
         phase: input.phase || '',
       });
 

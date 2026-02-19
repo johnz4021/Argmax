@@ -1,31 +1,37 @@
-import { useCallback, useRef, useState } from 'react';
-import GraphView from './components/GraphView';
+import { useCallback } from 'react';
+import VizLayout from './components/VizLayout';
+import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
 import Controls from './components/Controls';
 import AlgoSelector from './components/AlgoSelector';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
-import { useTutorState } from './hooks/useTutorState';
+import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
+import { applyActions } from './lib/rendererRegistry';
 
 export default function App() {
   const { state, processMessage, interrupt, reset } = useTutorState();
   const audioPlayer = useAudioPlayer();
-  const [vizActions, setVizActions] = useState(null);
 
   const onMessage = useCallback(
     (msg) => {
+      console.log('[App] WS message:', msg.type, msg);
       processMessage(msg);
 
-      // Apply viz actions from segments
+      // Route all viz actions through the renderer registry.
+      // normalizeVizActions wraps legacy (renderer-less) actions as renderer:'graph'.
       if (msg.type === 'segment_start' && msg.viz_actions?.length > 0) {
-        setVizActions(msg.viz_actions);
+        const normalized = normalizeVizActions(msg.viz_actions);
+        console.log('[App] Routing viz_actions:', JSON.stringify(normalized).slice(0, 500));
+        applyActions(normalized);
+      } else if (msg.type === 'segment_start') {
+        console.log('[App] segment_start with NO viz_actions');
       }
       if (msg.type === 'interrupt_response' && msg.viz_actions?.length > 0) {
-        setVizActions(msg.viz_actions);
+        const normalized = normalizeVizActions(msg.viz_actions);
+        applyActions(normalized);
       }
-      if (msg.type === 'explanation_complete') {
-        processMessage(msg);
-      }
+      // create_visualization and explanation_complete are handled by processMessage above
       if (msg.type === 'rewind_step_narration') {
         processMessage({
           type: 'segment_start',
@@ -53,7 +59,6 @@ export default function App() {
     (algorithm) => {
       audioPlayer.init(); // Must be from user gesture
       reset();
-      setVizActions(null);
       send({ type: 'start_lesson', algorithm, source: 'A' });
     },
     [send, reset, audioPlayer]
@@ -80,7 +85,6 @@ export default function App() {
   const handleRestart = useCallback(() => {
     audioPlayer.stop();
     reset();
-    setVizActions(null);
   }, [reset, audioPlayer]);
 
   const handleSpeedChange = useCallback(
@@ -91,6 +95,9 @@ export default function App() {
   );
 
   const showSelector = state.status === 'idle' || state.status === 'error';
+
+  // Determine if we should use the new VizLayout or legacy GraphRenderer
+  const useVizLayout = state.vizPanels && state.vizPanels.some((p) => p.renderer !== 'graph');
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
@@ -122,15 +129,22 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Graph panel - 60% */}
+            {/* Visualization panel - 60% */}
             <div className="w-3/5 border-r border-gray-800">
-              <GraphView
-                graph={state.graph}
-                vizActions={vizActions}
-                phase={state.currentPhase}
-                explanationMode={state.explanationMode}
-                segmentCount={state.segmentCount}
-              />
+              {useVizLayout ? (
+                <VizLayout
+                  panels={state.vizPanels}
+                  explanationMode={state.explanationMode}
+                  segmentCount={state.segmentCount}
+                />
+              ) : (
+                <GraphRenderer
+                  graph={state.graph}
+                  phase={state.currentPhase}
+                  explanationMode={state.explanationMode}
+                  segmentCount={state.segmentCount}
+                />
+              )}
             </div>
 
             {/* Transcript panel - 40% */}

@@ -1,10 +1,14 @@
 // Claude tool schemas for AlgoTutor
 
+import { ALGORITHMS } from './algorithms/registry.js';
+
+const algorithmEnum = Object.keys(ALGORITHMS);
+
 export const tools = [
   {
     name: 'create_graph',
     description:
-      'Create and display a graph for the lesson. Call this first to set up the visualization before running the algorithm.',
+      'Create and display a graph for the lesson. Call this first to set up the visualization for graph algorithms.',
     input_schema: {
       type: 'object',
       properties: {
@@ -42,23 +46,58 @@ export const tools = [
     },
   },
   {
+    name: 'create_visualization',
+    description:
+      'Set up the visualization panel(s) for the current lesson. Call this INSTEAD of create_graph for non-graph algorithms (sorting, DP, trees, etc.). For graph algorithms, use create_graph instead.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        panels: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              renderer: {
+                type: 'string',
+                enum: ['graph', 'array', 'table', 'tree', 'linked'],
+              },
+              config: {
+                type: 'object',
+                description: 'Renderer-specific initial config',
+              },
+            },
+            required: ['renderer'],
+          },
+          description:
+            'Visualization panels to display. Usually one, but some algorithms need two (e.g., heapsort needs array + tree).',
+        },
+      },
+      required: ['panels'],
+    },
+  },
+  {
     name: 'run_algorithm',
     description:
-      'Execute an algorithm on the current graph and get the full execution trace. Use this to get the actual step-by-step trace before narrating.',
+      'Execute an algorithm and get the full execution trace. Use this to get the actual step-by-step trace before narrating. For graph algorithms, also pass source. For sorting, optionally pass a custom array. For search, pass array and target.',
     input_schema: {
       type: 'object',
       properties: {
         algorithm: {
           type: 'string',
-          enum: ['dijkstra', 'bfs', 'dfs'],
-          description: 'Algorithm to run',
+          enum: algorithmEnum,
+          description: 'Algorithm to execute',
         },
         source: {
           type: 'string',
-          description: 'Source node ID',
+          description: 'Source node ID (for graph algorithms)',
+        },
+        input: {
+          type: 'object',
+          description:
+            'Algorithm-specific input. For sorting: { array: [5,3,8,1] }. For search: { array: [...], target: 23 }. Omit to use default sample data.',
         },
       },
-      required: ['algorithm', 'source'],
+      required: ['algorithm'],
     },
   },
   {
@@ -78,19 +117,20 @@ export const tools = [
           items: {
             type: 'object',
             properties: {
+              renderer: {
+                type: 'string',
+                enum: ['graph', 'array', 'table', 'tree', 'linked'],
+                description: 'Which renderer to target. REQUIRED for all viz actions.',
+              },
               action: {
                 type: 'string',
-                enum: [
-                  'highlight_node',
-                  'highlight_edge',
-                  'mark_visited',
-                  'mark_current',
-                  'set_label',
-                  'reset_highlights',
-                  'show_path',
-                  'update_table',
-                ],
+                description: 'Renderer-specific action name',
               },
+              params: {
+                type: 'object',
+                description: 'Action parameters (renderer-specific)',
+              },
+              // Legacy graph fields (backward compat)
               node: { type: 'string' },
               from: { type: 'string' },
               to: { type: 'string' },
@@ -102,9 +142,10 @@ export const tools = [
               },
               className: { type: 'string' },
             },
-            required: ['action'],
+            required: ['renderer', 'action'],
           },
-          description: 'Visualization actions to perform with this segment',
+          description:
+            'Visualization actions to perform with this segment. Use { renderer, action, params } format for non-graph renderers.',
         },
         phase: {
           type: 'string',

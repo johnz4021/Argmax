@@ -1,0 +1,43 @@
+export default function ExpressionPanel({ data }) {
+  const { expression, result, highlight_terms } = data || {};
+
+  if (!expression) return null;
+
+  // Build highlighted expression
+  let rendered = expression;
+  if (highlight_terms?.length) {
+    const parts = [];
+    let remaining = expression;
+    for (const term of highlight_terms) {
+      const idx = remaining.indexOf(term);
+      if (idx === -1) continue;
+      if (idx > 0) parts.push({ text: remaining.slice(0, idx), highlight: false });
+      parts.push({ text: term, highlight: true });
+      remaining = remaining.slice(idx + term.length);
+    }
+    if (remaining) parts.push({ text: remaining, highlight: false });
+
+    if (parts.length > 0) {
+      rendered = (
+        <span>
+          {parts.map((p, i) =>
+            p.highlight ? (
+              <span key={i} className="bg-blue-500/30 text-blue-300 rounded px-0.5">{p.text}</span>
+            ) : (
+              <span key={i}>{p.text}</span>
+            )
+          )}
+        </span>
+      );
+    }
+  }
+
+  return (
+    <div className="font-mono text-sm text-gray-200 bg-gray-800/50 rounded px-3 py-2">
+      <div>{rendered}</div>
+      {result !== undefined && result !== null && (
+        <div className="text-green-400 mt-1">= {result}</div>
+      )}
+    </div>
+  );
+}

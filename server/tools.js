@@ -71,6 +71,24 @@ export const tools = [
           description:
             'Visualization panels to display. Usually one, but some algorithms need two (e.g., heapsort needs array + tree).',
         },
+        context_panels: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Unique panel ID (e.g., "distances", "pq")' },
+              type: {
+                type: 'string',
+                enum: ['key_value', 'collection', 'expression', 'log', 'pseudocode'],
+                description: 'Panel display type',
+              },
+              title: { type: 'string', description: 'Display title (e.g., "Distances", "Priority Queue")' },
+              initial_data: { type: 'object', description: 'Initial data for the panel (optional)' },
+            },
+            required: ['id', 'type', 'title'],
+          },
+          description: 'Supplementary context panels to show alongside the main visualization. Use these for metadata like distance tables, queue contents, pseudocode, etc.',
+        },
       },
       required: ['panels'],
     },
@@ -119,7 +137,7 @@ export const tools = [
             properties: {
               renderer: {
                 type: 'string',
-                enum: ['graph', 'array', 'table', 'tree', 'linked'],
+                enum: ['graph', 'array', 'table', 'tree', 'linked', 'context'],
                 description: 'Which renderer to target. REQUIRED for all viz actions.',
               },
               action: {

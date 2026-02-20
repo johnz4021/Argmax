@@ -69,6 +69,54 @@ LINKED STRUCTURES (renderer: 'linked'):
   - delete_node: { index } — delete node at index
   - set_pointer: { name, index } — show a named pointer (e.g. 'prev', 'curr') at index
 
+CONTEXT PANELS:
+You can declare supplementary context panels in create_visualization to show metadata alongside the main visualization. These help learners track algorithm state.
+
+Available panel types:
+- key_value: Key-value pairs (distances, costs, variable values)
+- collection: Ordered items (priority queue, stack, visited set)
+- expression: Formula being evaluated (DP recurrence, comparison)
+- log: Scrolling decision log (what was chosen and why)
+- pseudocode: Algorithm pseudocode with current line highlighted
+
+Declare panels in create_visualization:
+  context_panels: [
+    { id: "distances", type: "key_value", title: "Distances" },
+    { id: "pq", type: "collection", title: "Priority Queue" }
+  ]
+
+Update panels via viz_actions in emit_segment:
+  { renderer: "context", action: "update", params: {
+    panel_id: "distances",
+    entries: [
+      { key: "A", value: 0, status: "default" },
+      { key: "B", value: 4, status: "updated" }
+    ]
+  }}
+
+For log panels, use action: "append_log" to add entries without replacing:
+  { renderer: "context", action: "append_log", params: {
+    panel_id: "decisions",
+    entries: [{ text: "Took Laptop (w=3, v=4)", type: "decision" }]
+  }}
+
+For collection panels, send the full items array each time:
+  { renderer: "context", action: "update", params: {
+    panel_id: "pq",
+    items: [{ value: "B (4)", status: "active" }, { value: "C (7)" }],
+    style: "queue"
+  }}
+
+RECOMMENDED CONTEXT PANELS BY ALGORITHM TYPE:
+- Graph (Dijkstra, BFS, DFS): key_value for distances/state + collection for queue/stack
+- Graph (Kruskal, Prim): key_value for MST weight + collection for edge candidates
+- Sorting: pseudocode for the algorithm + key_value for stats (comparisons, swaps)
+- DP: expression for current recurrence + log for decisions
+- Trees: key_value for node properties + collection for traversal order
+- Linked: key_value for pointer positions
+
+Always update context panels in the SAME emit_segment as related viz_actions so they stay synchronized.
+
 For ALL algorithms:
   1. Call create_visualization (or create_graph for graph algorithms) first
   2. Give a brief intro (1-2 segments)
@@ -135,23 +183,25 @@ function buildInitialPrompt(algorithm, source) {
     return `Please teach me the ${algorithm} algorithm step by step. Create the visualization first, then run the algorithm and narrate each step.`;
   }
 
+  const contextHint = ' Use context panels to show relevant supplementary data like tables, queues, or pseudocode.';
+
   if (algoInfo.renderer === 'graph') {
-    return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first, then run the algorithm and narrate each step with visualizations.`;
+    return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first with appropriate context panels (like a distance table and priority queue), then run the algorithm and narrate each step with visualizations.`;
   }
 
   if (algoInfo.renderer === 'array') {
     const defaultArr = algoInfo.defaultInput?.array;
     if (algorithm === 'binary_search') {
-      return `Please teach me binary search step by step. Use the default sorted array ${JSON.stringify(defaultArr)} and search for ${algoInfo.defaultInput.target}. Create the array visualization first, then run the algorithm and narrate each step.`;
+      return `Please teach me binary search step by step. Use the default sorted array ${JSON.stringify(defaultArr)} and search for ${algoInfo.defaultInput.target}. Create the array visualization first, then run the algorithm and narrate each step.${contextHint}`;
     }
-    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default array ${JSON.stringify(defaultArr)}. Create the array visualization first, then run the algorithm and narrate each step.`;
+    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default array ${JSON.stringify(defaultArr)}. Create the array visualization first, then run the algorithm and narrate each step.${contextHint}`;
   }
 
   if (algoInfo.renderer === 'table') {
-    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Create the table visualization first, then run the algorithm and narrate each step.`;
+    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Create the table visualization first, then run the algorithm and narrate each step.${contextHint}`;
   }
 
-  return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Create the visualization first, then run the algorithm and narrate each step.`;
+  return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Create the visualization first, then run the algorithm and narrate each step.${contextHint}`;
 }
 
 export async function startAgentSession(session, algorithm, graph, source) {
@@ -267,11 +317,15 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
 
     case 'create_visualization': {
       console.log('[Agent] create_visualization panels:', JSON.stringify(input.panels));
+      if (input.context_panels) {
+        console.log('[Agent] context_panels:', JSON.stringify(input.context_panels));
+      }
       sendJSON(ws, {
         type: 'create_visualization',
         panels: input.panels || [],
+        context_panels: input.context_panels || [],
       });
-      return { success: true, message: 'Visualization panels created and displayed to learner.' };
+      return { success: true, message: 'Visualization and context panels created and displayed to learner.' };
     }
 
     case 'run_algorithm': {

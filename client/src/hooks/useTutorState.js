@@ -7,7 +7,7 @@ const initialState = {
   vizPanels: null, // [{ id, renderer, props }] — drives VizLayout
   segments: [],
   currentPhase: '',
-  distanceTable: null,
+  contextPanels: [],
   error: null,
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
@@ -122,8 +122,35 @@ function reducer(state, action) {
         ],
       };
 
-    case 'UPDATE_TABLE':
-      return { ...state, distanceTable: action.table };
+    case 'SET_CONTEXT_PANELS':
+      return {
+        ...state,
+        contextPanels: action.panels.map((p) => ({
+          id: p.id,
+          type: p.type,
+          title: p.title,
+          data: p.initial_data || {},
+        })),
+      };
+
+    case 'UPDATE_CONTEXT_PANEL':
+      return {
+        ...state,
+        contextPanels: state.contextPanels.map((p) =>
+          p.id === action.panel_id ? { ...p, data: action.data } : p
+        ),
+      };
+
+    case 'APPEND_CONTEXT_LOG':
+      return {
+        ...state,
+        contextPanels: state.contextPanels.map((p) => {
+          if (p.id !== action.panel_id || p.type !== 'log') return p;
+          const maxVisible = p.data.max_visible || 50;
+          const newEntries = [...(p.data.entries || []), ...action.entries].slice(-maxVisible);
+          return { ...p, data: { ...p.data, entries: newEntries } };
+        }),
+      };
 
     case 'ERROR':
       return { ...state, status: 'error', error: action.message };
@@ -155,6 +182,9 @@ export function useTutorState() {
         }));
         console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
         dispatch({ type: 'SET_VIZ_PANELS', panels });
+        if (msg.context_panels) {
+          dispatch({ type: 'SET_CONTEXT_PANELS', panels: msg.context_panels });
+        }
         break;
       }
       case 'segment_start':
@@ -164,13 +194,6 @@ export function useTutorState() {
           narration: msg.narration,
           phase: msg.phase,
         });
-        // Handle update_table viz actions
-        if (msg.viz_actions) {
-          const tableAction = msg.viz_actions.find((a) => a.action === 'update_table');
-          if (tableAction) {
-            dispatch({ type: 'UPDATE_TABLE', table: tableAction.table });
-          }
-        }
         break;
       case 'segment_end':
         dispatch({ type: 'SEGMENT_END', segment_id: msg.segment_id });
@@ -211,5 +234,9 @@ export function useTutorState() {
     dispatch({ type: 'RESET' });
   }, []);
 
-  return { state, processMessage, interrupt, reset };
+  const dispatchContext = useCallback((action) => {
+    dispatch(action);
+  }, []);
+
+  return { state, processMessage, interrupt, reset, dispatchContext };
 }

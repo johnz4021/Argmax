@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-export default function Transcript({ segments, distanceTable }) {
+export default function Transcript({ segments }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -49,24 +49,6 @@ export default function Transcript({ segments, distanceTable }) {
         <div ref={bottomRef} />
       </div>
 
-      {distanceTable && (
-        <div className="border-t border-gray-800 px-4 py-3">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Distances</h3>
-          <div className="flex gap-2 flex-wrap">
-            {Object.entries(distanceTable).map(([node, dist]) => (
-              <div
-                key={node}
-                className="bg-gray-800 rounded px-2 py-1 text-xs font-mono"
-              >
-                <span className="text-gray-400">{node}:</span>{' '}
-                <span className="text-green-400">
-                  {dist === Infinity || dist === 'Infinity' ? '\u221e' : dist}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

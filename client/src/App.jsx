@@ -1,17 +1,27 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import VizLayout from './components/VizLayout';
 import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
 import Controls from './components/Controls';
 import AlgoSelector from './components/AlgoSelector';
+import ContextPanelHost from './components/context/ContextPanelHost';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
 import { applyActions } from './lib/rendererRegistry';
+import { initContextManager, destroyContextManager } from './lib/contextManager';
 
 export default function App() {
-  const { state, processMessage, interrupt, reset } = useTutorState();
+  const { state, processMessage, interrupt, reset, dispatchContext } = useTutorState();
   const audioPlayer = useAudioPlayer();
+
+  const contextPanelsRef = useRef(state.contextPanels);
+  contextPanelsRef.current = state.contextPanels;
+
+  useEffect(() => {
+    initContextManager(dispatchContext);
+    return () => destroyContextManager();
+  }, [dispatchContext]);
 
   const onMessage = useCallback(
     (msg) => {
@@ -23,6 +33,29 @@ export default function App() {
       if (msg.type === 'segment_start' && msg.viz_actions?.length > 0) {
         const normalized = normalizeVizActions(msg.viz_actions);
         console.log('[App] Routing viz_actions:', JSON.stringify(normalized).slice(0, 500));
+
+        // Legacy compat: convert update_table to context panel update
+        const tableAction = msg.viz_actions.find((a) => a.action === 'update_table');
+        if (tableAction && tableAction.table) {
+          // Auto-create distances panel if none exist yet (legacy graph algo path)
+          if (contextPanelsRef.current.length === 0) {
+            dispatchContext({
+              type: 'SET_CONTEXT_PANELS',
+              panels: [{ id: 'distances', type: 'key_value', title: 'Distances' }],
+            });
+          }
+          const entries = Object.entries(tableAction.table).map(([key, value]) => ({
+            key,
+            value: value === Infinity || value === 'Infinity' ? '\u221e' : value,
+            status: 'default',
+          }));
+          applyActions([{
+            renderer: 'context',
+            action: 'update',
+            params: { panel_id: 'distances', entries },
+          }]);
+        }
+
         applyActions(normalized);
       } else if (msg.type === 'segment_start') {
         console.log('[App] segment_start with NO viz_actions');
@@ -42,7 +75,7 @@ export default function App() {
         });
       }
     },
-    [processMessage]
+    [processMessage, dispatchContext]
   );
 
   const onBinary = useCallback(
@@ -147,13 +180,11 @@ export default function App() {
               )}
             </div>
 
-            {/* Transcript panel - 40% */}
+            {/* Transcript panel */}
             <div className="w-1/3 flex flex-col">
+              <ContextPanelHost panels={state.contextPanels} />
               <div className="flex-1 overflow-hidden">
-                <Transcript
-                  segments={state.segments}
-                  distanceTable={state.distanceTable}
-                />
+                <Transcript segments={state.segments} />
               </div>
               <Controls
                 status={state.status}

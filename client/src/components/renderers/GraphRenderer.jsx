@@ -240,6 +240,11 @@ export default function GraphRenderer({
     }
 
     cy.add(elements);
+
+    if (graph.directed === false) {
+      cy.edges().style('target-arrow-shape', 'none');
+    }
+
     cy.fit(undefined, 40);
   }, [graph]);
 

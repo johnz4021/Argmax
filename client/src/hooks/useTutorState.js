@@ -40,7 +40,7 @@ function reducer(state, action) {
         ...state,
         graph: action.graph,
         // Auto-create a graph panel when create_graph is used (backward compat)
-        vizPanels: [{ id: 'graph', renderer: 'graph', props: { graph: action.graph } }],
+        vizPanels: [{ id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } }],
       };
 
     case 'SET_VIZ_PANELS':

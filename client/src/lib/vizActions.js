@@ -18,7 +18,9 @@ function applyAction(cy, action) {
 
     case 'highlight_edge': {
       const edges = cy.edges().filter(
-        (e) => e.data('source') === action.from && e.data('target') === action.to
+        (e) =>
+          (e.data('source') === action.from && e.data('target') === action.to) ||
+          (e.data('source') === action.to && e.data('target') === action.from)
       );
       edges.addClass(action.className || 'highlighted');
       break;
@@ -41,9 +43,7 @@ function applyAction(cy, action) {
 
     case 'set_label': {
       const node = cy.getElementById(action.node);
-      const currentLabel = node.data('id');
-      const dist = action.label;
-      node.data('label', `${currentLabel}\n${dist}`);
+      node.data('label', action.label);
       break;
     }
 
@@ -61,10 +61,12 @@ function applyAction(cy, action) {
       for (let i = 0; i < action.path.length; i++) {
         cy.getElementById(action.path[i]).addClass('path');
         if (i < action.path.length - 1) {
+          const a = action.path[i];
+          const b = action.path[i + 1];
           const edges = cy.edges().filter(
             (e) =>
-              e.data('source') === action.path[i] &&
-              e.data('target') === action.path[i + 1]
+              (e.data('source') === a && e.data('target') === b) ||
+              (e.data('source') === b && e.data('target') === a)
           );
           edges.addClass('path');
         }

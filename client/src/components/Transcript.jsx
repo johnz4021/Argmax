@@ -37,7 +37,7 @@ export default function Transcript({ segments }) {
               <span className="text-xs text-blue-400 font-medium block mb-1">You asked:</span>
             )}
             {seg.type === 'answer' && (
-              <span className="text-xs text-purple-400 font-medium block mb-1">AlgoTutor:</span>
+              <span className="text-xs text-purple-400 font-medium block mb-1">Argmax:</span>
             )}
             {seg.narration}
             {seg.active && (

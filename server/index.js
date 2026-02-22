@@ -101,5 +101,5 @@ wss.on('connection', (ws) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`[Server] AlgoTutor running on http://localhost:${PORT}`);
+  console.log(`[Server] Argmax running on http://localhost:${PORT}`);
 });

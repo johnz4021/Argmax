@@ -1,4 +1,4 @@
-// Claude tool schemas for AlgoTutor
+// Claude tool schemas for Argmax
 
 import { ALGORITHMS } from './algorithms/registry.js';
 
@@ -40,6 +40,10 @@ export const tools = [
         positions: {
           type: 'object',
           description: 'Node positions as { nodeId: { x, y } }',
+        },
+        directed: {
+          type: 'boolean',
+          description: 'Whether edges are directed (default true). Set false for undirected graphs (MST, etc).',
         },
       },
       required: ['nodes', 'edges'],

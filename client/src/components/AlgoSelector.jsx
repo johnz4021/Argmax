@@ -55,7 +55,7 @@ export default function AlgoSelector({ onSelect, disabled }) {
   return (
     <div className="flex flex-col items-center h-full gap-6 p-8 overflow-auto">
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-100 mb-2">AlgoTutor</h1>
+        <h1 className="text-3xl font-bold text-gray-100 mb-2">Argmax</h1>
         <p className="text-gray-400">Choose an algorithm to learn</p>
       </div>
 

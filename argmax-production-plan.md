@@ -1,8 +1,8 @@
-# AlgoTutor Production Build Plan: Full Algorithms Course Learning Assistant
+# Argmax Production Build Plan: Full Algorithms Course Learning Assistant
 
 ## Context
 
-AlgoTutor is an AI algorithm tutor with a Claude agent loop, Cytoscape.js graph visualization, ElevenLabs TTS, and a WebSocket-driven teaching flow. It currently supports Dijkstra, BFS, and DFS on directed weighted graphs with a visual explanation system (overlay, rewind, ghost_alternative modes).
+Argmax is an AI algorithm tutor with a Claude agent loop, Cytoscape.js graph visualization, ElevenLabs TTS, and a WebSocket-driven teaching flow. It currently supports Dijkstra, BFS, and DFS on directed weighted graphs with a visual explanation system (overlay, rewind, ghost_alternative modes).
 
 This plan expands it into a **full undergraduate algorithms course companion** with multiple visualization renderers, a tiered trace generation system, and coverage of sorting, dynamic programming, trees, and linked structures — not just graphs.
 

@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic();
+const anthropic = new Anthropic({ maxRetries: 5 });
 
 const AUTHOR_SYSTEM_PROMPT = `You write algorithm trace generators in JavaScript.
 

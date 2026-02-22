@@ -137,7 +137,7 @@ export default function App() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900/50">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-100">AlgoTutor</h1>
+          <h1 className="text-lg font-bold text-gray-100">Argmax</h1>
           {state.algorithm && (
             <span className="text-sm text-gray-400">
               {state.algorithm.charAt(0).toUpperCase() + state.algorithm.slice(1)}

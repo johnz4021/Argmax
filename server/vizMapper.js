@@ -40,6 +40,24 @@ function heapToTree(heap) {
   return { nodes, edges, root: 'n0', heap_array: heap };
 }
 
+function pathUsesEdge(edgeKey, path) {
+  const [from, to] = edgeKey.split('->');
+  for (let i = 0; i < path.length - 1; i++) {
+    if (path[i] === from && path[i + 1] === to) return true;
+  }
+  return false;
+}
+
+function residualEntries(residualGraph, path) {
+  return Object.entries(residualGraph)
+    .filter(([_, v]) => v.residual > 0)
+    .map(([edge, v]) => ({
+      key: edge.replace('->', ' → '),
+      value: v.residual,
+      status: path && pathUsesEdge(edge, path) ? 'highlight' : 'default',
+    }));
+}
+
 // ─── main entry ───────────────────────────────────────────────────────────────
 
 /**
@@ -98,6 +116,13 @@ function mapGraphStep(algo, step, state) {
           for (const el of step.edge_labels) {
             v.push(viz('graph', 'update_edge_label', { from: el.from, to: el.to, label: el.label, directed_only: true }));
           }
+          // Initialize residual panel from edge labels (initially residual = capacity)
+          const entries = step.edge_labels.map(el => ({
+            key: `${el.from} → ${el.to}`,
+            value: el.label.split('/')[1],
+            status: 'default',
+          }));
+          c.push(ctxUpdate('residual', { entries }));
         }
         c.push(ctxUpdate('flow_status', {
           entries: [
@@ -293,6 +318,9 @@ function mapGraphStep(algo, step, state) {
         ],
       }));
       c.push(ctxLog('aug_paths', `Path ${step.iteration}: ${step.path?.join(' → ')} (bottleneck=${step.bottleneck})`, 'decision'));
+      if (step.conceptual_state?.residual_graph) {
+        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path) }));
+      }
       break;
     }
 
@@ -321,6 +349,9 @@ function mapGraphStep(algo, step, state) {
           { key: 'Status', value: `Pushed ${step.bottleneck} units` },
         ],
       }));
+      if (step.conceptual_state?.residual_graph) {
+        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path) }));
+      }
       break;
     }
 

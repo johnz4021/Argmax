@@ -37,6 +37,10 @@ export function knapsack(items, capacity) {
           value: dp[i][w],
           from: [{ row: i - 1, col: w }],
           description: `Capacity ${w} < weight ${item.weight} of "${item.name}". Cannot include it. dp[${i}][${w}] = dp[${i - 1}][${w}] = ${dp[i][w]}.`,
+          conceptual_state: {
+            remaining_capacity: w,
+            item_fits: false,
+          },
         });
       } else {
         const withoutItem = dp[i - 1][w];
@@ -55,6 +59,10 @@ export function knapsack(items, capacity) {
             withItem,
             withoutItem,
             description: `dp[${i}][${w}]: Include "${item.name}"? Without = ${withoutItem}, With = dp[${i - 1}][${w - item.weight}] + ${item.value} = ${withItem}. Take it! dp[${i}][${w}] = ${dp[i][w]}.`,
+            conceptual_state: {
+              remaining_capacity: w,
+              item_fits: true,
+            },
           });
         } else {
           dp[i][w] = withoutItem;
@@ -69,6 +77,10 @@ export function knapsack(items, capacity) {
             withItem,
             withoutItem,
             description: `dp[${i}][${w}]: Include "${item.name}"? Without = ${withoutItem}, With = dp[${i - 1}][${w - item.weight}] + ${item.value} = ${withItem}. Skip it. dp[${i}][${w}] = ${dp[i][w]}.`,
+            conceptual_state: {
+              remaining_capacity: w,
+              item_fits: true,
+            },
           });
         }
       }

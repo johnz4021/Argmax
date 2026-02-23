@@ -95,6 +95,17 @@ export function dijkstra(graph, sourceId) {
       description: `Visit node ${current} with distance ${dist[current]}`,
       distances: { ...dist },
       visited: [...visited],
+      conceptual_state: {
+        priority_queue: pq.items.map(item => ({ node: item.node, priority: item.priority })),
+        unvisited_neighbors: adj[current]
+          .filter(({ target }) => !visited.has(target))
+          .map(({ target, weight }) => ({
+            node: target,
+            current_dist: dist[target],
+            potential_dist: dist[current] + weight,
+            would_improve: dist[current] + weight < dist[target],
+          })),
+      },
     });
 
     for (const { target, weight } of adj[current]) {
@@ -106,6 +117,13 @@ export function dijkstra(graph, sourceId) {
         current_dist: dist[target],
         new_dist: dist[current] + weight,
         description: `Examine edge ${current} → ${target} (weight ${weight}): current dist(${target}) = ${dist[target] === Infinity ? '∞' : dist[target]}, new dist = ${dist[current]} + ${weight} = ${dist[current] + weight}`,
+        conceptual_state: {
+          relaxation_check: {
+            current_best: dist[target],
+            proposed: dist[current] + weight,
+            will_relax: dist[current] + weight < dist[target],
+          },
+        },
       });
 
       const newDist = dist[current] + weight;

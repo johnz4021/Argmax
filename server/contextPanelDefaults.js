@@ -27,6 +27,7 @@ const PANEL_DEFAULTS = {
   ],
   maxflow: [
     { id: 'flow_status', type: 'key_value', title: 'Flow Status' },
+    { id: 'residual', type: 'key_value', title: 'Residual Capacities' },
     { id: 'aug_paths', type: 'log', title: 'Augmenting Paths' },
   ],
 

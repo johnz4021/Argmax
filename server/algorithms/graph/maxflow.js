@@ -67,21 +67,42 @@ export function maxflow(graph, source, sink) {
     });
   }
 
+  function getResidualGraph() {
+    const residual = {};
+    for (const key of Object.keys(capacity)) {
+      const r = capacity[key] - flow[key];
+      if (r > 0) {
+        residual[key] = {
+          capacity: capacity[key],
+          flow: flow[key],
+          residual: r,
+          is_reverse: capacity[key] === 0,
+        };
+      }
+    }
+    return residual;
+  }
+
   function bfs() {
     const parent = {};
     const visited = new Set([source]);
     const queue = [source];
+    const explored = [];
     parent[source] = null;
 
     while (queue.length > 0) {
       const u = queue.shift();
+      explored.push(u);
       for (const v of adj[u]) {
         const key = `${u}->${v}`;
         const residual = capacity[key] - flow[key];
         if (!visited.has(v) && residual > 0) {
           visited.add(v);
           parent[v] = u;
-          if (v === sink) return parent;
+          if (v === sink) {
+            explored.push(v);
+            return { parent, explored };
+          }
           queue.push(v);
         }
       }
@@ -113,18 +134,22 @@ export function maxflow(graph, source, sink) {
   let iteration = 0;
 
   while (true) {
-    const parent = bfs();
-    if (!parent) {
+    const bfsResult = bfs();
+    if (!bfsResult) {
       // No more augmenting paths
       trace.push({
         type: 'no_more_paths',
         description: 'No more augmenting paths found in residual graph',
         edge_labels: getEdgeLabels(),
         total_flow: totalFlow,
+        conceptual_state: {
+          residual_graph: getResidualGraph(),
+        },
       });
       break;
     }
 
+    const { parent, explored } = bfsResult;
     iteration++;
     const path = reconstructPath(parent);
 
@@ -136,6 +161,13 @@ export function maxflow(graph, source, sink) {
       bottleneck = Math.min(bottleneck, residual);
     }
 
+    // Identify reverse edges used in the path
+    const reverseEdgesUsed = path.slice(0, -1).map((u, i) => {
+      const v = path[i + 1];
+      const isOriginalEdge = edges.some(e => e.source === u && e.target === v);
+      return { from: u, to: v, is_reverse: !isOriginalEdge };
+    });
+
     trace.push({
       type: 'find_augmenting_path',
       description: `BFS found augmenting path: ${path.join(' → ')} with bottleneck capacity ${bottleneck}`,
@@ -144,9 +176,21 @@ export function maxflow(graph, source, sink) {
       iteration,
       edge_labels: getEdgeLabels(),
       total_flow: totalFlow,
+      conceptual_state: {
+        residual_graph: getResidualGraph(),
+        reverse_edges_used: reverseEdgesUsed,
+        bfs_frontier_order: explored,
+      },
     });
 
-    // Push flow
+    // Push flow — capture before state for flow_changes
+    const flowChangesBefore = path.slice(0, -1).map((u, i) => {
+      const v = path[i + 1];
+      const fwdKey = `${u}->${v}`;
+      const revKey = `${v}->${u}`;
+      return { fwdKey, revKey, fwdBefore: flow[fwdKey], revBefore: flow[revKey], cap: capacity[fwdKey] };
+    });
+
     for (let i = 0; i < path.length - 1; i++) {
       const fwdKey = `${path[i]}->${path[i + 1]}`;
       const revKey = `${path[i + 1]}->${path[i]}`;
@@ -154,6 +198,15 @@ export function maxflow(graph, source, sink) {
       flow[revKey] -= bottleneck;
     }
     totalFlow += bottleneck;
+
+    const flowChanges = flowChangesBefore.map((b, i) => ({
+      edge: `${path[i]}->${path[i + 1]}`,
+      flow_before: b.fwdBefore,
+      flow_after: flow[b.fwdKey],
+      capacity: b.cap,
+      reverse_flow_before: b.revBefore,
+      reverse_flow_after: flow[b.revKey],
+    }));
 
     trace.push({
       type: 'push_flow',
@@ -163,6 +216,10 @@ export function maxflow(graph, source, sink) {
       iteration,
       edge_labels: getEdgeLabels(),
       total_flow: totalFlow,
+      conceptual_state: {
+        flow_changes: flowChanges,
+        residual_graph: getResidualGraph(),
+      },
     });
   }
 
@@ -196,6 +253,15 @@ export function maxflow(graph, source, sink) {
     min_cut_value: minCutValue,
     edge_labels: getEdgeLabels(),
     total_flow: totalFlow,
+    conceptual_state: {
+      reachable_via_residual: [...reachable],
+      saturated_crossing_edges: cutEdges.map(e => ({
+        from: e.source,
+        to: e.target,
+        capacity: e.weight,
+        flow: flow[`${e.source}->${e.target}`],
+      })),
+    },
   });
 
   trace.push({

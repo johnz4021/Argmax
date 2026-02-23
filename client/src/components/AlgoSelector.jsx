@@ -52,6 +52,15 @@ const ALGORITHM_GROUPS = [
   },
 ];
 
+const DEMO_ALGOS = new Set(['dijkstra', 'knapsack', 'maxflow']);
+
+const VISIBLE_GROUPS = ALGORITHM_GROUPS
+  .map((group) => ({
+    ...group,
+    algorithms: group.algorithms.filter((a) => DEMO_ALGOS.has(a.id)),
+  }))
+  .filter((group) => group.algorithms.length > 0);
+
 export default function AlgoSelector({ onSelect, disabled }) {
   return (
     <div className="flex flex-col items-center h-full gap-6 p-8 overflow-auto">
@@ -61,7 +70,7 @@ export default function AlgoSelector({ onSelect, disabled }) {
       </div>
 
       <div className="w-full max-w-lg space-y-6">
-        {ALGORITHM_GROUPS.map((group) => (
+        {VISIBLE_GROUPS.map((group) => (
           <div key={group.category}>
             <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
               {group.category}

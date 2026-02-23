@@ -5,6 +5,8 @@ import { tools } from './tools.js';
 import { runAlgorithm } from './algorithms.js';
 import { runRegisteredAlgorithm, ALGORITHMS } from './algorithms/registry.js';
 import { synthesizeAndStream } from './tts.js';
+import { mapTraceStep } from './vizMapper.js';
+import { getDefaultContextPanels } from './contextPanelDefaults.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -62,140 +64,34 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
    - "So out of 16 possible combinations, DP found the optimal one by checking just 32 cells. That's the power of breaking a problem into overlapping subproblems."
    - "BFS guaranteed we found every node at distance 1 before any node at distance 2. That's why it gives shortest paths in unweighted graphs."
 
-You support multiple visualization types:
+WORKFLOW — for ALL algorithms:
+  1. Call run_algorithm to get the trace. The system AUTOMATICALLY sets up the visualization and context panels.
+  2. Give a brief intro (1-2 segments with no trace steps — just narration)
+  3. Narrate each step using emit_segment with trace_step_indices pointing to the trace steps you want to animate
+  4. Group steps intelligently — landmark steps get their own segment, routine steps can be batched
+  5. Summarize results
 
-GRAPH ALGORITHMS (renderer: 'graph'):
-  Use create_graph to set up the graph, then run_algorithm + emit_segment.
-  Viz actions (legacy format): highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_table.
+You do NOT need to construct viz_actions or context panel updates — the system does this automatically from the trace. You also do NOT need to call create_graph or create_visualization — it's handled for you.
+Focus entirely on WHAT to say and HOW to pace the lesson.
 
-MST ALGORITHMS (Kruskal, Prim):
-  When setting up the graph, pass directed: false so edges appear without arrowheads.
-  When adding an edge to the MST, use highlight_edge with className: 'mst-edge' to visually mark it:
-    { action: 'highlight_edge', from: 'A', to: 'C', className: 'mst-edge' }
-  This renders the edge in green with thicker width so the MST is clearly visible.
+Example emit_segment calls:
+  // Intro with no animation
+  emit_segment({ narration: "Let's see how Dijkstra finds shortest paths...", trace_step_indices: [], phase: "Introduction" })
 
-MAX FLOW (Ford-Fulkerson / Edmonds-Karp):
-  Use create_graph with directed: true for the flow network.
-  Use update_edge_label to show "flow/capacity" on each edge:
-    { renderer: 'graph', action: 'update_edge_label', params: { from: 'S', to: 'A', label: '0/10' } }
-  Highlight augmenting paths with className 'augmenting' (blue) on both nodes and edges.
-  Mark saturated edges (flow = capacity) with className 'saturated' (red).
-  After finding all augmenting paths, show the min cut:
-    - className 'source-side' (green) for nodes reachable from source in residual graph
-    - className 'sink-side' (violet) for remaining nodes
-    - className 'min-cut' (amber dashed) for edges crossing the cut
-  Context panels: pseudocode for the algorithm, key_value "Flow Status" (total flow, current path), log "Augmenting Paths".
-  Teaching arc:
-    1. Motivate: "How much stuff can we push through a network?"
-    2. Core idea: augmenting paths in residual graph, bottleneck capacity
-    3. Init: show 0/cap labels on all edges
-    4. Per iteration: BFS finds path (highlight augmenting), push flow (update labels), mark saturated edges
-    5. No more paths: explain why BFS fails in residual graph
-    6. Min cut: partition nodes, show cut edges, verify max-flow = min-cut
-    7. Summary: connect back to motivation
+  // Detailed step (one trace step)
+  emit_segment({ narration: "Now we visit node B with distance 4...", trace_step_indices: [3], phase: "Visiting B" })
 
-SORTING ALGORITHMS (renderer: 'array'):
-  Use create_visualization with renderer:'array'.
-  Run the algorithm to get the trace, then narrate each step.
-  Viz actions use the new format: { renderer: 'array', action: '...', params: {...} }
-  Actions: set_data, highlight, swap, compare, place, partition, mark_sorted, set_pointer, clear_pointers, reset.
-  - swap: { i, j } — swap two elements in-place (e.g. quicksort, bubble sort)
-  - place: { index, value } — put a value at a specific index (e.g. mergesort merge step)
-  - set_data: { values: [...] } — replace the entire array (use sparingly, e.g. after a full merge pass)
-  When narrating swaps, always mention BOTH the values being swapped and WHY.
-  When narrating comparisons, state the result and its implication.
-  Mark elements as sorted when they reach their final position.
+  // Batched routine steps (multiple trace steps animated together)
+  emit_segment({ narration: "The next three cells follow the same pattern...", trace_step_indices: [12, 13, 14], phase: "Row 2" })
 
-SEARCHING ALGORITHMS (renderer: 'array'):
-  Use create_visualization with renderer:'array'.
-  Actions: set_data, highlight, set_pointer, mark_sorted.
-  Use pointers to show left/right/mid boundaries.
+  // Summary with no animation
+  emit_segment({ narration: "And that completes Dijkstra's algorithm!", trace_step_indices: [], phase: "Summary" })
 
-DYNAMIC PROGRAMMING (renderer: 'table'):
-  Use create_visualization with renderer:'table'.
-  Actions: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, mark_optimal, reset.
-  IMPORTANT: The trace's init_table step includes rowLabels and colLabels with descriptive names (e.g. item names for knapsack, substrings for LCS). Always pass these as row_headers and col_headers in your init_grid call so the learner can see what each row/column represents.
-  The key teaching strategy for DP:
-  1. Explain the subproblem structure first (what does dp[i][j] mean?)
-  2. Show the recurrence relation
-  3. Fill the table cell by cell, explaining the choice at each step
-  4. Use show_dependency_arrow to visualize which cells feed into the current one
-  5. At the end, do a traceback to show the optimal solution path
-
-TREES (renderer: 'tree'):
-  Use create_visualization with renderer:'tree'.
-  Actions: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset.
-  - set_tree: { nodes: [{id, value}], edges: [{from, to, side:'left'|'right'}], root: id } — replace entire tree. The trace's 'tree' field can be passed directly.
-  - insert_node: { id, value, parent, side } — add one node. Omit parent for root.
-  - highlight_node: { id, className } — className: 'current', 'comparing', 'inserted', etc.
-  - highlight_edge: { from, to, className }
-  For BST insertion, the trace includes a full 'tree' snapshot at each insert step. Use set_tree with it to keep the visualization in sync.
-
-LINKED STRUCTURES (renderer: 'linked'):
-  Use create_visualization with renderer:'linked'.
-  Actions: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset.
-  - set_list: { values: [1, 2, 3], mode: 'list'|'stack'|'queue' } — set the full list
-  - highlight_node: { indices: [0, 1], className } — highlight nodes by index
-  - insert_after: { index, value } — insert a new node after the given index
-  - delete_node: { index } — delete node at index
-  - set_pointer: { name, index } — show a named pointer (e.g. 'prev', 'curr') at index
-
-CONTEXT PANELS:
-You can declare supplementary context panels in create_visualization to show metadata alongside the main visualization. These help learners track algorithm state.
-
-Available panel types:
-- key_value: Key-value pairs (distances, costs, variable values)
-- collection: Ordered items (priority queue, stack, visited set)
-- expression: Formula being evaluated (DP recurrence, comparison)
-- log: Scrolling decision log (what was chosen and why)
-- pseudocode: Algorithm pseudocode with current line highlighted
-
-Declare panels in create_visualization:
-  context_panels: [
-    { id: "distances", type: "key_value", title: "Distances" },
-    { id: "pq", type: "collection", title: "Priority Queue" }
-  ]
-
-Update panels via viz_actions in emit_segment:
-  { renderer: "context", action: "update", params: {
-    panel_id: "distances",
-    entries: [
-      { key: "A", value: 0, status: "default" },
-      { key: "B", value: 4, status: "updated" }
-    ]
-  }}
-
-For log panels, use action: "append_log" to add entries without replacing:
-  { renderer: "context", action: "append_log", params: {
-    panel_id: "decisions",
-    entries: [{ text: "Took Laptop (w=3, v=4)", type: "decision" }]
-  }}
-
-For collection panels, send the full items array each time:
-  { renderer: "context", action: "update", params: {
-    panel_id: "pq",
-    items: [{ value: "B (4)", status: "active" }, { value: "C (7)" }],
-    style: "queue"
-  }}
-
-RECOMMENDED CONTEXT PANELS BY ALGORITHM TYPE:
-- Graph (Dijkstra, BFS, DFS): key_value for distances/state + collection for queue/stack
-- Graph (Kruskal, Prim): key_value for MST weight + collection for edge candidates
-- Sorting: pseudocode for the algorithm + key_value for stats (comparisons, swaps)
-- DP: expression for current recurrence + log for decisions
-- Trees: key_value for node properties + collection for traversal order
-- Linked: key_value for pointer positions
-
-Always update context panels in the SAME emit_segment as related viz_actions so they stay synchronized.
-
-USING CONTEXT PANELS FOR TEACHING:
-  Context panels aren't just metadata displays — they're teaching tools. Use them to:
-  - Keep the recurrence relation visible (expression panel) so the learner can follow along as you fill each cell
-  - Show the decision log (log panel) so the learner can see the narrative of choices building up
-  - Display pseudocode (pseudocode panel) with the current line highlighted so the learner connects code to execution
-  
-  Update context panels IN THE SAME emit_segment as the related viz action. The learner should see the expression panel 
-  highlight "max(dp[1][2], dp[0][0] + 4)" at the exact moment you're filling that cell in the table.
+Rules:
+- ALWAYS call run_algorithm to get the real trace. Never make up algorithm results.
+- ALWAYS use trace_step_indices (not manual viz_actions) in emit_segment. The system generates all visualizations.
+- Set appropriate phase labels to track progress
+- Keep delay_ms between 300-1000 depending on complexity
 
 SEGMENT BUDGETING:
   Plan your lesson structure before emitting segments. A good lesson has roughly:
@@ -204,28 +100,8 @@ SEGMENT BUDGETING:
   - 3-6 segments: middle section with varying detail (some detailed, some summarized)
   - 1-2 segments: the climax / result / traceback
   - 1-2 segments: synthesis ("what did we learn?", "why does this work?")
-  
+
   Total: roughly 10-20 segments for most algorithms. If you find yourself emitting 30+ segments, you're being too granular — batch routine steps together.
-
-
-For ALL algorithms:
-  1. Call create_visualization (or create_graph for graph algorithms) first
-  2. Give a brief intro (1-2 segments)
-  3. Call run_algorithm to get the trace
-  4. Narrate each step with viz_actions that animate what you're describing
-  5. Summarize results
-
-CRITICAL: Every emit_segment MUST include viz_actions to animate the visualization. Without viz_actions, the learner sees nothing.
-
-Example viz_actions format:
-  viz_actions: [{ renderer: "array", action: "swap", params: { i: 2, j: 5 } }]
-  viz_actions: [{ renderer: "table", action: "fill_cell", params: { row: 1, col: 3, value: 4 } }]
-
-Rules:
-- ALWAYS call run_algorithm to get the real trace. Never make up algorithm results.
-- ALWAYS include viz_actions in every emit_segment call. Map each trace step to the appropriate renderer action.
-- Set appropriate phase labels to track progress
-- Keep delay_ms between 300-1000 depending on complexity
 
 HANDLING INTERRUPTS:
 When a learner interrupts with a question, choose the right explanation_mode:
@@ -271,32 +147,26 @@ function sendBinary(ws, buffer) {
 function buildInitialPrompt(algorithm, source) {
   const algoInfo = ALGORITHMS[algorithm];
   if (!algoInfo) {
-    return `Please teach me the ${algorithm} algorithm step by step. Create the visualization first, then run the algorithm and narrate each step.`;
+    return `Please teach me the ${algorithm} algorithm step by step. Run the algorithm and narrate each step.`;
   }
 
-  const contextHint = ' Use context panels to show relevant supplementary data like tables, queues, or pseudocode.';
-
   if (algorithm === 'maxflow') {
-    return `Please teach me Ford-Fulkerson (Edmonds-Karp) max flow step by step. Use the default flow network with nodes S, A, B, C, D, T. Source is S, sink is T. Create the directed graph first with context panels (pseudocode, key_value "Flow Status", log "Augmenting Paths"), then run the algorithm and narrate each step. Use update_edge_label to show flow/capacity on edges, highlight augmenting paths, mark saturated edges, and show the min cut at the end.`;
+    return `Please teach me Ford-Fulkerson (Edmonds-Karp) max flow step by step. Use the default flow network. Source is S, sink is T. Run the algorithm and narrate each step.`;
   }
 
   if (algoInfo.renderer === 'graph') {
-    return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first with appropriate context panels (like a distance table and priority queue), then run the algorithm and narrate each step with visualizations.`;
+    return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph. Start from node ${source}. Run the algorithm and narrate each step.`;
   }
 
   if (algoInfo.renderer === 'array') {
     const defaultArr = algoInfo.defaultInput?.array;
     if (algorithm === 'binary_search') {
-      return `Please teach me binary search step by step. Use the default sorted array ${JSON.stringify(defaultArr)} and search for ${algoInfo.defaultInput.target}. Create the array visualization first, then run the algorithm and narrate each step.${contextHint}`;
+      return `Please teach me binary search step by step. Use the default sorted array ${JSON.stringify(defaultArr)} and search for ${algoInfo.defaultInput.target}. Run the algorithm and narrate each step.`;
     }
-    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default array ${JSON.stringify(defaultArr)}. Create the array visualization first, then run the algorithm and narrate each step.${contextHint}`;
+    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default array ${JSON.stringify(defaultArr)}. Run the algorithm and narrate each step.`;
   }
 
-  if (algoInfo.renderer === 'table') {
-    return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Create the table visualization first, then run the algorithm and narrate each step.${contextHint}`;
-  }
-
-  return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Create the visualization first, then run the algorithm and narrate each step.${contextHint}`;
+  return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Run the algorithm and narrate each step.`;
 }
 
 export async function startAgentSession(session, algorithm, graph, source) {
@@ -439,14 +309,61 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
         // Use the registry for all registered algorithms
         try {
           const registryInput = { ...input.input };
-          // For graph algorithms, inject the current graph and source
+          // For graph algorithms, only inject session/tool-call overrides when present.
+          // Otherwise let the registry's defaultInput provide the correct graph/source/sink.
           if (algoInfo.renderer === 'graph') {
-            registryInput.graph = registryInput.graph || session.currentGraph || graph;
-            registryInput.source = registryInput.source || input.source || source;
-            if (input.sink) registryInput.sink = input.sink;
+            if (session.currentGraph && !registryInput.graph) {
+              registryInput.graph = session.currentGraph;
+            }
+            if (input.source && !registryInput.source) {
+              registryInput.source = input.source;
+            }
+            if (input.sink) {
+              registryInput.sink = input.sink;
+            }
           }
           const result = runRegisteredAlgorithm(algo, registryInput);
           console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}`);
+
+          // ── Store trace on session for deterministic mapping ──
+          session.currentTrace = result.trace;
+          session.currentRenderer = result.renderer;
+          session.currentAlgorithm = algo;
+          session.mapperState = {};
+
+          // ── Auto-configure visualization + context panels ──
+          const contextPanels = getDefaultContextPanels(algo);
+          console.log(`[Agent] Auto-setup for '${algo}': renderer=${algoInfo.renderer}, contextPanels=${contextPanels.map(p => p.id).join(',')}, sessionGraph=${!!session.currentGraph}`);
+
+          if (algoInfo.renderer === 'graph') {
+            // Auto-create graph if not already set up
+            if (!session.currentGraph) {
+              const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
+              if (graphData) {
+                const directed = graphData.directed !== undefined ? graphData.directed : true;
+                console.log(`[Agent] Auto-creating graph: ${graphData.nodes?.length} nodes, directed=${directed}`);
+                sendJSON(ws, { type: 'create_graph', graph: { ...graphData, directed } });
+                session.currentGraph = graphData;
+              }
+            }
+            // Send context panels via create_visualization
+            if (contextPanels.length > 0) {
+              sendJSON(ws, {
+                type: 'create_visualization',
+                panels: [],
+                context_panels: contextPanels,
+              });
+            }
+          } else {
+            // Non-graph: auto-send create_visualization with renderer + context panels
+            sendJSON(ws, {
+              type: 'create_visualization',
+              panels: [{ renderer: algoInfo.renderer, config: {} }],
+              context_panels: contextPanels,
+            });
+          }
+
+          const panelNames = contextPanels.map((p) => p.id);
           return {
             success: true,
             algorithm: algo,
@@ -454,7 +371,9 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
             trace: result.trace,
             step_count: result.trace.length,
             source: registryInput.source,
-            message: `Algorithm executed successfully. ${result.trace.length} steps in trace. Use emit_segment to narrate each step.`,
+            visualization_auto_configured: true,
+            context_panels: panelNames,
+            message: `Algorithm executed. Visualization and context panels auto-configured. Use emit_segment with trace_step_indices to teach. You have ${result.trace.length} trace steps available (indices 0 to ${result.trace.length - 1}).`,
           };
         } catch (err) {
           return { error: err.message };
@@ -464,26 +383,57 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
       // Fallback: legacy path for unregistered algorithms
       const src = input.source || source;
       const trace = runAlgorithm(algo, session.currentGraph || graph, src);
+      session.currentTrace = trace;
+      session.currentAlgorithm = algo;
+      session.mapperState = {};
       return {
         success: true,
         algorithm: algo,
         source: src,
         trace,
         step_count: trace.length,
-        message: `Algorithm executed successfully. ${trace.length} steps in trace. Use emit_segment to narrate each step.`,
+        message: `Algorithm executed successfully. ${trace.length} steps in trace. Use emit_segment with trace_step_indices to narrate each step.`,
       };
     }
 
     case 'emit_segment': {
       const segmentId = Math.random().toString(36).slice(2, 8);
-      const vizActions = input.viz_actions || [];
-      console.log(`[Agent] emit_segment viz_actions (${vizActions.length}):`, JSON.stringify(vizActions).slice(0, 500));
+
+      // ── Build viz_actions from trace_step_indices (deterministic mapper) ──
+      let allVizActions = [];
+      if (input.trace_step_indices && input.trace_step_indices.length > 0 && session.currentTrace) {
+        for (const idx of input.trace_step_indices) {
+          const step = session.currentTrace[idx];
+          if (!step) {
+            console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${session.currentTrace.length} steps)`);
+            continue;
+          }
+          const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
+            session.currentAlgorithm,
+            session.currentRenderer,
+            step,
+            session.mapperState
+          );
+          allVizActions.push(...vizActs, ...ctxActs);
+        }
+      } else if (input.trace_step_indices && !session.currentTrace) {
+        console.warn('[Agent] trace_step_indices provided but no currentTrace on session — was run_algorithm called?');
+      }
+      // Merge any explicit viz_actions from agent (rare overrides / backward compat)
+      if (input.viz_actions && input.viz_actions.length > 0) {
+        allVizActions.push(...input.viz_actions);
+      }
+
+      if (allVizActions.length === 0 && input.narration) {
+        console.warn(`[Agent] emit_segment has narration but NO viz_actions (trace_step_indices: ${JSON.stringify(input.trace_step_indices)}, viz_actions: ${input.viz_actions?.length || 0})`);
+      }
+      console.log(`[Agent] emit_segment viz_actions (${allVizActions.length}, trace_steps: ${input.trace_step_indices?.length || 0}):`, JSON.stringify(allVizActions).slice(0, 500));
 
       sendJSON(ws, {
         type: 'segment_start',
         segment_id: segmentId,
         narration: input.narration,
-        viz_actions: vizActions,
+        viz_actions: allVizActions,
         phase: input.phase || '',
       });
 

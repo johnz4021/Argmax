@@ -138,6 +138,12 @@ export const tools = [
           description:
             'The narration text to speak aloud. Should be conversational and educational.',
         },
+        trace_step_indices: {
+          type: 'array',
+          items: { type: 'integer' },
+          description:
+            'Indices into the algorithm trace (from run_algorithm) to animate in this segment. The system automatically generates the correct viz_actions and context panel updates. You can reference multiple steps to batch them into one segment. PREFER this over manual viz_actions.',
+        },
         viz_actions: {
           type: 'array',
           items: {
@@ -171,7 +177,7 @@ export const tools = [
             required: ['renderer', 'action'],
           },
           description:
-            'Visualization actions to perform with this segment. Use { renderer, action, params } format for non-graph renderers.',
+            'Manual visualization actions. Only use when trace_step_indices cannot express what you need (rare). If both trace_step_indices and viz_actions are provided, auto-generated actions come first, then these are appended.',
         },
         phase: {
           type: 'string',

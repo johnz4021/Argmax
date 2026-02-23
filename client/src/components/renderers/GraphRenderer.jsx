@@ -151,6 +151,50 @@ const CYTOSCAPE_STYLE = [
       width: 2,
     },
   },
+  {
+    selector: '.saturated',
+    style: {
+      'line-color': '#ef4444',
+      'target-arrow-color': '#ef4444',
+      width: 3,
+    },
+  },
+  {
+    selector: '.augmenting',
+    style: {
+      'background-color': '#3b82f6',
+      'border-color': '#2563eb',
+      'border-width': 4,
+      'line-color': '#3b82f6',
+      'target-arrow-color': '#3b82f6',
+      width: 4,
+    },
+  },
+  {
+    selector: '.min-cut',
+    style: {
+      'line-color': '#f59e0b',
+      'target-arrow-color': '#f59e0b',
+      'line-style': 'dashed',
+      width: 4,
+    },
+  },
+  {
+    selector: '.source-side',
+    style: {
+      'background-color': '#10b981',
+      'border-color': '#059669',
+      'border-width': 4,
+    },
+  },
+  {
+    selector: '.sink-side',
+    style: {
+      'background-color': '#8b5cf6',
+      'border-color': '#7c3aed',
+      'border-width': 4,
+    },
+  },
 ];
 
 /**

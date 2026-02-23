@@ -113,6 +113,10 @@ export const tools = [
           type: 'string',
           description: 'Source node ID (for graph algorithms)',
         },
+        sink: {
+          type: 'string',
+          description: 'Sink node ID (for max flow algorithms)',
+        },
         input: {
           type: 'object',
           description:

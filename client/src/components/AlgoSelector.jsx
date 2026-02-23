@@ -7,6 +7,7 @@ const ALGORITHM_GROUPS = [
       { id: 'dfs', name: 'Depth-First Search', description: 'Explore as deep as possible first' },
       { id: 'kruskal', name: "Kruskal's MST", description: 'Build minimum spanning tree by sorted edges' },
       { id: 'prim', name: "Prim's MST", description: 'Grow minimum spanning tree from a source' },
+      { id: 'maxflow', name: 'Ford-Fulkerson Max Flow', description: 'Find maximum flow and minimum cut in a network' },
     ],
   },
   {

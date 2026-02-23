@@ -1,4 +1,4 @@
-import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH } from './graph/index.js';
+import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK } from './graph/index.js';
 import { quicksort, mergesort, insertionSort, selectionSort, bubbleSort } from './sorting/index.js';
 import { binarySearch } from './searching/index.js';
 import { knapsack, lcs, editDistance, coinChange } from './dp/index.js';
@@ -110,6 +110,12 @@ export const ALGORITHMS = {
     renderer: 'graph',
     category: 'Graph Algorithms',
     defaultInput: { graph: DEFAULT_UNDIRECTED_GRAPH, source: 'A' },
+  },
+  maxflow: {
+    run: (input) => maxflow(input.graph, input.source, input.sink),
+    renderer: 'graph',
+    category: 'Graph Algorithms',
+    defaultInput: { graph: DEFAULT_FLOW_NETWORK, source: 'S', sink: 'T' },
   },
   bst_insert: {
     run: (input) => bstInsert(input.values),

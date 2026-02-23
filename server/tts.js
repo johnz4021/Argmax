@@ -6,6 +6,63 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
 /**
+ * Convert math/CS notation into speakable English for TTS.
+ * ElevenLabs cannot handle symbols like dp[i][w], O(n log n), ≤, →, ∞, etc.
+ * This runs before sending text to the API; the UI still shows original text.
+ */
+export function normalizeTTSText(text) {
+  let t = text;
+
+  // Big-O notation: O(n log n) → "O of n log n"
+  t = t.replace(/O\(([^)]+)\)/g, 'O of $1');
+
+  // Double subscript: dp[i][w] → "dp of i, w"
+  t = t.replace(/(\w+)\[([^\]]+)\]\[([^\]]+)\]/g, '$1 of $2, $3');
+  // Single subscript: arr[0] → "arr of 0"
+  t = t.replace(/(\w+)\[([^\]]+)\]/g, '$1 of $2');
+
+  // Superscripts
+  t = t.replace(/(\w)²/g, '$1 squared');
+  t = t.replace(/(\w)³/g, '$1 cubed');
+
+  // Unicode math symbols
+  t = t.replace(/∞/g, 'infinity');
+  t = t.replace(/↔/g, ' between ');
+  t = t.replace(/→/g, ' to ');
+  t = t.replace(/←/g, ' from ');
+
+  // ASCII arrows: A->B, A<-B, A<->B (must come before comparison operators)
+  t = t.replace(/<->/g, ' between ');
+  t = t.replace(/->/g, ' to ');
+  t = t.replace(/<-/g, ' from ');
+  t = t.replace(/≤/g, ' less than or equal to ');
+  t = t.replace(/≥/g, ' greater than or equal to ');
+  t = t.replace(/≠/g, ' not equal to ');
+
+  // Equality operators: == → "equals"
+  t = t.replace(/==/g, ' equals ');
+  // Single = when followed by a value (assignment/equality in narration)
+  t = t.replace(/(?<!=)=(?!=)/g, ' equals ');
+
+  // Absolute value: |x| → "absolute value of x"
+  t = t.replace(/\|([^|]+)\|/g, 'absolute value of $1');
+
+  // Flow notation: "3/10" → "3 out of 10"
+  t = t.replace(/(\d+)\/(\d+)/g, '$1 out of $2');
+
+  // Set braces: {A, B} → "the set A, B"
+  t = t.replace(/\{([^}]+)\}/g, 'the set $1');
+
+  // Ellipsis → pause
+  t = t.replace(/\.\.\./g, ', and so on,');
+
+  // Clean up extra spaces
+  t = t.replace(/\s+/g, ' ').trim();
+
+  return t;
+}
+
+/**
  * Synthesize text to speech and stream audio to the client.
  * `sendBinaryFn(buffer)` is called for each audio chunk.
  * `sendJsonFn(obj)` is called to send JSON messages (audio_start/audio_end).
@@ -14,7 +71,7 @@ const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 1, sendJsonFn = null) {
   if (!ELEVENLABS_API_KEY) {
     console.log('[TTS] No ElevenLabs API key configured, using simulated delay');
-    const wordCount = text.split(/\s+/).length;
+    const wordCount = normalizeTTSText(text).split(/\s+/).length;
     const delayMs = (wordCount * 200) / speedMultiplier;
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     return;
@@ -57,7 +114,7 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
           xi_api_key: ELEVENLABS_API_KEY,
         })
       );
-      elWs.send(JSON.stringify({ text: text + ' ' }));
+      elWs.send(JSON.stringify({ text: normalizeTTSText(text) + ' ' }));
       elWs.send(JSON.stringify({ text: '' }));
     });
 

@@ -74,6 +74,26 @@ MST ALGORITHMS (Kruskal, Prim):
     { action: 'highlight_edge', from: 'A', to: 'C', className: 'mst-edge' }
   This renders the edge in green with thicker width so the MST is clearly visible.
 
+MAX FLOW (Ford-Fulkerson / Edmonds-Karp):
+  Use create_graph with directed: true for the flow network.
+  Use update_edge_label to show "flow/capacity" on each edge:
+    { renderer: 'graph', action: 'update_edge_label', params: { from: 'S', to: 'A', label: '0/10' } }
+  Highlight augmenting paths with className 'augmenting' (blue) on both nodes and edges.
+  Mark saturated edges (flow = capacity) with className 'saturated' (red).
+  After finding all augmenting paths, show the min cut:
+    - className 'source-side' (green) for nodes reachable from source in residual graph
+    - className 'sink-side' (violet) for remaining nodes
+    - className 'min-cut' (amber dashed) for edges crossing the cut
+  Context panels: pseudocode for the algorithm, key_value "Flow Status" (total flow, current path), log "Augmenting Paths".
+  Teaching arc:
+    1. Motivate: "How much stuff can we push through a network?"
+    2. Core idea: augmenting paths in residual graph, bottleneck capacity
+    3. Init: show 0/cap labels on all edges
+    4. Per iteration: BFS finds path (highlight augmenting), push flow (update labels), mark saturated edges
+    5. No more paths: explain why BFS fails in residual graph
+    6. Min cut: partition nodes, show cut edges, verify max-flow = min-cut
+    7. Summary: connect back to motivation
+
 SORTING ALGORITHMS (renderer: 'array'):
   Use create_visualization with renderer:'array'.
   Run the algorithm to get the trace, then narrate each step.
@@ -256,6 +276,10 @@ function buildInitialPrompt(algorithm, source) {
 
   const contextHint = ' Use context panels to show relevant supplementary data like tables, queues, or pseudocode.';
 
+  if (algorithm === 'maxflow') {
+    return `Please teach me Ford-Fulkerson (Edmonds-Karp) max flow step by step. Use the default flow network with nodes S, A, B, C, D, T. Source is S, sink is T. Create the directed graph first with context panels (pseudocode, key_value "Flow Status", log "Augmenting Paths"), then run the algorithm and narrate each step. Use update_edge_label to show flow/capacity on edges, highlight augmenting paths, mark saturated edges, and show the min cut at the end.`;
+  }
+
   if (algoInfo.renderer === 'graph') {
     return `Please teach me ${algorithm}'s algorithm step by step. Use the default graph with nodes A-F. Start from node ${source}. Create the graph first with appropriate context panels (like a distance table and priority queue), then run the algorithm and narrate each step with visualizations.`;
   }
@@ -419,6 +443,7 @@ async function handleToolCall(session, toolCall, graph, algorithm, source) {
           if (algoInfo.renderer === 'graph') {
             registryInput.graph = registryInput.graph || session.currentGraph || graph;
             registryInput.source = registryInput.source || input.source || source;
+            if (input.sink) registryInput.sink = input.sink;
           }
           const result = runRegisteredAlgorithm(algo, registryInput);
           console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}`);

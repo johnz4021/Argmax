@@ -48,7 +48,7 @@ function applyAction(cy, action) {
     }
 
     case 'reset_highlights': {
-      cy.elements().removeClass('highlighted current visited path ghost examining');
+      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side');
       // Reset labels to just IDs
       cy.nodes().forEach((n) => {
         n.data('label', n.data('id'));
@@ -71,6 +71,17 @@ function applyAction(cy, action) {
           edges.addClass('path');
         }
       }
+      break;
+    }
+
+    case 'update_edge_label': {
+      const directedOnly = action.directed_only !== false;
+      const edges = cy.edges().filter(
+        (e) =>
+          (e.data('source') === action.from && e.data('target') === action.to) ||
+          (!directedOnly && e.data('source') === action.to && e.data('target') === action.from)
+      );
+      edges.data('weight', action.label);
       break;
     }
 
@@ -105,7 +116,7 @@ export function restoreSnapshot(cy, snapshot) {
     const ele = cy.getElementById(saved.id);
     if (!ele || ele.length === 0) continue;
 
-    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt');
+    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side');
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }

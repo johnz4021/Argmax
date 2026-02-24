@@ -315,6 +315,15 @@ function mapGraphStep(algo, step, state) {
     // ── Max Flow specific ────────────────────────────────────────────────
     case 'find_augmenting_path': {
       v.push(viz('graph', 'reset_highlights', {}));
+      // Re-apply edge labels so saturated edges stay red after reset
+      if (step.edge_labels) {
+        for (const el of step.edge_labels) {
+          v.push(viz('graph', 'update_edge_label', { from: el.from, to: el.to, label: el.label, directed_only: true }));
+          if (el.saturated) {
+            v.push(viz('graph', 'highlight_edge', { from: el.from, to: el.to, className: 'saturated' }));
+          }
+        }
+      }
       if (step.path) {
         for (const node of step.path) {
           v.push(viz('graph', 'highlight_node', { node, className: 'augmenting' }));
@@ -344,19 +353,22 @@ function mapGraphStep(algo, step, state) {
 
     case 'push_flow': {
       v.push(viz('graph', 'reset_highlights', {}));
-      // Highlight the augmenting path that was just used
+      // Build set of edges on the augmenting path so we don't override their blue with red
+      const pathEdgeSet = new Set();
       if (step.path) {
         for (const node of step.path) {
           v.push(viz('graph', 'highlight_node', { node, className: 'augmenting' }));
         }
         for (let i = 0; i < step.path.length - 1; i++) {
           v.push(viz('graph', 'highlight_edge', { from: step.path[i], to: step.path[i + 1], className: 'augmenting' }));
+          pathEdgeSet.add(`${step.path[i]}->${step.path[i + 1]}`);
         }
       }
       if (step.edge_labels) {
         for (const el of step.edge_labels) {
           v.push(viz('graph', 'update_edge_label', { from: el.from, to: el.to, label: el.label, directed_only: true }));
-          if (el.saturated) {
+          // Only mark saturated if not on the current augmenting path — path edges stay blue
+          if (el.saturated && !pathEdgeSet.has(`${el.from}->${el.to}`)) {
             v.push(viz('graph', 'highlight_edge', { from: el.from, to: el.to, className: 'saturated' }));
           }
         }
@@ -384,6 +396,9 @@ function mapGraphStep(algo, step, state) {
       if (step.edge_labels) {
         for (const el of step.edge_labels) {
           v.push(viz('graph', 'update_edge_label', { from: el.from, to: el.to, label: el.label, directed_only: true }));
+          if (el.saturated) {
+            v.push(viz('graph', 'highlight_edge', { from: el.from, to: el.to, className: 'saturated' }));
+          }
         }
       }
       if (step.conceptual_state?.residual_graph) {

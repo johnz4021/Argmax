@@ -56,6 +56,14 @@ export default function App() {
           }]);
         }
 
+        // Extract residual edges from show_residual_overlay actions for the toggle button
+        // Handles both new format ({ renderer, action, params }) and legacy format ({ action, residual_edges })
+        const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay');
+        const residualEdges = residualAction?.params?.residual_edges || residualAction?.residual_edges;
+        if (residualEdges) {
+          dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
+        }
+
         applyActions(normalized);
       } else if (msg.type === 'segment_start') {
         console.log('[App] segment_start with NO viz_actions');
@@ -169,6 +177,8 @@ export default function App() {
                   panels={state.vizPanels}
                   explanationMode={state.explanationMode}
                   segmentCount={state.segmentCount}
+                  algorithm={state.algorithm}
+                  residualEdges={state.latestResidualEdges}
                 />
               ) : (
                 <GraphRenderer
@@ -176,6 +186,8 @@ export default function App() {
                   phase={state.currentPhase}
                   explanationMode={state.explanationMode}
                   segmentCount={state.segmentCount}
+                  algorithm={state.algorithm}
+                  residualEdges={state.latestResidualEdges}
                 />
               )}
             </div>

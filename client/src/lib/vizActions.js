@@ -111,8 +111,8 @@ function applyAction(cy, action) {
             },
             classes: 'residual-rev residual-temp',
           });
-        } else if (!re.is_reverse && re.residual > 0 && mode === 'full') {
-          // Forward residual edge — relabel and restyle
+        } else if (!re.is_reverse && mode === 'full') {
+          // Forward residual edge — relabel and restyle (including r:0 for saturated)
           const edges = cy.edges().filter(
             (e) => e.data('source') === re.from && e.data('target') === re.to
           );

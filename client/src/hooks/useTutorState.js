@@ -11,6 +11,7 @@ const initialState = {
   error: null,
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
+  latestResidualEdges: null,
 };
 
 /**
@@ -33,7 +34,11 @@ function reducer(state, action) {
         ...initialState,
         status: 'teaching',
         algorithm: action.algorithm,
+        latestResidualEdges: null,
       };
+
+    case 'SET_RESIDUAL_EDGES':
+      return { ...state, latestResidualEdges: action.edges };
 
     case 'CREATE_GRAPH':
       return {

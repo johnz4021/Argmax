@@ -249,12 +249,16 @@ export default function GraphRenderer({
   explanationMode,
   segmentCount,
   rendererId = 'graph',
+  algorithm,
+  residualEdges,
 }) {
   const containerRef = useRef(null);
   const cyRef = useRef(null);
   const snapshotsRef = useRef([]);
   const preExplanationSnapshotRef = useRef(null);
+  const preToggleSnapshotRef = useRef(null);
   const [annotations, setAnnotations] = useState([]);
+  const [showingResidual, setShowingResidual] = useState(false);
 
   // Initialize Cytoscape and register with renderer registry
   useEffect(() => {
@@ -399,6 +403,45 @@ export default function GraphRenderer({
     }
   }, [explanationMode]);
 
+  // Auto-reset residual toggle when a new segment arrives
+  useEffect(() => {
+    if (showingResidual) {
+      const cy = cyRef.current;
+      if (cy) {
+        // Clean up residual overlay from the graph before the new segment's actions land
+        applyVizActions(cy, [{ action: 'hide_residual_overlay' }]);
+        if (preToggleSnapshotRef.current) {
+          restoreSnapshot(cy, preToggleSnapshotRef.current);
+        }
+      }
+      preToggleSnapshotRef.current = null;
+      setShowingResidual(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
+
+  const handleResidualToggle = useCallback(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    if (!showingResidual) {
+      // Toggle ON: first ensure any agent-applied residual overlay is cleared so we
+      // snapshot the clean original-graph state, then apply our own overlay
+      applyVizActions(cy, [{ action: 'hide_residual_overlay' }]);
+      preToggleSnapshotRef.current = takeSnapshot(cy);
+      applyVizActions(cy, [{ action: 'show_residual_overlay', residual_edges: residualEdges, mode: 'full' }]);
+      setShowingResidual(true);
+    } else {
+      // Toggle OFF: hide overlay then restore snapshot
+      applyVizActions(cy, [{ action: 'hide_residual_overlay' }]);
+      if (preToggleSnapshotRef.current) {
+        restoreSnapshot(cy, preToggleSnapshotRef.current);
+        preToggleSnapshotRef.current = null;
+      }
+      setShowingResidual(false);
+    }
+  }, [showingResidual, residualEdges]);
+
   return (
     <div className="relative h-full">
       {phase && (
@@ -407,6 +450,19 @@ export default function GraphRenderer({
         </div>
       )}
       <div ref={containerRef} className="w-full h-full" />
+
+      {algorithm === 'maxflow' && residualEdges && (
+        <button
+          onClick={handleResidualToggle}
+          className={`absolute bottom-3 right-3 z-10 text-sm px-3 py-1.5 rounded-lg border transition-colors ${
+            showingResidual
+              ? 'bg-cyan-900/90 text-cyan-200 border-cyan-700 hover:bg-cyan-800/90'
+              : 'bg-gray-800/90 text-gray-300 border-gray-700 hover:bg-gray-700/90'
+          }`}
+        >
+          {showingResidual ? 'Hide Residual Graph' : 'Show Residual Graph'}
+        </button>
+      )}
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">

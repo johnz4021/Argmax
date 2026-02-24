@@ -49,7 +49,7 @@ function applyAction(cy, action) {
 
     case 'reset_highlights': {
       cy.elements('.residual-temp').remove();
-      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side residual-fwd residual-rev');
+      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
       // Reset labels to just IDs
       cy.nodes().forEach((n) => {
         n.data('label', n.data('id'));
@@ -87,6 +87,17 @@ function applyAction(cy, action) {
     }
 
     case 'show_residual_overlay': {
+      const mode = action.mode || 'overlay';
+
+      if (mode === 'full') {
+        // Dim all non-path edges to fade the "original graph" feel
+        cy.edges().forEach((e) => {
+          if (!e.hasClass('augmenting') && !e.hasClass('path')) {
+            e.addClass('residual-dimmed');
+          }
+        });
+      }
+
       for (const re of action.residual_edges) {
         if (re.is_reverse && re.residual > 0) {
           // Reverse edge — add temporary dashed edge
@@ -100,6 +111,16 @@ function applyAction(cy, action) {
             },
             classes: 'residual-rev residual-temp',
           });
+        } else if (!re.is_reverse && re.residual > 0 && mode === 'full') {
+          // Forward residual edge — relabel and restyle
+          const edges = cy.edges().filter(
+            (e) => e.data('source') === re.from && e.data('target') === re.to
+          );
+          edges.forEach((e) => {
+            e.data('weight', `r:${re.residual}`);
+            e.removeClass('residual-dimmed');
+            e.addClass('residual-fwd');
+          });
         }
       }
       break;
@@ -107,7 +128,7 @@ function applyAction(cy, action) {
 
     case 'hide_residual_overlay': {
       cy.elements('.residual-temp').remove();
-      cy.edges().removeClass('residual-fwd residual-rev');
+      cy.edges().removeClass('residual-fwd residual-rev residual-dimmed');
       break;
     }
 
@@ -142,7 +163,7 @@ export function restoreSnapshot(cy, snapshot) {
     const ele = cy.getElementById(saved.id);
     if (!ele || ele.length === 0) continue;
 
-    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side residual-fwd residual-rev');
+    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }

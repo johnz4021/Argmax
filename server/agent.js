@@ -186,19 +186,51 @@ When using ghost_alternative mode, always include both the ghost (rejected) choi
 ALGORITHM-SPECIFIC TEACHING NOTES:
 
 Max Flow (Ford-Fulkerson / Edmonds-Karp):
-  - The RESIDUAL GRAPH is the central concept. Introduce it in your first or second segment,
-    before any augmenting path is found. Explain: "Every time we push flow along an edge,
-    we reduce its forward residual capacity and create backward residual capacity. This
-    backward capacity lets us 'undo' flow later if a better routing exists."
-  - When narrating augmenting paths, reference conceptual_state.residual_graph to show
-    WHY each edge in the path is traversable (its residual capacity > 0).
-  - When conceptual_state.reverse_edges_used contains {is_reverse: true}, this is the
-    KEY TEACHING MOMENT of the algorithm. Slow down significantly. Explain that BFS found
-    a reverse edge, what that means physically (un-sending flow), and why this is powerful.
-  - Use conceptual_state.bfs_frontier_order to show how BFS explored the residual graph
-    to find each path — at minimum for the first iteration.
-  - The min-cut explanation should connect back to the residual graph: "These are exactly
-    the edges where residual capacity is 0 — they're the bottleneck of the whole network."
+  Follow this phase structure carefully:
+
+  SEGMENT 1 — Setup (on 'init' step):
+  - Narrate the problem: source, sink, edge capacities.
+  - "Our goal: push as much flow as possible from S to T."
+  - Do NOT mention the residual graph yet.
+
+  SEGMENT 2 — First augmenting path (on first 'find_augmenting_path'):
+  - Show BFS exploration using conceptual_state.bfs_frontier_order.
+  - Highlight the found path and explain the bottleneck derivation.
+  - Show residual overlay (the system uses overlay mode by default — just adds reverse edges lightly).
+
+  SEGMENT 3 — First push (on first 'push_flow'):
+  - Push flow, update labels.
+  - Reference specific edge labels: "We pushed X units. Notice S→A now shows 7/10, A→C shows 7/7 — saturated."
+
+  SEGMENT 4 — CONCEPT FREEZE (on 'residual_concept_freeze'):
+  - This is the KEY teaching moment. The system automatically shows the full residual view
+    (original edges dimmed, forward residuals in cyan with r:X labels, reverse residuals as dashed cyan).
+  - Deliver this narration:
+    "Let me pause here to explain something crucial. What you're seeing now is the residual graph —
+    and it's the real structure Ford-Fulkerson operates on. Look at the cyan edges. There are TWO types:
+    Forward residual edges show how much MORE flow you can still push. For example, S→A has residual
+    capacity 3, because we used 7 of its 10. That's just capacity minus flow. Reverse residual edges
+    are the ones students often miss. See this dashed edge going from C back to A? It has residual
+    capacity 7. That's because we pushed 7 units through A→C. This reverse edge means we could UNDO
+    up to 7 units of that flow if a better routing exists. Here's the key insight: the residual graph
+    always has both. Every edge with flow creates a reverse residual edge. Ford-Fulkerson searches for
+    augmenting paths in THIS graph — not the original."
+  - Adapt the specific numbers to match the actual trace data.
+
+  SEGMENT 5 — Second augmenting path (on second 'find_augmenting_path'):
+  - Show BFS on the residual graph.
+  - If the path uses a reverse edge (check conceptual_state.reverse_edges_used): "Notice BFS is
+    traversing a reverse residual edge — it's choosing to undo flow."
+  - If only forward edges: "This path uses only forward residual edges — there's still spare capacity."
+
+  SEGMENT 6 — Second push (on second 'push_flow'):
+  - Push flow, update.
+  - "After pushing, the residual graph updates again — forward residuals decrease, reverse residuals increase."
+
+  SEGMENT 7+ — Continue normally, narrating residual changes as they happen.
+
+  Min-cut: Connect back to the residual graph: "These are exactly the edges where residual
+  capacity is 0 — they're the bottleneck of the whole network."
 
 Dijkstra:
   - Use conceptual_state.priority_queue to show what nodes are candidates and why the

@@ -49,13 +49,25 @@ function pathUsesEdge(edgeKey, path) {
 }
 
 function residualEntries(residualGraph, path) {
-  return Object.entries(residualGraph)
+  const entries = Object.entries(residualGraph)
     .filter(([_, v]) => v.residual > 0)
-    .map(([edge, v]) => ({
-      key: edge.replace('->', ' → '),
-      value: v.residual,
-      status: path && pathUsesEdge(edge, path) ? 'highlight' : 'default',
-    }));
+    .map(([edge, v]) => {
+      const [from, to] = edge.split('->');
+      const arrow = v.is_reverse ? '←' : '→';
+      const typeLabel = v.is_reverse ? '(rev)' : '(fwd)';
+      return {
+        key: `${from} ${arrow} ${to} ${typeLabel}`,
+        value: v.residual,
+        status: path && pathUsesEdge(edge, path) ? 'highlight' : 'default',
+      };
+    });
+  // Sort: forward first, then reverse
+  entries.sort((a, b) => {
+    const aRev = a.key.includes('(rev)') ? 1 : 0;
+    const bRev = b.key.includes('(rev)') ? 1 : 0;
+    return aRev - bRev;
+  });
+  return entries;
 }
 
 // ─── main entry ───────────────────────────────────────────────────────────────
@@ -364,6 +376,31 @@ function mapGraphStep(algo, step, state) {
         v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges }));
         c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path), layout: 'table' }));
       }
+      break;
+    }
+
+    case 'residual_concept_freeze': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      if (step.edge_labels) {
+        for (const el of step.edge_labels) {
+          v.push(viz('graph', 'update_edge_label', { from: el.from, to: el.to, label: el.label, directed_only: true }));
+        }
+      }
+      if (step.conceptual_state?.residual_graph) {
+        const residualEdges = Object.entries(step.conceptual_state.residual_graph)
+          .map(([key, val]) => {
+            const [from, to] = key.split('->');
+            return { from, to, residual: val.residual, is_reverse: val.is_reverse };
+          });
+        v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges, mode: 'full' }));
+        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph), layout: 'table' }));
+      }
+      c.push(ctxUpdate('flow_status', {
+        entries: [
+          { key: 'Total flow', value: step.total_flow, status: 'updated' },
+          { key: 'Status', value: 'Concept freeze: examining residual graph' },
+        ],
+      }));
       break;
     }
 

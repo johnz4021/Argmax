@@ -198,8 +198,19 @@ const CYTOSCAPE_STYLE = [
   {
     selector: '.residual-fwd',
     style: {
-      color: '#22d3ee',
+      'line-color': '#06b6d4',
+      'target-arrow-color': '#06b6d4',
+      color: '#06b6d4',
       'font-size': '11px',
+      'text-background-color': '#111827',
+      'text-background-opacity': 0.8,
+      'text-background-padding': '3px',
+    },
+  },
+  {
+    selector: '.residual-dimmed',
+    style: {
+      opacity: 0.25,
     },
   },
   {

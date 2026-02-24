@@ -221,6 +221,19 @@ export function maxflow(graph, source, sink) {
         residual_graph: getResidualGraph(),
       },
     });
+
+    // After the first push, emit a concept freeze for the residual graph lesson
+    if (iteration === 1) {
+      trace.push({
+        type: 'residual_concept_freeze',
+        description: 'Concept freeze: examining the residual graph after first augmentation',
+        edge_labels: getEdgeLabels(),
+        total_flow: totalFlow,
+        conceptual_state: {
+          residual_graph: getResidualGraph(),
+        },
+      });
+    }
   }
 
   // Compute min cut: BFS from source in residual graph

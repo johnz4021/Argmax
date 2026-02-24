@@ -195,6 +195,28 @@ const CYTOSCAPE_STYLE = [
       'border-width': 4,
     },
   },
+  {
+    selector: '.residual-fwd',
+    style: {
+      color: '#22d3ee',
+      'font-size': '11px',
+    },
+  },
+  {
+    selector: '.residual-rev',
+    style: {
+      'line-color': '#22d3ee',
+      'target-arrow-color': '#22d3ee',
+      'line-style': 'dashed',
+      opacity: 0.6,
+      width: 2,
+      color: '#22d3ee',
+      'font-size': '11px',
+      'text-background-color': '#111827',
+      'text-background-opacity': 0.8,
+      'text-background-padding': '3px',
+    },
+  },
 ];
 
 /**

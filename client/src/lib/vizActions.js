@@ -48,7 +48,8 @@ function applyAction(cy, action) {
     }
 
     case 'reset_highlights': {
-      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side');
+      cy.elements('.residual-temp').remove();
+      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side residual-fwd residual-rev');
       // Reset labels to just IDs
       cy.nodes().forEach((n) => {
         n.data('label', n.data('id'));
@@ -85,6 +86,31 @@ function applyAction(cy, action) {
       break;
     }
 
+    case 'show_residual_overlay': {
+      for (const re of action.residual_edges) {
+        if (re.is_reverse && re.residual > 0) {
+          // Reverse edge — add temporary dashed edge
+          cy.add({
+            group: 'edges',
+            data: {
+              id: `residual-${re.from}-${re.to}`,
+              source: re.from,
+              target: re.to,
+              weight: `r:${re.residual}`,
+            },
+            classes: 'residual-rev residual-temp',
+          });
+        }
+      }
+      break;
+    }
+
+    case 'hide_residual_overlay': {
+      cy.elements('.residual-temp').remove();
+      cy.edges().removeClass('residual-fwd residual-rev');
+      break;
+    }
+
     case 'update_table': {
       // Table updates are handled in the state, not in Cytoscape
       // The useTutorState hook will pick up table data from segments
@@ -116,7 +142,7 @@ export function restoreSnapshot(cy, snapshot) {
     const ele = cy.getElementById(saved.id);
     if (!ele || ele.length === 0) continue;
 
-    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side');
+    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side residual-fwd residual-rev');
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }

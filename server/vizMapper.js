@@ -122,7 +122,7 @@ function mapGraphStep(algo, step, state) {
             value: el.label.split('/')[1],
             status: 'default',
           }));
-          c.push(ctxUpdate('residual', { entries }));
+          c.push(ctxUpdate('residual', { entries, layout: 'table' }));
         }
         c.push(ctxUpdate('flow_status', {
           entries: [
@@ -319,7 +319,13 @@ function mapGraphStep(algo, step, state) {
       }));
       c.push(ctxLog('aug_paths', `Path ${step.iteration}: ${step.path?.join(' → ')} (bottleneck=${step.bottleneck})`, 'decision'));
       if (step.conceptual_state?.residual_graph) {
-        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path) }));
+        const residualEdges = Object.entries(step.conceptual_state.residual_graph)
+          .map(([key, val]) => {
+            const [from, to] = key.split('->');
+            return { from, to, residual: val.residual, is_reverse: val.is_reverse };
+          });
+        v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges }));
+        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path), layout: 'table' }));
       }
       break;
     }
@@ -350,7 +356,13 @@ function mapGraphStep(algo, step, state) {
         ],
       }));
       if (step.conceptual_state?.residual_graph) {
-        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path) }));
+        const residualEdges = Object.entries(step.conceptual_state.residual_graph)
+          .map(([key, val]) => {
+            const [from, to] = key.split('->');
+            return { from, to, residual: val.residual, is_reverse: val.is_reverse };
+          });
+        v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges }));
+        c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path), layout: 'table' }));
       }
       break;
     }

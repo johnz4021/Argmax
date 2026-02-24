@@ -648,6 +648,9 @@ function mapArrayStep(algo, step, state) {
 
 // ─── TABLE mapper ─────────────────────────────────────────────────────────────
 
+// Cache knapsack items across table steps (set on init_table, used on consider_item)
+let cachedKnapsackItems = null;
+
 function mapTableStep(algo, step, state) {
   const v = [];
   const c = [];
@@ -697,6 +700,17 @@ function mapTableStep(algo, step, state) {
         c.push(ctxUpdate('expression', {
           expression: 'dp[i][w] = max(dp[i-1][w], dp[i-1][w-wᵢ] + vᵢ)',
         }));
+        // Populate items panel and cache items for later steps
+        if (step.items) {
+          cachedKnapsackItems = step.items;
+          c.push(ctxUpdate('items', {
+            entries: step.items.map(item => ({
+              key: item.name,
+              value: `w=${item.weight}, v=${item.value}`,
+              status: 'default',
+            })),
+          }));
+        }
       } else if (algo === 'lcs') {
         c.push(ctxUpdate('expression', {
           expression: 'dp[i][j] = dp[i-1][j-1]+1 if match, else max(dp[i-1][j], dp[i][j-1])',
@@ -718,6 +732,16 @@ function mapTableStep(algo, step, state) {
       if (step.item) {
         c.push(ctxUpdate('expression', {
           expression: `Considering item "${step.item.name}" (w=${step.item.weight}, v=${step.item.value})`,
+        }));
+      }
+      // Highlight current item in items panel
+      if (step.item && algo === 'knapsack' && cachedKnapsackItems) {
+        c.push(ctxUpdate('items', {
+          entries: cachedKnapsackItems.map((item, idx) => ({
+            key: item.name,
+            value: `w=${item.weight}, v=${item.value}`,
+            status: idx === step.row - 1 ? 'highlight' : 'default',
+          })),
         }));
       }
       break;
@@ -742,12 +766,14 @@ function mapTableStep(algo, step, state) {
       v.push(viz('table', 'fill_cell', { row, col, value }));
       v.push(viz('table', 'highlight_cell', { row, col, className: 'current' }));
 
-      // Show dependency arrows
+      // Clear previous dependency arrows, then show new ones with roles
+      v.push(viz('table', 'clear_dependency_arrows', {}));
       if (step.from && Array.isArray(step.from)) {
         for (const src of step.from) {
           v.push(viz('table', 'show_dependency_arrow', {
             from: { row: isCoinChange ? 0 : src.row, col: isCoinChange ? src.index : src.col },
             to: { row, col },
+            role: src.role || 'skip',
           }));
         }
       }

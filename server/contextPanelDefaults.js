@@ -55,6 +55,7 @@ const PANEL_DEFAULTS = {
 
   // --- DP algorithms ---
   knapsack: [
+    { id: 'items', type: 'key_value', title: 'Items' },
     { id: 'expression', type: 'expression', title: 'Recurrence' },
     { id: 'decisions', type: 'log', title: 'Decisions' },
   ],

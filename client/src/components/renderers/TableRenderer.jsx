@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
 
 const CELL_COLORS = {
@@ -7,6 +7,8 @@ const CELL_COLORS = {
   current: 'bg-blue-600 text-white ring-2 ring-blue-400',
   highlighted: 'bg-yellow-500/60 text-white',
   optimal: 'bg-green-600/70 text-white',
+  'dep-skip': 'bg-orange-500/40 text-white ring-2 ring-orange-400',
+  'dep-take': 'bg-cyan-500/40 text-white ring-2 ring-cyan-400',
 };
 
 export default function TableRenderer({
@@ -104,7 +106,11 @@ export default function TableRenderer({
         break;
       }
       case 'show_dependency_arrow': {
-        setDepArrows((prev) => [...prev, { from: params.from, to: params.to }]);
+        setDepArrows((prev) => [...prev, { from: params.from, to: params.to, role: params.role }]);
+        break;
+      }
+      case 'clear_dependency_arrows': {
+        setDepArrows([]);
         break;
       }
       case 'set_row_header': {
@@ -184,6 +190,16 @@ export default function TableRenderer({
     }
   }, [explanationMode, takeTableSnapshot, restoreTableSnapshot]);
 
+  // Build a lookup for dependency arrow source cells → role
+  const depSourceMap = useMemo(() => {
+    const map = {};
+    for (const arrow of depArrows) {
+      const key = `${arrow.from.row}-${arrow.from.col}`;
+      map[key] = arrow.role || 'skip';
+    }
+    return map;
+  }, [depArrows]);
+
   return (
     <div className="relative h-full flex flex-col items-center justify-center p-8 overflow-auto">
       {phase && (
@@ -251,8 +267,13 @@ export default function TableRenderer({
                   </td>
                   {row.map((cell, ci) => {
                     const cls = cellClasses[ri]?.[ci] || 'empty';
-                    const colorClass = CELL_COLORS[cls] || CELL_COLORS.empty;
                     const cellKey = `${ri}-${ci}`;
+                    // Apply dependency highlight if this cell is a source and not current/optimal
+                    const depRole = depSourceMap[cellKey];
+                    const effectiveCls = depRole && (cls === 'filled' || cls === 'empty')
+                      ? `dep-${depRole}`
+                      : cls;
+                    const colorClass = CELL_COLORS[effectiveCls] || CELL_COLORS.empty;
                     const isDimmed = overlayState && !overlayState.spotlit.has(cellKey);
                     const isSpotlit = overlayState?.spotlit.has(cellKey);
                     return (

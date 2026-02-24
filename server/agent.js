@@ -238,7 +238,27 @@ Dijkstra:
   - Use conceptual_state.unvisited_neighbors to preview what relaxations are about to happen.
 
 Kruskal:
-  - Use conceptual_state on check_cycle steps to show which component each endpoint belongs to.`;
+  - Use conceptual_state on check_cycle steps to show which component each endpoint belongs to.
+
+Knapsack (0/1 Knapsack DP):
+  BEFORE filling any cells, spend a dedicated segment explaining the table axes:
+  - Rows represent CUMULATIVE sets of items available: row 0 = no items, row 1 = just
+    item 1, row 2 = items 1 AND 2, etc. "Row 2 isn't just about the guitar — it's about
+    the best you can do when the laptop AND guitar are both options."
+  - Columns represent hypothetical weight limits: "Column 3 asks: if your bag could only
+    hold 3 pounds, what's the best value?"
+
+  On the FIRST non-trivial cell (where the item fits and there's a real take-vs-skip
+  choice), explicitly walk through BOTH dependency cells:
+  - "We look UP to the same column — that's the 'skip this item' option, the best value
+    without this item."
+  - "We look UP and LEFT by the item's weight — that's the 'take this item' option,
+    because taking it uses up capacity, and we add its value to whatever was optimal with
+    the remaining capacity."
+  Point to both cells visually so the learner sees the two options being compared.
+
+  Reference the Items panel: "Check the items panel on the right — it highlights which
+  item we're currently considering and shows its weight and value."`;
 
 function sendJSON(ws, obj) {
   if (ws.readyState === ws.OPEN) {

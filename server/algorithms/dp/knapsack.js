@@ -9,9 +9,10 @@ export function knapsack(items, capacity) {
     type: 'init_table',
     rows: n + 1,
     cols: capacity + 1,
-    rowLabels: ['0 (no items)', ...items.map((item, i) => `${i + 1} (${item.name})`)],
+    rowLabels: ['0 (no items)', ...items.map((item, i) => `${i + 1} (+${item.name})`)],
     colLabels: Array.from({ length: capacity + 1 }, (_, w) => `w=${w}`),
     table: dp.map(row => [...row]),
+    items: items.map((item, i) => ({ ...item, index: i })),
     description: `Initialize a ${n + 1} x ${capacity + 1} DP table with zeros. Rows represent items (0 = no items, then each item). Columns represent capacities 0 to ${capacity}.`,
   });
 
@@ -35,7 +36,7 @@ export function knapsack(items, capacity) {
           row: i,
           col: w,
           value: dp[i][w],
-          from: [{ row: i - 1, col: w }],
+          from: [{ row: i - 1, col: w, role: 'skip' }],
           description: `Capacity ${w} < weight ${item.weight} of "${item.name}". Cannot include it. dp[${i}][${w}] = dp[${i - 1}][${w}] = ${dp[i][w]}.`,
           conceptual_state: {
             remaining_capacity: w,
@@ -54,7 +55,10 @@ export function knapsack(items, capacity) {
             row: i,
             col: w,
             value: dp[i][w],
-            from: [{ row: i - 1, col: w - item.weight }],
+            from: [
+              { row: i - 1, col: w, role: 'skip' },
+              { row: i - 1, col: w - item.weight, role: 'take' },
+            ],
             choice: 'take',
             withItem,
             withoutItem,
@@ -72,7 +76,10 @@ export function knapsack(items, capacity) {
             row: i,
             col: w,
             value: dp[i][w],
-            from: [{ row: i - 1, col: w }],
+            from: [
+              { row: i - 1, col: w, role: 'skip' },
+              { row: i - 1, col: w - item.weight, role: 'take' },
+            ],
             choice: 'skip',
             withItem,
             withoutItem,

@@ -198,6 +198,21 @@ When using rewind mode, your re-narration should use DIFFERENT words than the or
 
 When using ghost_alternative mode, always include both the ghost (rejected) choice and the actual (chosen) choice so the learner can visually compare.
 
+CONSTRUCTING EXAMPLE GRAPHS:
+When a learner asks "show me another example" or describes a hypothetical that the
+current graph does NOT demonstrate, you can construct a temporary example:
+1. Call create_graph with a small example graph (4-6 nodes) that illustrates the concept
+2. Call run_algorithm to get a trace on the example
+3. Use emit_segment to narrate the key steps (2-4 segments max — keep it brief)
+4. Call respond_to_interrupt with a verbal summary wrapping up the example
+
+The original lesson graph is automatically restored after your explanation.
+
+IMPORTANT: Only construct example graphs when the current visualization genuinely
+cannot show the concept. For questions about the current state ("why did we pick
+this path?", "what would happen with a different weight?"), prefer overlay or
+ghost_alternative modes — they're faster and more focused.
+
 ALGORITHM-SPECIFIC TEACHING NOTES:
 
 Max Flow (Ford-Fulkerson / Edmonds-Karp):
@@ -315,6 +330,53 @@ function buildInitialPrompt(algorithm, source) {
   return `Please teach me ${algorithm.replace(/_/g, ' ')} step by step. Use the default input data. Run the algorithm and narrate each step.`;
 }
 
+/**
+ * Restore saved graph state (original lesson graph) after an interrupt or Q&A example.
+ * Replays all viz_actions that were emitted before the interrupt so the graph
+ * doesn't appear blank.
+ */
+function restoreGraphState(session, ws) {
+  if (!session._savedGraphState) return;
+  const saved = session._savedGraphState;
+  session.currentGraph = saved.graph;
+  session.currentTrace = saved.trace;
+  session.currentAlgorithm = saved.algorithm;
+  session.currentRenderer = saved.renderer;
+  session.mapperState = saved.mapperState;
+  session._emittedTraceSteps = saved.emittedTraceSteps || [];
+  if (saved.graph) {
+    sendJSON(ws, { type: 'create_graph', graph: saved.graph });
+
+    // Replay viz_actions for all trace steps emitted before the interrupt
+    if (saved.emittedTraceSteps?.length > 0 && saved.trace) {
+      const replayState = {};
+      const replayActions = [];
+      for (const idx of saved.emittedTraceSteps) {
+        const step = saved.trace[idx];
+        if (!step) continue;
+        const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
+          saved.algorithm,
+          saved.renderer,
+          step,
+          replayState
+        );
+        replayActions.push(...vizActs, ...ctxActs);
+      }
+      if (replayActions.length > 0) {
+        sendJSON(ws, {
+          type: 'segment_start',
+          segment_id: 'restore_' + Math.random().toString(36).slice(2, 8),
+          narration: '',
+          viz_actions: replayActions,
+          phase: '',
+        });
+        sendJSON(ws, { type: 'segment_end', segment_id: 'restore' });
+      }
+    }
+  }
+  session._savedGraphState = null;
+}
+
 export async function startAgentSession(session, algorithm, graph, source) {
   const { ws } = session;
 
@@ -333,8 +395,10 @@ export async function startAgentSession(session, algorithm, graph, source) {
 
     let response;
     try {
+      const model = session._useOpus ? 'claude-opus-4-20250514' : 'claude-sonnet-4-20250514';
+      session._useOpus = false;
       response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools,
@@ -388,6 +452,17 @@ export async function startAgentSession(session, algorithm, graph, source) {
           session.interruptFlag = null;
           interrupted = true;
 
+          // Snapshot current graph state so we can restore after the interrupt
+          // (in case the agent constructs a temporary example graph)
+          session._savedGraphState = {
+            graph: session.currentGraph,
+            trace: session.currentTrace,
+            algorithm: session.currentAlgorithm,
+            renderer: session.currentRenderer,
+            mapperState: { ...session.mapperState },
+            emittedTraceSteps: session._emittedTraceSteps ? [...session._emittedTraceSteps] : [],
+          };
+
           // Add remaining tool results for any unprocessed tool_use blocks
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;
@@ -406,12 +481,26 @@ export async function startAgentSession(session, algorithm, graph, source) {
           });
 
           messages.push({ role: 'user', content: [...toolResults] });
+          session._useOpus = true;
           break;
         }
       }
 
       if (!interrupted && toolResults.length > 0) {
         messages.push({ role: 'user', content: toolResults });
+
+        // Fallback restore: if _savedGraphState is still set, the agent finished
+        // the interrupt explanation without calling respond_to_interrupt.
+        // Restore now if this batch had no example-construction tools (create_graph/run_algorithm),
+        // meaning the agent is back to regular teaching.
+        if (session._savedGraphState) {
+          const hasExampleTools = response.content.some(b =>
+            b.type === 'tool_use' && (b.name === 'create_graph' || b.name === 'run_algorithm')
+          );
+          if (!hasExampleTools) {
+            restoreGraphState(session, ws);
+          }
+        }
       }
     }
   }
@@ -456,15 +545,26 @@ export async function startAgentSession(session, algorithm, graph, source) {
 
     if (!question || ws.readyState !== ws.OPEN) break;
 
+    // Save graph state before Q&A processing so it can be restored
+    // if the agent constructs a temporary example graph
+    session._savedGraphState = {
+      graph: session.currentGraph,
+      trace: session.currentTrace,
+      algorithm: session.currentAlgorithm,
+      renderer: session.currentRenderer,
+      mapperState: { ...session.mapperState },
+      emittedTraceSteps: session._emittedTraceSteps ? [...session._emittedTraceSteps] : [],
+    };
+
     // Add the question to message history and call Claude
     messages.push({
       role: 'user',
-      content: `[POST-LESSON QUESTION] The learner asks: "${question}". Use respond_to_interrupt to answer. The lesson visualization is still visible — you can reference it.`,
+      content: `[POST-LESSON QUESTION] The learner asks: "${question}". Answer the question. If you need to show a new example, use create_graph + run_algorithm + emit_segment to build it, then respond_to_interrupt to wrap up. If the current visualization answers the question, use respond_to_interrupt directly with the appropriate explanation_mode.`,
     });
 
     try {
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-20250514',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools,
@@ -473,10 +573,12 @@ export async function startAgentSession(session, algorithm, graph, source) {
 
       messages.push({ role: 'assistant', content: response.content });
 
-      // Process tool calls in the response
-      if (response.stop_reason === 'tool_use') {
+      // Inner loop: keep processing tool calls until agent stops
+      // (supports multi-round sequences like create_graph → run_algorithm → emit_segment → respond_to_interrupt)
+      let qaResponse = response;
+      while (qaResponse.stop_reason === 'tool_use') {
         const toolResults = [];
-        for (const block of response.content) {
+        for (const block of qaResponse.content) {
           if (block.type !== 'tool_use') continue;
           const result = await handleToolCall(session, block, graph, algorithm, source);
           toolResults.push({
@@ -487,12 +589,36 @@ export async function startAgentSession(session, algorithm, graph, source) {
         }
         if (toolResults.length > 0) {
           messages.push({ role: 'user', content: toolResults });
+
+          // Fallback restore: if _savedGraphState is still set and this batch
+          // had no example-construction tools, the agent is done with the example
+          if (session._savedGraphState) {
+            const hasExampleTools = qaResponse.content.some(b =>
+              b.type === 'tool_use' && (b.name === 'create_graph' || b.name === 'run_algorithm')
+            );
+            if (!hasExampleTools) {
+              restoreGraphState(session, ws);
+            }
+          }
         }
+        // Next API call
+        qaResponse = await anthropic.messages.create({
+          model: 'claude-opus-4-20250514',
+          max_tokens: 4096,
+          system: SYSTEM_PROMPT,
+          tools,
+          messages,
+        });
+        messages.push({ role: 'assistant', content: qaResponse.content });
       }
     } catch (err) {
       console.error('[Agent] Q&A API error:', err.message);
       sendJSON(ws, { type: 'error', message: 'Failed to answer question. Please try again.' });
     }
+
+    // Restore original graph if respond_to_interrupt didn't consume the saved state
+    // (e.g. agent answered with end_turn or bridged back via emit_segment)
+    restoreGraphState(session, ws);
   }
 }
 
@@ -624,6 +750,12 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
     case 'emit_segment': {
       const segmentId = Math.random().toString(36).slice(2, 8);
 
+      // ── Track emitted trace steps for graph state replay on restore ──
+      if (input.trace_step_indices && input.trace_step_indices.length > 0) {
+        if (!session._emittedTraceSteps) session._emittedTraceSteps = [];
+        session._emittedTraceSteps.push(...input.trace_step_indices);
+      }
+
       // ── Build viz_actions from trace_step_indices (deterministic mapper) ──
       let allVizActions = [];
       if (input.trace_step_indices && input.trace_step_indices.length > 0 && session.currentTrace) {
@@ -706,6 +838,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // Signal explanation complete so frontend can clean up
       await new Promise((resolve) => setTimeout(resolve, 500));
       sendJSON(ws, { type: 'explanation_complete' });
+
+      // Restore original graph state if we saved one (mid-lesson interrupt or Q&A)
+      restoreGraphState(session, ws);
 
       return {
         success: true,

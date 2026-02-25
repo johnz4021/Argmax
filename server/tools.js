@@ -336,4 +336,31 @@ export const tools = [
       required: ['answer', 'explanation_mode'],
     },
   },
+  {
+    name: 'send_options',
+    description:
+      'Send clickable multiple-choice options to the learner and wait for their response. Use this for lightweight comprehension checks at concept transitions during the lesson. The tool blocks until the learner responds.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: {
+          type: 'string',
+          description: 'The question to display to the learner',
+        },
+        options: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+            },
+            required: ['id', 'label'],
+          },
+          description: 'Clickable options for the learner to choose from',
+        },
+      },
+      required: ['prompt', 'options'],
+    },
+  },
 ];

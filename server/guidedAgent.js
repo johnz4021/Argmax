@@ -237,33 +237,6 @@ const guidedTools = [
       required: ['is_in_scope', 'target_algorithm', 'problem_summary', 'key_insight', 'hint_plan', 'model_contract'],
     },
   },
-  {
-    name: 'send_options',
-    description:
-      'Send clickable multiple-choice options to the student and wait for their response. Use this for structured questions during the guided flow (e.g., "What type of algorithm is this?"). The tool blocks until the student responds.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        prompt: {
-          type: 'string',
-          description: 'The question to display to the student',
-        },
-        options: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              label: { type: 'string' },
-            },
-            required: ['id', 'label'],
-          },
-          description: 'Clickable options for the student to choose from',
-        },
-      },
-      required: ['prompt', 'options'],
-    },
-  },
 ];
 
 // Input size validation

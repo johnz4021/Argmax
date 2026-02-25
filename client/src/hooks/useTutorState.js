@@ -81,7 +81,7 @@ function reducer(state, action) {
     case 'INTERRUPT_RESPONSE':
       return {
         ...state,
-        status: 'teaching',
+        status: state.previousStatus === 'complete' ? 'complete' : 'teaching',
         explanationMode:
           action.explanation_mode !== 'none'
             ? {
@@ -119,6 +119,7 @@ function reducer(state, action) {
       return {
         ...state,
         status: 'interrupted',
+        previousStatus: state.status,
         segments: [
           ...state.segments,
           {

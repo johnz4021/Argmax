@@ -42,7 +42,7 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
     }
   };
 
-  const showInput = status === 'teaching' || status === 'paused';
+  const showInput = status === 'teaching' || status === 'paused' || status === 'complete';
 
   return (
     <div className="border-t border-gray-800 px-4 py-3 space-y-3">
@@ -59,7 +59,7 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask a question..."
+            placeholder={status === 'complete' ? "Any questions about the lesson?" : "Ask a question..."}
             className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 ${
               isListening ? 'border-red-500' : 'border-gray-700'
             }`}

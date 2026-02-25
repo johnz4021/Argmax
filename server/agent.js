@@ -59,12 +59,27 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
    - "Remember when we skipped the guitar at capacity 3? Now with the iPhone, we face a similar choice — but this time the numbers are closer."
    - "This is the same relaxation step we saw with node B, but now the new path is actually shorter."
 
-7. END WITH THE "SO WHAT"
+7. CHECKPOINT THE LEARNER'S UNDERSTANDING
+   Insert 2-3 lightweight comprehension checks per lesson at natural concept transitions
+   using the send_options tool. Place them:
+   - After explaining the core idea / key insight
+   - After the first landmark step (to confirm the pattern clicked)
+   - Before the final summary (to test retention)
+
+   Keep questions quick and conceptual:
+   - "What would happen if we relaxed this edge instead?"
+   - "Which data structure maintains the shortest-distance invariant?"
+   - "If we added a heavier item here, would the optimal value change?"
+
+   These are cognitive nudges, NOT an exam. If the learner gets it wrong, give a brief
+   one-sentence clarifying explanation and move on — do NOT re-ask or belabor the point.
+
+8. END WITH THE "SO WHAT"
    Don't just state the result — connect it back to the motivation:
    - "So out of 16 possible combinations, DP found the optimal one by checking just 32 cells. That's the power of breaking a problem into overlapping subproblems."
    - "BFS guaranteed we found every node at distance 1 before any node at distance 2. That's why it gives shortest paths in unweighted graphs."
 
-8. INTRODUCE CONCEPTS BEFORE YOU NEED THEM
+9. INTRODUCE CONCEPTS BEFORE YOU NEED THEM
    When an algorithm step relies on a data structure or concept the learner hasn't seen
    yet, you MUST introduce it BEFORE or DURING the first step that uses it. Never defer.
    
@@ -78,7 +93,7 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
    already have been introduced in iteration 1 or 2. Don't wait for the surprising
    moment — prepare the learner so they can UNDERSTAND the surprising moment.
 
-9. DERIVE, DON'T JUST STATE
+10. DERIVE, DON'T JUST STATE
    When the algorithm computes a value (bottleneck, shortest distance, optimal cell),
    walk through the derivation at least once:
    - Bottleneck: "We check each edge: S→A has 10-7=3 remaining, A→B has 5-0=5, B→D has
@@ -400,6 +415,85 @@ export async function startAgentSession(session, algorithm, graph, source) {
       }
     }
   }
+
+  // ── Post-lesson Q&A loop ──
+  // Keep session active so the learner can ask follow-up questions
+  while (ws.readyState === ws.OPEN) {
+    // Wait for an interrupt (question) from the client
+    const question = await new Promise((resolve) => {
+      session.qaResolver = resolve;
+
+      // If there's already a queued interrupt, resolve immediately
+      if (session.interruptFlag) {
+        const q = session.interruptFlag.question;
+        session.interruptFlag = null;
+        resolve(q);
+        return;
+      }
+
+      // Listen for future interrupts by polling
+      const checkInterval = setInterval(() => {
+        if (ws.readyState !== ws.OPEN) {
+          clearInterval(checkInterval);
+          resolve(null);
+        } else if (session.interruptFlag) {
+          const q = session.interruptFlag.question;
+          session.interruptFlag = null;
+          clearInterval(checkInterval);
+          resolve(q);
+        }
+      }, 200);
+
+      // Store cleanup so we can break out
+      session._qaCleanup = () => {
+        clearInterval(checkInterval);
+        resolve(null);
+      };
+    });
+
+    session.qaResolver = null;
+    session._qaCleanup = null;
+
+    if (!question || ws.readyState !== ws.OPEN) break;
+
+    // Add the question to message history and call Claude
+    messages.push({
+      role: 'user',
+      content: `[POST-LESSON QUESTION] The learner asks: "${question}". Use respond_to_interrupt to answer. The lesson visualization is still visible — you can reference it.`,
+    });
+
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4096,
+        system: SYSTEM_PROMPT,
+        tools,
+        messages,
+      });
+
+      messages.push({ role: 'assistant', content: response.content });
+
+      // Process tool calls in the response
+      if (response.stop_reason === 'tool_use') {
+        const toolResults = [];
+        for (const block of response.content) {
+          if (block.type !== 'tool_use') continue;
+          const result = await handleToolCall(session, block, graph, algorithm, source);
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: block.id,
+            content: JSON.stringify(result),
+          });
+        }
+        if (toolResults.length > 0) {
+          messages.push({ role: 'user', content: toolResults });
+        }
+      }
+    } catch (err) {
+      console.error('[Agent] Q&A API error:', err.message);
+      sendJSON(ws, { type: 'error', message: 'Failed to answer question. Please try again.' });
+    }
+  }
 }
 
 export async function handleToolCall(session, toolCall, graph, algorithm, source) {
@@ -617,6 +711,48 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         success: true,
         message: 'Interrupt response delivered with explanation. Continue teaching.',
       };
+    }
+
+    case 'send_options': {
+      const { prompt, options } = input;
+
+      sendJSON(ws, { type: 'guided_options', prompt, options });
+
+      // TTS the prompt
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn);
+
+      // Wait for learner response with 2-minute timeout
+      const responsePromise = new Promise((resolve) => {
+        session.guidedResponseResolver = resolve;
+      });
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => resolve('__timeout__'), 120000);
+      });
+
+      const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+
+      session.guidedResponseResolver = null;
+
+      if (raceResult === '__timeout__') {
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          timed_out: true,
+          message: 'Learner did not respond within 2 minutes. Give a brief clarification and move on.',
+        };
+      } else {
+        const studentResponse = session.guidedResponse;
+        session.guidedResponse = null;
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: studentResponse,
+          timed_out: false,
+          selected_option_id: studentResponse?.optionId || null,
+          freeform_text: studentResponse?.text || null,
+        };
+      }
     }
 
     default:

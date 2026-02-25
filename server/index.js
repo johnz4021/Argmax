@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
+import { startGuidedSession } from './guidedAgent.js';
 
 const app = express();
 const server = createServer(app);
@@ -26,7 +27,10 @@ wss.on('connection', (ws) => {
     pauseFlag: false,
     pauseResolver: null,
     active: false,
+    mode: 'direct',
     speedMultiplier: 1,
+    guidedResponse: null,
+    guidedResponseResolver: null,
   };
   sessions.set(sessionId, session);
   console.log(`[WS] Client connected: ${sessionId}`);
@@ -54,6 +58,34 @@ wss.on('connection', (ws) => {
             ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
           }
           session.active = false;
+          break;
+        }
+
+        case 'start_guided': {
+          if (session.active) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
+            return;
+          }
+          session.active = true;
+          session.mode = 'guided';
+          try {
+            await startGuidedSession(session, msg.problemText);
+          } catch (err) {
+            console.error('[GuidedAgent] Error:', err);
+            ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
+          }
+          session.active = false;
+          session.mode = 'direct';
+          break;
+        }
+
+        case 'guided_response': {
+          if (!session.active) return;
+          session.guidedResponse = { optionId: msg.optionId, text: msg.text, timestamp: Date.now() };
+          if (session.guidedResponseResolver) {
+            session.guidedResponseResolver();
+            session.guidedResponseResolver = null;
+          }
           break;
         }
 

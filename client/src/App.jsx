@@ -3,7 +3,7 @@ import VizLayout from './components/VizLayout';
 import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
 import Controls from './components/Controls';
-import AlgoSelector from './components/AlgoSelector';
+import LandingTabs from './components/LandingTabs';
 import ContextPanelHost from './components/context/ContextPanelHost';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
@@ -97,12 +97,24 @@ export default function App() {
   const { send, connected } = useWebSocket(onMessage, onBinary);
 
   const handleSelectAlgorithm = useCallback(
-    (algorithm) => {
+    (algorithm, data) => {
       audioPlayer.init(); // Must be from user gesture
       reset();
-      send({ type: 'start_lesson', algorithm, source: 'A' });
+      if (algorithm === 'guided') {
+        send({ type: 'start_guided', problemText: data.problemText });
+      } else {
+        send({ type: 'start_lesson', algorithm, source: 'A' });
+      }
     },
     [send, reset, audioPlayer]
+  );
+
+  const handleGuidedResponse = useCallback(
+    (optionId) => {
+      send({ type: 'guided_response', optionId });
+      processMessage({ type: 'clear_guided_options' });
+    },
+    [send, processMessage]
   );
 
   const handlePause = useCallback(() => {
@@ -166,7 +178,7 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {showSelector ? (
           <div className="flex-1">
-            <AlgoSelector onSelect={handleSelectAlgorithm} disabled={!connected} />
+            <LandingTabs onSelect={handleSelectAlgorithm} disabled={!connected} />
           </div>
         ) : (
           <>
@@ -206,6 +218,8 @@ export default function App() {
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
                 explanationMode={state.explanationMode}
+                guidedOptions={state.guidedOptions}
+                onGuidedResponse={handleGuidedResponse}
               />
             </div>
           </>

@@ -12,6 +12,9 @@ const initialState = {
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
   latestResidualEdges: null,
+  mode: 'direct',            // 'direct' | 'guided'
+  guidedPhase: null,          // 'analyzing' | 'identifying' | 'modeling' | 'executing' | 'verifying' | null
+  guidedOptions: null,        // null | { prompt, options: [{ id, label }] }
 };
 
 /**
@@ -157,6 +160,21 @@ function reducer(state, action) {
         }),
       };
 
+    case 'GUIDED_START':
+      return { ...initialState, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
+
+    case 'GUIDED_PHASE':
+      return { ...state, guidedPhase: action.phase };
+
+    case 'GUIDED_OPTIONS':
+      return { ...state, guidedOptions: { prompt: action.prompt, options: action.options } };
+
+    case 'CLEAR_GUIDED_OPTIONS':
+      return { ...state, guidedOptions: null };
+
+    case 'GUIDED_TRANSITION':
+      return { ...state, status: 'teaching', guidedPhase: 'executing' };
+
     case 'ERROR':
       return { ...state, status: 'error', error: action.message };
 
@@ -224,6 +242,21 @@ export function useTutorState() {
         break;
       case 'lesson_complete':
         dispatch({ type: 'LESSON_COMPLETE' });
+        break;
+      case 'guided_start':
+        dispatch({ type: 'GUIDED_START' });
+        break;
+      case 'guided_phase':
+        dispatch({ type: 'GUIDED_PHASE', phase: msg.phase });
+        break;
+      case 'guided_options':
+        dispatch({ type: 'GUIDED_OPTIONS', prompt: msg.prompt, options: msg.options });
+        break;
+      case 'clear_guided_options':
+        dispatch({ type: 'CLEAR_GUIDED_OPTIONS' });
+        break;
+      case 'guided_transition':
+        dispatch({ type: 'GUIDED_TRANSITION' });
         break;
       case 'error':
         dispatch({ type: 'ERROR', message: msg.message });

@@ -260,13 +260,13 @@ Knapsack (0/1 Knapsack DP):
   Reference the Items panel: "Check the items panel on the right — it highlights which
   item we're currently considering and shows its weight and value."`;
 
-function sendJSON(ws, obj) {
+export function sendJSON(ws, obj) {
   if (ws.readyState === ws.OPEN) {
     ws.send(JSON.stringify(obj));
   }
 }
 
-function sendBinary(ws, buffer) {
+export function sendBinary(ws, buffer) {
   if (ws.readyState === ws.OPEN) {
     ws.send(buffer, { binary: true });
   }
@@ -402,7 +402,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
   }
 }
 
-async function handleToolCall(session, toolCall, graph, algorithm, source) {
+export async function handleToolCall(session, toolCall, graph, algorithm, source) {
   const { ws } = session;
   const { name, input } = toolCall;
 

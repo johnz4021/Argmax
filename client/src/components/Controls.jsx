@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
+import GuidedOptions from './GuidedOptions';
 
-export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode }) {
+export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode, guidedOptions, onGuidedResponse }) {
   const [question, setQuestion] = useState('');
   const [pausePending, setPausePending] = useState(false);
   const { isListening, transcript, isSupported, start, stop, clearTranscript } = useSpeechToText();
@@ -45,6 +46,13 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
 
   return (
     <div className="border-t border-gray-800 px-4 py-3 space-y-3">
+      {guidedOptions && (
+        <GuidedOptions
+          options={guidedOptions.options}
+          prompt={guidedOptions.prompt}
+          onSelect={onGuidedResponse}
+        />
+      )}
       {showInput && (
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input

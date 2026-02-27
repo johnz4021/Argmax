@@ -303,6 +303,7 @@ export async function startGuidedSession(session, problemText) {
         if (block.name === 'classify_problem') {
           const plan = block.input;
           sessionPlan = plan;
+          session.modelContract = plan.internal_model_contract;
 
           const validAlgorithms = Object.keys(ALGORITHMS);
           if (plan.is_in_scope && !validAlgorithms.includes(plan.target_algorithm)) {

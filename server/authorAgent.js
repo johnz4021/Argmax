@@ -46,7 +46,24 @@ No explanation. No imports. Pure function.`;
  * Generate a trace generator function for an algorithm.
  * Returns the function code as a string.
  */
-export async function generateTraceGenerator(algorithmName, renderer, description) {
+export async function generateTraceGenerator(algorithmName, renderer, description, context) {
+  let userContent = `Write a trace generator for: ${algorithmName}
+Target renderer: ${renderer}
+Description: ${description || algorithmName}
+Input format: The function receives an object with algorithm-specific fields.`;
+
+  if (context) {
+    if (context.modelContract) {
+      userContent += `\n\nModel contract (internal reasoning about the problem reduction):\n${JSON.stringify(context.modelContract, null, 2)}`;
+    }
+    if (context.failureReason) {
+      userContent += `\n\nPrevious attempt failed: ${context.failureReason}`;
+    }
+    if (context.closestAlgorithm) {
+      userContent += `\nClosest registered algorithm: ${context.closestAlgorithm}`;
+    }
+  }
+
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
@@ -54,10 +71,7 @@ export async function generateTraceGenerator(algorithmName, renderer, descriptio
     messages: [
       {
         role: 'user',
-        content: `Write a trace generator for: ${algorithmName}
-Target renderer: ${renderer}
-Description: ${description || algorithmName}
-Input format: The function receives an object with algorithm-specific fields.`,
+        content: userContent,
       },
     ],
   });

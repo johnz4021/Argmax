@@ -63,18 +63,23 @@ export function maxflow(graph, source, sink) {
     adj[e.target].add(e.source); // reverse edge for residual graph
   }
 
+  const originalEdgeKeys = new Set(edges.map(e => `${e.source}->${e.target}`));
+
   function getEdgeLabels() {
-    return edges.map((e) => {
-      const key = `${e.source}->${e.target}`;
-      const f = flow[key];
-      const c = capacity[key];
-      return {
-        from: e.source,
-        to: e.target,
-        label: `${f}/${c}`,
-        saturated: f >= c,
-      };
-    });
+    if (directed) {
+      return edges.map((e) => {
+        const key = `${e.source}->${e.target}`;
+        return { from: e.source, to: e.target, label: `${flow[key]}/${capacity[key]}`, saturated: flow[key] >= capacity[key] };
+      });
+    }
+    // Undirected: both directions for each original edge
+    const labels = [];
+    for (const e of edges) {
+      const fwd = `${e.source}->${e.target}`, rev = `${e.target}->${e.source}`;
+      labels.push({ from: e.source, to: e.target, label: `${flow[fwd]}/${capacity[fwd]}`, saturated: flow[fwd] >= capacity[fwd] });
+      labels.push({ from: e.target, to: e.source, label: `${flow[rev]}/${capacity[rev]}`, saturated: flow[rev] >= capacity[rev] });
+    }
+    return labels;
   }
 
   function getResidualGraph() {
@@ -86,7 +91,7 @@ export function maxflow(graph, source, sink) {
           capacity: capacity[key],
           flow: flow[key],
           residual: r,
-          is_reverse: capacity[key] === 0,
+          is_reverse: !originalEdgeKeys.has(key),
         };
       }
     }

@@ -3,7 +3,9 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { runAlgorithm } from './algorithms.js';
-import { runRegisteredAlgorithm, ALGORITHMS } from './algorithms/registry.js';
+import { runRegisteredAlgorithm, runAlgorithmWithFallback, ALGORITHMS } from './algorithms/registry.js';
+import { validateAlgorithmInput } from './algorithms/validateInput.js';
+import { adaptAlgorithmInput } from './algorithms/adaptInput.js';
 import { synthesizeAndStream } from './tts.js';
 import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
@@ -772,8 +774,17 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
               registryInput.sink = input.sink;
             }
           }
-          const result = runRegisteredAlgorithm(algo, registryInput);
-          console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}`);
+          // Validate and adapt input against algorithm capabilities
+          const validation = validateAlgorithmInput(algo, registryInput, session.modelContract);
+          if (!validation.valid) {
+            return { error: validation.errors.join('; '), warnings: validation.warnings };
+          }
+          if (validation.adaptations.length > 0) {
+            adaptAlgorithmInput(algo, registryInput, validation.adaptations);
+          }
+
+          const result = await runAlgorithmWithFallback(algo, registryInput);
+          console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}, tier: ${result.tier}`);
 
           // ── Store trace on session for deterministic mapping ──
           session.currentTrace = result.trace;
@@ -823,6 +834,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             source: registryInput.source,
             visualization_auto_configured: true,
             context_panels: panelNames,
+            tier: result.tier,
+            capabilities: algoInfo.capabilities,
+            adaptations_applied: validation.adaptations,
+            warnings: validation.warnings,
             message: `Algorithm executed. Visualization and context panels auto-configured. Use emit_segment with trace_step_indices to teach. You have ${result.trace.length} trace steps available (indices 0 to ${result.trace.length - 1}).`,
           };
         } catch (err) {

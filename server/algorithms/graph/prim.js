@@ -6,10 +6,12 @@ export function prim(graph, sourceId) {
   // Build adjacency list (undirected — add both directions)
   const adj = {};
   for (const id of nodes) adj[id] = [];
+  const seenPairs = new Set();
   for (const edge of graph.edges) {
     adj[edge.source].push({ target: edge.target, weight: edge.weight });
-    // For undirected graphs, add reverse edge if not already present
-    if (!adj[edge.target].some((e) => e.target === edge.source && e.weight === edge.weight)) {
+    const pairKey = [edge.source, edge.target].sort().join('-');
+    if (!seenPairs.has(pairKey)) {
+      seenPairs.add(pairKey);
       adj[edge.target].push({ target: edge.source, weight: edge.weight });
     }
   }

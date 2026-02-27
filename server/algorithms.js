@@ -69,6 +69,9 @@ export function dijkstra(graph, sourceId) {
   }
   for (const edge of graph.edges) {
     adj[edge.source].push({ target: edge.target, weight: edge.weight });
+    if (graph.directed === false) {
+      adj[edge.target].push({ target: edge.source, weight: edge.weight });
+    }
   }
 
   // Init
@@ -194,6 +197,9 @@ export function bfs(graph, sourceId) {
   }
   for (const edge of graph.edges) {
     adj[edge.source].push(edge.target);
+    if (graph.directed === false) {
+      adj[edge.target].push(edge.source);
+    }
   }
 
   visited.add(sourceId);
@@ -269,6 +275,9 @@ export function dfs(graph, sourceId) {
   }
   for (const edge of graph.edges) {
     adj[edge.source].push(edge.target);
+    if (graph.directed === false) {
+      adj[edge.target].push(edge.source);
+    }
   }
 
   trace.push({

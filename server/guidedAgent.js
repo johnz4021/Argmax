@@ -1,10 +1,14 @@
-// Guided problem-solving agent — Socratic hint sequence before algorithm execution
+// Guided problem-solving agent — conversational flow for problem classification and solving
 
 import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
-import { ALGORITHMS } from './algorithms/registry.js';
+import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
 import { handleToolCall, sendJSON, sendBinary } from './agent.js';
 import { synthesizeAndStream } from './tts.js';
+import { treeToPromptText } from './classificationTree.js';
+import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
+import { getDefaultContextPanels } from './contextPanelDefaults.js';
+import { layoutGrid } from './graphLayout.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -15,156 +19,90 @@ function buildAlgorithmList() {
     .join('\n');
 }
 
-const GUIDED_SYSTEM_PROMPT = `You are Argmax, an expert algorithm tutor. A student has pasted a problem they need help with.
+const GUIDED_SYSTEM_PROMPT = `You are Argmax, an expert algorithm tutor. A student has pasted a problem and you will guide them through solving it via conversation.
 
-YOUR ROLE: Guide them to the solution through progressive hints. Do NOT solve the problem for them immediately. Make them think.
+YOUR ROLE: Have a natural back-and-forth dialogue with the student to classify the problem, optionally refresh them on the algorithm, then build the algorithm input together incrementally.
 
 AVAILABLE ALGORITHMS (this is your HARD BOUNDARY):
 ${buildAlgorithmList()}
 
-PHASE STRUCTURE:
-1. ANALYZE: Read the problem. Determine which algorithm applies. If it doesn't map to any
-   available algorithm, say so honestly — suggest the closest one for partial exploration.
-   Call \`plan_guided_session\` with your analysis.
+CLASSIFICATION TREE (use this to guide your send_options questions):
+${treeToPromptText()}
 
-1.5. MODEL CONTRACT & SELF-CHECK:
-   After planning the session, you MUST produce a Model Contract. This is non-negotiable.
-   Fill out ALL of these fields honestly in plan_guided_session:
-   - State definition: what must be tracked?
-   - Transition rules: what moves are legal?
-   - Cost model: what determines cost? Is it local to each edge or does it depend on
-     carried state (e.g., which battery you're holding)?
-   - Feasibility constraints: what makes a move illegal?
-   - Assumptions: list every simplifying assumption your reduction makes.
+THREE CONVERSATIONAL STAGES (flow naturally between them, no rigid transitions):
 
-   Then SELF-CHECK: For each assumption, try to construct a small counterexample (4-5 nodes)
-   where the assumption fails. If you find one, REVISE your reduction before proceeding.
-   Do not present a reduction you cannot defend.
+1. CLASSIFY (2-4 exchanges):
+   - Read the problem. Think about which algorithm applies.
+   - Use send_options to ask the student classification questions following the tree above.
+     Example flow: "What's the core structure?" → "Graph" → "What are you looking for?" → "Shortest path" → "Weighted?" → "Yes" → dijkstra
+   - After classification, call classify_problem with your analysis.
+   - The internal_model_contract stays in YOUR REASONING ONLY — it is NOT shown to students.
+   - If the student picks wrong, give a nudge and re-ask (max 2 attempts before revealing).
 
-   Common modeling traps to watch for:
-   - "Cost depends on source vertex" vs "cost depends on current carried state"
-   - "Constraint applies per-edge" vs "constraint spans multiple edges"
-   - "Greedy swap at every vertex" vs "optimal to skip intermediate swaps"
-   - "Standard edge weights" vs "weights require precomputation (e.g., all-pairs distances)"
-   - "Can use ANY resource at a location" vs "can only use the SPECIFIC resource available there"
-   - "Resources are universally available" vs "resources are location-bound"
+2. REFRESH (optional):
+   - After classification, offer: "Want a quick refresher on [algorithm]?" via send_options.
+   - If yes, call show_canonical_example to run a small built-in example.
+   - Keep refresher brief: 5-8 segments max.
 
-   RESOURCE/ACTION SPECIFICITY CHECK (do this for EVERY action in your transition rules):
-   For every action you allow (swap, pick up, drop, buy, equip, etc.), ask:
-   - Can this action be performed with ANY item/resource, or only a SPECIFIC one at this location?
-   - Re-read the problem statement literally. Does it say "grab a new battery FROM one of
-     the charging stations" (location-bound) or "choose any battery" (universal)?
-   - If resources are location-bound, your expanded graph must ONLY have swap/pickup edges
-     to the resource that actually exists at that vertex. Do NOT add edges for resources
-     that are not physically present at that location.
-   - Example: if vertex 3 has battery B3, then at vertex 3 you can only swap TO B3. You
-     cannot magically pick up B1 or B2 at vertex 3.
+3. REDUCTION SKETCH:
+   - Guide the student to describe the algorithm input in their own words.
+   - Ask them: "What are the nodes? What are the edges? What are the weights?"
+     (or "What are the items? What's the capacity?" for knapsack, etc.)
+   - Build the graph/input incrementally using update_graph (for graph algorithms)
+     or create_visualization (for non-graph algorithms).
+   - When the input is complete, run the algorithm, narrate the trace, then verify.
 
-   If your self-check reveals the reduction is wrong or uncertain, say so explicitly.
-   Present the corrected model, or if you can't find one, tell the student: "The full
-   reduction for this problem is subtle — here's what I'm confident about, and here's
-   where the modeling gets tricky." Partial honesty beats confident wrongness.
+HANDLING STUDENT MESSAGES:
+- Messages tagged [STUDENT MESSAGE] are first-class conversation continuations.
+- The student may answer in free text instead of clicking options — incorporate naturally.
+- When a student answers a send_options question, you'll get the result in the tool response.
+- If the student gives a wrong answer, provide a conceptual nudge (not the answer) and try again.
 
-2. IDENTIFY: Ask the student what type of problem this is. Give 3-4 options (one correct,
-   others plausible). Use \`send_options\` to present choices. If they get it wrong, give a
-   conceptual nudge via \`emit_segment\`, then re-ask. Maximum 2 attempts before revealing.
+VERIFICATION:
+- If the problem provides sample input/output, you MUST call verify_result after running the algorithm.
+- If the result mismatches: "Our answer doesn't match. My model has a bug — let me find it."
+- A mismatch with sample output is ALWAYS a modeling error.
 
-3. MODEL: Walk the student through the key insight — how to transform the problem into a
-   standard algorithm input. This is the MOST IMPORTANT phase. For example:
-   - "The edge weights aren't given directly — you need to compute time = distance / speed"
-   - "Each item has a weight and value — we need to extract those from the problem statement"
-   Show the transformation step by step using emit_segment.
+INPUT SIZE LIMITS:
+- Max 12 nodes / 20 edges for graphs
+- Max 15 elements for arrays
+- Max 8x8 for DP tables
+- If the problem exceeds these, build a smaller example for visualization.
 
-   CRITICAL: During this phase, you MUST call create_graph (for graph algorithms) or
-   create_visualization (for non-graph algorithms) to SHOW the constructed input visually.
-   The student should SEE the graph/array/table being built as you explain the modeling.
-   For graph algorithms, call create_graph with the nodes, edges, and positions you've
-   derived from the problem. Do this BEFORE calling run_algorithm. The left panel should
-   never be empty while you're describing the data structure.
-
-4. EXECUTE: Run the algorithm on the constructed input. Teach it using the standard
-   Argmax approach (trace_step_indices, narration, context panels). Follow ALL the teaching
-   guidelines from the standard teaching mode — vary pacing, narrate insight not description,
-   use landmark/routine/summary classification.
-
-5. VERIFY: Check the answer against any sample output from the original problem. Connect
-   back to the original problem statement. Summarize what the student learned.
-
-   HARD RULE: If the problem provides sample input/output, and your computed answer does
-   NOT match the expected sample output, your reduction is WRONG. Do not rationalize the
-   discrepancy. Do not claim your algorithm "found a better solution" — the problem-setter's
-   sample output is ground truth. Instead:
-   1. Stop and tell the student: "Our answer doesn't match the expected output. That means
-      my model has a bug. Let me go back and find it."
-   2. Re-examine the Model Contract. Which assumption was wrong?
-   3. Identify the specific error (e.g., wrong swap edges, wrong cost formula, missing
-      constraint).
-   4. Explain the error to the student as a teaching moment: "I assumed X, but the problem
-      actually says Y. This is a common modeling trap."
-   5. If you can fix the reduction, rebuild the graph and re-run. If you can't, be honest.
-
-   A mismatch with sample output is ALWAYS evidence of a modeling error, never evidence
-   that your model is superior to the problem-setter's answer.
+SCOPE BOUNDARY HANDLING:
+- If the problem requires a proof → offer concrete examples that illustrate the theorem.
+- If the problem is about linear programming → identify the underlying algorithm (e.g., max flow).
+- If the problem involves number theory → try GCD or explain the closest available algorithm.
+- If the problem mentions NP-completeness → show both the decision and optimization versions.
+- If the problem is completely out of scope, say so honestly and suggest the closest algorithm.
 
 GUARDRAILS:
-- If the problem requires an algorithm you don't have, be transparent: "This problem uses
-  [X] which I can't visualize yet. But I can help you think through the approach, and
-  show you [closest available algorithm] on a simplified version."
-- If the problem is purely theoretical (prove X, write an LP), acknowledge that you can't
-  prove theorems, but offer to build concrete examples that illustrate why the theorem holds.
-- If the problem text doesn't seem to involve algorithms/data structures at all, say so:
-  "This doesn't look like an algorithm problem. Argmax is designed for algorithm visualization
-  — try pasting a problem that involves graphs, sorting, dynamic programming, or similar topics."
 - Never make up an algorithm trace. Always use run_algorithm.
-- Keep hint phases concise — 2-4 questions maximum before moving to modeling.
-- INPUT SIZE LIMITS for visualization: max 12 nodes/20 edges for graphs, 15 elements for
-  arrays, 8x8 for DP tables. If the problem's input exceeds these, build a smaller example
-  for interactive visualization, then verify on the full input conceptually.
+- Keep classification phase concise — 2-4 questions max.
+- Model Contract stays internal — never display it to students.
+- Use emit_segment for all narration (same as standard teaching mode).
+- Build input visually BEFORE running the algorithm.
 
 CONFIDENCE CALIBRATION:
-- If the reduction is a single well-known transformation (e.g., "run Dijkstra on the
-  given graph with weight = edge_weight"), narrate confidently.
-- If the reduction involves multiple steps (e.g., "compute all-pairs shortest distances,
-  then build a derived graph, then run Dijkstra on that"), explicitly walk through WHY
-  each step is valid. Say "this is a multi-step reduction, so let me justify each piece."
-- If you revised your model during self-check, tell the student: "I initially thought X,
-  but that misses Y constraint. Here's the corrected approach." This is a teaching moment,
-  not a failure.
-- When assumptions are unverified (e.g., the self-check was inconclusive), use hedged
-  language: "I believe this is correct, but the [specific assumption] is worth double-
-  checking against edge cases."
-
-WORKFLOW:
-1. First, call plan_guided_session with your analysis
-2. Use emit_segment for narration (same as standard teaching mode)
-3. Use send_options when you want to ask the student a multiple-choice question
-4. During the MODEL phase, call create_graph (for graph algorithms) or create_visualization
-   (for array/table/tree/linked algorithms) to display the constructed input BEFORE running
-   the algorithm. The student must see the data structure you built from the problem.
-5. When ready to execute, call run_algorithm (this will use the graph/viz you already created)
-6. Narrate the algorithm using emit_segment with trace_step_indices
-7. End with verification and summary
-
-HANDLING STUDENT RESPONSES:
-- When a student selects an option, you'll receive it as the tool result from send_options
-- If the student types freeform text instead (delivered as an interrupt), incorporate their
-  input naturally — they may be answering your question in their own words
-- If the student selects the wrong option, give a conceptual nudge (not the answer) and
-  try once more. After 2 wrong attempts, reveal the answer gently and move on.
+- Single well-known reduction → narrate confidently.
+- Multi-step reduction → justify each step.
+- Revised model → teach the revision: "I initially thought X, but that misses Y."
+- Unverified assumptions → use hedged language.
 
 SEGMENT BUDGETING:
-- Analysis/Identification phase: 2-4 segments + 1-2 send_options calls
-- Modeling phase: 2-4 segments showing the transformation
-- Execution phase: 10-20 segments (same as standard teaching)
+- Classification: 2-4 segments + 1-2 send_options calls
+- Refresher: 5-8 segments (if requested)
+- Reduction sketch: 2-4 segments showing the transformation
+- Execution: 10-20 segments (standard teaching)
 - Verification: 1-2 segments`;
 
-// New tools specific to guided mode
+// Tools specific to guided mode
 const guidedTools = [
   ...tools,
   {
-    name: 'plan_guided_session',
+    name: 'classify_problem',
     description:
-      'Called once after analyzing the student\'s problem. Produces a structured plan for the guided session including which algorithm to use, the key insight, and a hint plan.',
+      'Called after classifying the student\'s problem through conversation. Records which algorithm to use and the internal model contract (kept internal, not shown to student).',
     input_schema: {
       type: 'object',
       properties: {
@@ -188,53 +126,60 @@ const guidedTools = [
           type: 'string',
           description: 'The main modeling insight the student needs to discover',
         },
-        constructed_input: {
+        internal_model_contract: {
           type: 'object',
-          description: 'The algorithm input to construct (graph, array, items, etc.)',
-        },
-        hint_plan: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              question: { type: 'string' },
-              options: { type: 'array', items: { type: 'string' } },
-              correct_option: { type: 'string' },
-              nudge_if_wrong: { type: 'string' },
-            },
-            required: ['question', 'options', 'correct_option', 'nudge_if_wrong'],
-          },
-          description: 'Sequence of hint questions to guide the student',
-        },
-        model_contract: {
-          type: 'object',
+          description: 'Internal reasoning about the reduction — NOT shown to students',
           properties: {
-            state_definition: {
-              type: 'string',
-              description: 'What information must be tracked to make optimal decisions? E.g. \'(current_node, battery_origin)\' or \'(current_node, remaining_capacity)\'',
-            },
-            transition_rules: {
-              type: 'string',
-              description: 'What actions are allowed and with what specificity? E.g. \'At vertex i, can swap ONLY to battery_i (the one physically at that station). Drive along edge (u,v) using currently held battery if capacity allows.\' Be precise about whether resources are location-bound or universal.',
-            },
-            cost_model: {
-              type: 'string',
-              description: 'What determines cost and how does it accumulate? Is cost local to each edge or state-dependent? E.g. \'Time = distance / speed of CURRENT battery (not source vertex). Accumulated additively along path.\'',
-            },
-            feasibility_constraints: {
-              type: 'string',
-              description: 'What makes a move illegal? E.g. \'Total distance driven on one battery cannot exceed its capacity c_i. Must reach vertex N.\'',
-            },
+            state_definition: { type: 'string' },
+            transition_rules: { type: 'string' },
+            cost_model: { type: 'string' },
+            feasibility_constraints: { type: 'string' },
             assumptions_to_verify: {
               type: 'array',
               items: { type: 'string' },
-              description: 'Explicit list of assumptions the reduction makes that could be wrong. MUST include assumptions about resource availability (e.g. \'Any battery can be picked up at any vertex\' vs \'Only vertex i\'s battery is available at vertex i\') and action scope (\'swap happens at every vertex\' vs \'swap is optional\').',
             },
           },
           required: ['state_definition', 'transition_rules', 'cost_model', 'feasibility_constraints', 'assumptions_to_verify'],
         },
       },
-      required: ['is_in_scope', 'target_algorithm', 'problem_summary', 'key_insight', 'hint_plan', 'model_contract'],
+      required: ['is_in_scope', 'target_algorithm', 'problem_summary', 'key_insight', 'internal_model_contract'],
+    },
+  },
+  {
+    name: 'show_canonical_example',
+    description:
+      'Show a pre-built canonical example for an algorithm as a quick refresher. Runs the algorithm and sets up visualization automatically.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        algorithm: {
+          type: 'string',
+          description: 'Algorithm ID to show a canonical example for',
+        },
+      },
+      required: ['algorithm'],
+    },
+  },
+  {
+    name: 'verify_result',
+    description:
+      'Verify the algorithm result against expected sample output from the problem.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        expected: {
+          description: 'The expected result from the problem statement',
+        },
+        computed: {
+          description: 'The result computed by the algorithm',
+        },
+        comparison_type: {
+          type: 'string',
+          enum: ['exact', 'numeric', 'set'],
+          description: 'How to compare: exact string match, numeric tolerance, or set equality',
+        },
+      },
+      required: ['expected', 'computed', 'comparison_type'],
     },
   },
 ];
@@ -259,7 +204,6 @@ function validateInputSize(input, algorithm) {
     }
   }
   if (algoInfo.renderer === 'table') {
-    // Check DP table dimensions based on algorithm
     if (algorithm === 'knapsack' && input?.items?.length > 8) {
       warnings.push(`${input.items.length} items would create a large DP table (max 8 for visualization).`);
     }
@@ -270,6 +214,29 @@ function validateInputSize(input, algorithm) {
   return warnings;
 }
 
+/**
+ * Compare two values for verification.
+ */
+function compareResults(expected, computed, type) {
+  switch (type) {
+    case 'numeric': {
+      const e = Number(expected);
+      const c = Number(computed);
+      return Math.abs(e - c) < 1e-6;
+    }
+    case 'set': {
+      const eSet = new Set(Array.isArray(expected) ? expected.map(String) : [String(expected)]);
+      const cSet = new Set(Array.isArray(computed) ? computed.map(String) : [String(computed)]);
+      if (eSet.size !== cSet.size) return false;
+      for (const v of eSet) if (!cSet.has(v)) return false;
+      return true;
+    }
+    case 'exact':
+    default:
+      return String(expected) === String(computed);
+  }
+}
+
 export async function startGuidedSession(session, problemText) {
   const { ws } = session;
 
@@ -278,11 +245,11 @@ export async function startGuidedSession(session, problemText) {
   const messages = [
     {
       role: 'user',
-      content: `Here is the problem the student wants to solve:\n\n${problemText}\n\nAnalyze this problem and call plan_guided_session with your analysis. Then guide the student through understanding and solving it.`,
+      content: `Here is the problem the student wants to solve:\n\n${problemText}\n\nBegin by reading the problem carefully. Start a conversation with the student to classify which algorithm applies — use send_options with the classification tree. Do NOT call classify_problem until you've had 2-3 exchanges with the student.`,
     },
   ];
 
-  let sessionPlan = null; // Store the plan from plan_guided_session
+  let sessionPlan = null;
 
   let continueLoop = true;
   while (continueLoop) {
@@ -292,8 +259,8 @@ export async function startGuidedSession(session, problemText) {
     try {
       response = await anthropic.messages.create({
         model: !sessionPlan
-          ? 'claude-opus-4-6'              // First turn: analysis + model contract
-          : 'claude-sonnet-4-5-20250929',  // Everything after: teaching
+          ? 'claude-opus-4-6'
+          : 'claude-sonnet-4-5-20250929',
         max_tokens: 4096,
         system: GUIDED_SYSTEM_PROMPT,
         tools: guidedTools,
@@ -308,6 +275,17 @@ export async function startGuidedSession(session, problemText) {
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {
+      // Check if there are queued student messages before ending
+      if (session.guidedMessageQueue && session.guidedMessageQueue.length > 0) {
+        const queuedMessages = session.guidedMessageQueue.splice(0);
+        for (const msg of queuedMessages) {
+          messages.push({
+            role: 'user',
+            content: `[STUDENT MESSAGE] ${msg}`,
+          });
+        }
+        continue;
+      }
       continueLoop = false;
       sendJSON(ws, { type: 'lesson_complete' });
       break;
@@ -322,12 +300,10 @@ export async function startGuidedSession(session, problemText) {
 
         let result;
 
-        if (block.name === 'plan_guided_session') {
-          // Handle plan_guided_session tool
+        if (block.name === 'classify_problem') {
           const plan = block.input;
           sessionPlan = plan;
 
-          // Validate target algorithm
           const validAlgorithms = Object.keys(ALGORITHMS);
           if (plan.is_in_scope && !validAlgorithms.includes(plan.target_algorithm)) {
             result = {
@@ -335,67 +311,173 @@ export async function startGuidedSession(session, problemText) {
               error: `Unknown algorithm: ${plan.target_algorithm}. Available: ${validAlgorithms.join(', ')}`,
             };
           } else {
-            // Validate input size if constructed_input is provided
-            const sizeWarnings = plan.constructed_input
-              ? validateInputSize(plan.constructed_input, plan.target_algorithm)
-              : [];
-
-            sendJSON(ws, { type: 'guided_phase', phase: 'identifying' });
-
-            // Display Model Contract as context panels
-            if (plan.model_contract) {
-              const contract = plan.model_contract;
-              sendJSON(ws, {
-                type: 'create_visualization',
-                panels: [],
-                context_panels: [
-                  {
-                    id: 'model_contract',
-                    type: 'key_value',
-                    title: 'Model Contract',
-                    initial_data: {
-                      layout: 'table',
-                      entries: [
-                        { key: 'State', value: contract.state_definition, status: 'default' },
-                        { key: 'Transitions', value: contract.transition_rules, status: 'default' },
-                        { key: 'Cost model', value: contract.cost_model, status: 'default' },
-                        { key: 'Constraints', value: contract.feasibility_constraints, status: 'default' },
-                      ],
-                    },
-                  },
-                  {
-                    id: 'assumptions',
-                    type: 'log',
-                    title: 'Assumptions to Verify',
-                    initial_data: {
-                      entries: (contract.assumptions_to_verify || []).map((a) => ({
-                        text: a,
-                        type: 'decision',
-                      })),
-                    },
-                  },
-                ],
-              });
-            }
-
             result = {
               success: true,
               message: plan.is_in_scope
-                ? `Plan accepted. Target algorithm: ${plan.target_algorithm}. The Model Contract and Assumptions panels are now visible to the student. Narrate the contract — walk through each field and ask the student if they agree before proceeding to hints. IMPORTANT: If the problem includes sample input/output, you MUST verify your final answer against it. A mismatch means your reduction is wrong — do not rationalize it.`
-                : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. The Model Contract is displayed. Guide the student accordingly.`,
-              size_warnings: sizeWarnings.length > 0 ? sizeWarnings : undefined,
+                ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
+                : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`,
             };
           }
+        } else if (block.name === 'update_graph') {
+          // Incremental graph construction
+          const input = block.input;
+          if (!session.currentGraph) {
+            session.currentGraph = {
+              nodes: [],
+              edges: [],
+              positions: {},
+              directed: input.directed !== undefined ? input.directed : true,
+            };
+          }
+
+          const graph = session.currentGraph;
+
+          // Remove nodes
+          if (input.remove_nodes) {
+            const removeSet = new Set(input.remove_nodes);
+            graph.nodes = graph.nodes.filter((n) => !removeSet.has(n.id));
+            graph.edges = graph.edges.filter(
+              (e) => !removeSet.has(e.source) && !removeSet.has(e.target)
+            );
+            for (const id of input.remove_nodes) {
+              delete graph.positions[id];
+            }
+          }
+
+          // Remove edges
+          if (input.remove_edges) {
+            for (const re of input.remove_edges) {
+              graph.edges = graph.edges.filter(
+                (e) => !(e.source === re.source && e.target === re.target)
+              );
+            }
+          }
+
+          // Add nodes
+          if (input.add_nodes) {
+            for (const node of input.add_nodes) {
+              if (!graph.nodes.some((n) => n.id === node.id)) {
+                graph.nodes.push({ id: node.id, label: node.label || node.id });
+              }
+            }
+          }
+
+          // Add edges
+          if (input.add_edges) {
+            for (const edge of input.add_edges) {
+              if (!graph.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
+                graph.edges.push(edge);
+              }
+            }
+          }
+
+          // Update directedness
+          if (input.directed !== undefined) {
+            graph.directed = input.directed;
+          }
+
+          // Auto-layout new nodes
+          graph.positions = layoutGrid(graph.nodes, graph.positions);
+
+          // Send updated graph to client
+          sendJSON(ws, { type: 'create_graph', graph });
+
+          result = {
+            success: true,
+            node_count: graph.nodes.length,
+            edge_count: graph.edges.length,
+            message: `Graph updated: ${graph.nodes.length} nodes, ${graph.edges.length} edges. Displayed to student.`,
+          };
+        } else if (block.name === 'show_canonical_example') {
+          const algo = block.input.algorithm;
+          const example = CANONICAL_EXAMPLES[algo];
+
+          if (!example) {
+            result = { success: false, error: `No canonical example for algorithm: ${algo}` };
+          } else {
+            try {
+              const runResult = runRegisteredAlgorithm(algo, example.input);
+              const algoInfo = ALGORITHMS[algo];
+              const contextPanels = getDefaultContextPanels(algo);
+
+              // Store trace on session
+              session.currentTrace = runResult.trace;
+              session.currentRenderer = runResult.renderer;
+              session.currentAlgorithm = algo;
+              session.mapperState = {};
+
+              // Auto-configure viz
+              if (algoInfo.renderer === 'graph') {
+                const graphData = example.input.graph || algoInfo.defaultInput?.graph;
+                if (graphData) {
+                  sendJSON(ws, { type: 'create_graph', graph: graphData });
+                  session.currentGraph = graphData;
+                }
+                if (contextPanels.length > 0) {
+                  sendJSON(ws, {
+                    type: 'create_visualization',
+                    panels: [],
+                    context_panels: contextPanels,
+                  });
+                }
+              } else {
+                sendJSON(ws, {
+                  type: 'create_visualization',
+                  panels: [{ renderer: algoInfo.renderer, config: {} }],
+                  context_panels: contextPanels,
+                });
+              }
+
+              result = {
+                success: true,
+                algorithm: algo,
+                description: example.description,
+                teaching_notes: example.teaching_notes,
+                trace: runResult.trace,
+                step_count: runResult.trace.length,
+                renderer: runResult.renderer,
+                context_panels: contextPanels.map((p) => p.id),
+                message: `Canonical example loaded for ${algo}. ${runResult.trace.length} trace steps available. Use emit_segment with trace_step_indices to narrate a brief refresher (5-8 segments). Teaching notes: ${example.teaching_notes}`,
+              };
+            } catch (err) {
+              result = { success: false, error: err.message };
+            }
+          }
+        } else if (block.name === 'verify_result') {
+          const { expected, computed, comparison_type } = block.input;
+          const matches = compareResults(expected, computed, comparison_type || 'exact');
+
+          // Send verification result to client
+          sendJSON(ws, {
+            type: 'verification_result',
+            expected,
+            computed,
+            matches,
+            comparison_type: comparison_type || 'exact',
+          });
+
+          result = {
+            success: true,
+            matches,
+            expected,
+            computed,
+            message: matches
+              ? 'Result matches expected output. The reduction is correct!'
+              : 'MISMATCH: Result does not match expected output. Your reduction has a bug. Re-examine your model contract assumptions and find the error. Tell the student: "Our answer doesn\'t match — my model has a bug. Let me find it."',
+          };
         } else if (block.name === 'send_options') {
-          // Handle send_options tool — send choices and wait for response
+          // Handle send_options — send choices and wait for response
           const { prompt, options } = block.input;
 
-          sendJSON(ws, { type: 'guided_options', prompt, options });
+          sendJSON(ws, { type: 'guided_options', prompt, options: block.input.options || [], mode: block.input.mode || 'mc', input_placeholder: block.input.input_placeholder });
 
           // TTS for the prompt
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
           await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn);
+
+          // Also send a guided_prompt so the student can type in the input field
+          sendJSON(ws, { type: 'guided_prompt', prompt });
 
           // Wait for student response with 2-minute timeout
           const responsePromise = new Promise((resolve) => {
@@ -410,15 +492,20 @@ export async function startGuidedSession(session, problemText) {
           session.guidedResponseResolver = null;
 
           if (raceResult === '__timeout__') {
-            // Student didn't respond in time
             sendJSON(ws, { type: 'clear_guided_options' });
             result = {
               student_response: null,
               timed_out: true,
               message: 'Student did not respond within 2 minutes. Give them a hint and reveal the answer.',
             };
+          } else if (raceResult === '__interrupted__') {
+            sendJSON(ws, { type: 'clear_guided_options' });
+            result = {
+              student_response: null,
+              interrupted: true,
+              message: 'Student interrupted with a question. The interrupt will be handled next.',
+            };
           } else {
-            // Student responded
             const studentResponse = session.guidedResponse;
             session.guidedResponse = null;
             sendJSON(ws, { type: 'clear_guided_options' });
@@ -430,12 +517,11 @@ export async function startGuidedSession(session, problemText) {
             };
           }
         } else if (block.name === 'run_algorithm') {
-          // Send transition message before running algorithm
           sendJSON(ws, { type: 'guided_transition' });
           sendJSON(ws, { type: 'guided_phase', phase: 'executing' });
           result = await handleToolCall(session, block, null, sessionPlan?.target_algorithm, null);
         } else {
-          // Delegate all other tools (emit_segment, create_graph, etc.) to shared handler
+          // Delegate all other tools to shared handler
           result = await handleToolCall(session, block, null, sessionPlan?.target_algorithm, null);
         }
 
@@ -445,7 +531,7 @@ export async function startGuidedSession(session, problemText) {
           content: JSON.stringify(result),
         });
 
-        // Check for pause after emit_segment (same as agent.js)
+        // Check for pause after emit_segment
         if (block.name === 'emit_segment' && session.pauseFlag) {
           session.pauseFlag = false;
           sendJSON(ws, { type: 'paused' });
@@ -458,13 +544,12 @@ export async function startGuidedSession(session, problemText) {
           }
         }
 
-        // Check for interrupt after emit_segment (same as agent.js)
+        // Check for interrupt after emit_segment
         if (block.name === 'emit_segment' && session.interruptFlag) {
           const interruptData = session.interruptFlag;
           session.interruptFlag = null;
           interrupted = true;
 
-          // Add remaining tool results for unprocessed blocks
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;
             if (toolResults.some((r) => r.tool_use_id === remaining.id)) continue;
@@ -487,6 +572,19 @@ export async function startGuidedSession(session, problemText) {
 
       if (!interrupted && toolResults.length > 0) {
         messages.push({ role: 'user', content: toolResults });
+      }
+
+      // After processing tools, drain guided message queue
+      if (!interrupted && session.guidedMessageQueue && session.guidedMessageQueue.length > 0) {
+        const queuedMessages = session.guidedMessageQueue.splice(0);
+        for (const msg of queuedMessages) {
+          // Add student message to transcript
+          sendJSON(ws, { type: 'add_student_message', text: msg });
+          messages.push({
+            role: 'user',
+            content: `[STUDENT MESSAGE] ${msg}`,
+          });
+        }
       }
     }
   }

@@ -77,6 +77,7 @@ export function dijkstra(graph, sourceId) {
 
   trace.push({
     type: 'init',
+    pseudocode_line: 0,
     description: `Initialize distances: source ${sourceId} = 0, all others = Infinity`,
     distances: { ...dist },
     previous: { ...prev },
@@ -90,6 +91,7 @@ export function dijkstra(graph, sourceId) {
 
     trace.push({
       type: 'visit_node',
+      pseudocode_line: 4,
       node: current,
       distance: dist[current],
       description: `Visit node ${current} with distance ${dist[current]}`,
@@ -111,6 +113,7 @@ export function dijkstra(graph, sourceId) {
     for (const { target, weight } of adj[current]) {
       trace.push({
         type: 'examine_edge',
+        pseudocode_line: 6,
         from: current,
         to: target,
         weight,
@@ -139,6 +142,7 @@ export function dijkstra(graph, sourceId) {
 
         trace.push({
           type: 'relax',
+          pseudocode_line: 7,
           from: current,
           to: target,
           new_distance: newDist,
@@ -167,6 +171,7 @@ export function dijkstra(graph, sourceId) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 8,
     distances: { ...dist },
     previous: { ...prev },
     paths,
@@ -196,6 +201,7 @@ export function bfs(graph, sourceId) {
 
   trace.push({
     type: 'init',
+    pseudocode_line: 0,
     description: `BFS starting from node ${sourceId}. Add ${sourceId} to queue.`,
     queue: [...queue],
     visited: [...visited],
@@ -206,6 +212,7 @@ export function bfs(graph, sourceId) {
 
     trace.push({
       type: 'visit_node',
+      pseudocode_line: 3,
       node: current,
       description: `Dequeue and visit node ${current}`,
       queue: [...queue],
@@ -215,6 +222,7 @@ export function bfs(graph, sourceId) {
     for (const neighbor of adj[current]) {
       trace.push({
         type: 'examine_edge',
+        pseudocode_line: 4,
         from: current,
         to: neighbor,
         description: `Examine edge ${current} → ${neighbor}${visited.has(neighbor) ? ' (already visited)' : ''}`,
@@ -227,6 +235,7 @@ export function bfs(graph, sourceId) {
 
         trace.push({
           type: 'discover',
+          pseudocode_line: 6,
           node: neighbor,
           from: current,
           description: `Discover node ${neighbor} via ${current}. Add to queue.`,
@@ -239,6 +248,7 @@ export function bfs(graph, sourceId) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 2,
     visited: [...visited],
     parent,
     description: 'BFS complete. All reachable nodes visited.',

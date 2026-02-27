@@ -196,6 +196,23 @@ const CYTOSCAPE_STYLE = [
     },
   },
   {
+    selector: '.tapped',
+    style: {
+      'border-color': '#60a5fa',
+      'border-width': 4,
+      'transition-duration': '0.15s',
+    },
+  },
+  {
+    selector: 'edge.tapped',
+    style: {
+      'line-color': '#60a5fa',
+      'target-arrow-color': '#60a5fa',
+      width: 4,
+      'transition-duration': '0.15s',
+    },
+  },
+  {
     selector: '.residual-fwd',
     style: {
       'line-color': '#06b6d4',
@@ -251,6 +268,7 @@ export default function GraphRenderer({
   rendererId = 'graph',
   algorithm,
   residualEdges,
+  onElementClick,
 }) {
   const containerRef = useRef(null);
   const cyRef = useRef(null);
@@ -291,6 +309,36 @@ export default function GraphRenderer({
       cyRef.current = null;
     };
   }, [rendererId]);
+
+  // Phase 7: Tap handlers for clickable graph element references
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy || !onElementClick) return;
+
+    const handleNodeTap = (evt) => {
+      const node = evt.target;
+      const refText = `[${node.id()}]`;
+      onElementClick(refText);
+      node.addClass('tapped');
+      setTimeout(() => node.removeClass('tapped'), 300);
+    };
+
+    const handleEdgeTap = (evt) => {
+      const edge = evt.target;
+      const refText = `[${edge.source().id()}->${edge.target().id()}]`;
+      onElementClick(refText);
+      edge.addClass('tapped');
+      setTimeout(() => edge.removeClass('tapped'), 300);
+    };
+
+    cy.on('tap', 'node', handleNodeTap);
+    cy.on('tap', 'edge', handleEdgeTap);
+
+    return () => {
+      cy.off('tap', 'node', handleNodeTap);
+      cy.off('tap', 'edge', handleEdgeTap);
+    };
+  }, [onElementClick]);
 
   // Load graph data
   useEffect(() => {

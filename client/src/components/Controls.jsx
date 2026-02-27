@@ -1,11 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import GuidedOptions from './GuidedOptions';
 
-export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode, guidedOptions, onGuidedResponse }) {
+export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
   const [question, setQuestion] = useState('');
   const [pausePending, setPausePending] = useState(false);
   const { isListening, transcript, isSupported, start, stop, clearTranscript } = useSpeechToText();
+  const inputRef = useRef(null);
+
+  // Register input ref for clickable graph element insertion (Phase 7)
+  useEffect(() => {
+    if (registerInsertRef) {
+      registerInsertRef(inputRef);
+    }
+  }, [registerInsertRef]);
 
   // Populate input field when speech transcript updates
   useEffect(() => {
@@ -24,10 +32,39 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!question.trim()) return;
-    onInterrupt(question.trim());
+    if (mode === 'guided' && onGuidedMessage) {
+      onGuidedMessage(question.trim());
+    } else {
+      onInterrupt(question.trim());
+    }
     setQuestion('');
     clearTranscript();
   };
+
+  const insertAtCursor = useCallback((text) => {
+    const el = inputRef.current;
+    if (!el) {
+      setQuestion((prev) => prev + text);
+      return;
+    }
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const current = question;
+    const newValue = current.slice(0, start) + text + current.slice(end);
+    setQuestion(newValue);
+    // Restore cursor position after React re-renders
+    requestAnimationFrame(() => {
+      el.selectionStart = el.selectionEnd = start + text.length;
+      el.focus();
+    });
+  }, [question]);
+
+  // Expose insertAtCursor for external use (Phase 7)
+  useEffect(() => {
+    if (inputRef.current) {
+      inputRef.current._insertAtCursor = insertAtCursor;
+    }
+  }, [insertAtCursor]);
 
   const handlePause = () => {
     setPausePending(true);
@@ -43,6 +80,12 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
   };
 
   const showInput = status === 'teaching' || status === 'paused' || status === 'complete';
+  const isGuided = mode === 'guided';
+  const placeholder = isGuided
+    ? 'Type your thoughts...'
+    : status === 'complete'
+      ? 'Any questions about the lesson?'
+      : 'Ask a question...';
 
   return (
     <div className="border-t border-gray-800 px-4 py-3 space-y-3">
@@ -50,16 +93,24 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
         <GuidedOptions
           options={guidedOptions.options}
           prompt={guidedOptions.prompt}
+          mode={guidedOptions.mode}
+          inputPlaceholder={guidedOptions.input_placeholder}
           onSelect={onGuidedResponse}
         />
+      )}
+      {isGuided && guidedPrompt && !guidedOptions && (
+        <div className="text-sm text-gray-400 italic px-1">
+          {guidedPrompt}
+        </div>
       )}
       {showInput && (
         <form onSubmit={handleSubmit} className="flex gap-2">
           <input
+            ref={inputRef}
             type="text"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder={status === 'complete' ? "Any questions about the lesson?" : "Ask a question..."}
+            placeholder={placeholder}
             className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 ${
               isListening ? 'border-red-500' : 'border-gray-700'
             }`}
@@ -89,7 +140,7 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
             type="submit"
             className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
           >
-            Ask
+            {isGuided ? 'Send' : 'Ask'}
           </button>
         </form>
       )}

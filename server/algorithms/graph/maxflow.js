@@ -42,13 +42,23 @@ export function maxflow(graph, source, sink) {
     adj[id] = new Set();
   }
 
+  const directed = graph.directed !== false;
+
   for (const e of edges) {
-    const key = `${e.source}->${e.target}`;
-    const revKey = `${e.target}->${e.source}`;
-    capacity[key] = e.weight;
-    if (!capacity[revKey]) capacity[revKey] = 0;
-    flow[key] = 0;
-    if (!flow[revKey]) flow[revKey] = 0;
+    const fwd = `${e.source}->${e.target}`;
+    const rev = `${e.target}->${e.source}`;
+
+    if (directed) {
+      capacity[fwd] = e.weight;
+      if (!capacity[rev]) capacity[rev] = 0;
+    } else {
+      // Undirected: both directions get the full capacity
+      capacity[fwd] = (capacity[fwd] || 0) + e.weight;
+      capacity[rev] = (capacity[rev] || 0) + e.weight;
+    }
+
+    if (!flow[fwd]) flow[fwd] = 0;
+    if (!flow[rev]) flow[rev] = 0;
     adj[e.source].add(e.target);
     adj[e.target].add(e.source); // reverse edge for residual graph
   }
@@ -125,6 +135,7 @@ export function maxflow(graph, source, sink) {
   // Init step
   trace.push({
     type: 'init',
+    pseudocode_line: 0,
     description: 'Initialize all flows to 0',
     edge_labels: getEdgeLabels(),
     total_flow: 0,
@@ -139,6 +150,7 @@ export function maxflow(graph, source, sink) {
       // No more augmenting paths
       trace.push({
         type: 'no_more_paths',
+        pseudocode_line: 1,
         description: 'No more augmenting paths found in residual graph',
         edge_labels: getEdgeLabels(),
         total_flow: totalFlow,
@@ -170,6 +182,7 @@ export function maxflow(graph, source, sink) {
 
     trace.push({
       type: 'find_augmenting_path',
+      pseudocode_line: 2,
       description: `BFS found augmenting path: ${path.join(' → ')} with bottleneck capacity ${bottleneck}`,
       path,
       bottleneck,
@@ -210,6 +223,7 @@ export function maxflow(graph, source, sink) {
 
     trace.push({
       type: 'push_flow',
+      pseudocode_line: 4,
       description: `Pushed ${bottleneck} units of flow along path. Total flow: ${totalFlow}`,
       path,
       bottleneck,
@@ -226,6 +240,7 @@ export function maxflow(graph, source, sink) {
     if (iteration === 1) {
       trace.push({
         type: 'residual_concept_freeze',
+        pseudocode_line: 5,
         description: 'Concept freeze: examining the residual graph after first augmentation',
         edge_labels: getEdgeLabels(),
         total_flow: totalFlow,
@@ -259,6 +274,7 @@ export function maxflow(graph, source, sink) {
 
   trace.push({
     type: 'compute_min_cut',
+    pseudocode_line: 7,
     description: `Min cut separates {${sourceSide.join(', ')}} from {${sinkSide.join(', ')}}. Cut capacity = ${minCutValue}`,
     source_side: sourceSide,
     sink_side: sinkSide,
@@ -279,6 +295,7 @@ export function maxflow(graph, source, sink) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 6,
     description: `Maximum flow = ${totalFlow}, which equals the minimum cut = ${minCutValue} (Max-Flow Min-Cut Theorem)`,
     max_flow: totalFlow,
     min_cut: minCutValue,

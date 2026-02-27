@@ -7,6 +7,7 @@ import { runRegisteredAlgorithm, ALGORITHMS } from './algorithms/registry.js';
 import { synthesizeAndStream } from './tts.js';
 import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
+import { layoutGrid } from './graphLayout.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -59,20 +60,30 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
    - "Remember when we skipped the guitar at capacity 3? Now with the iPhone, we face a similar choice — but this time the numbers are closer."
    - "This is the same relaxation step we saw with node B, but now the new path is actually shorter."
 
-7. CHECKPOINT THE LEARNER'S UNDERSTANDING
-   Insert 2-3 lightweight comprehension checks per lesson at natural concept transitions
-   using the send_options tool. Place them:
-   - After explaining the core idea / key insight
-   - After the first landmark step (to confirm the pattern clicked)
-   - Before the final summary (to test retention)
+7. ACTIVE LEARNING — PREDICT BEFORE REVEAL
+   Every major reasoning step should follow: predict → verify → explain.
 
-   Keep questions quick and conceptual:
-   - "What would happen if we relaxed this edge instead?"
-   - "Which data structure maintains the shortest-distance invariant?"
-   - "If we added a heavier item here, would the optimal value change?"
+   a) OPEN-ENDED PREDICTION FIRST
+      At key decision points, ask the learner to PREDICT the outcome before showing it:
+      - send_options({ mode: 'open_ended', prompt: "What's the bottleneck capacity of this path?", input_placeholder: "Enter a number" })
+      - send_options({ mode: 'open_ended', prompt: "Which node does Dijkstra visit next?", input_placeholder: "Node name" })
+      Keep prompts short and constrained (one number, one name, one edge).
 
-   These are cognitive nudges, NOT an exam. If the learner gets it wrong, give a brief
-   one-sentence clarifying explanation and move on — do NOT re-ask or belabor the point.
+   b) MC FALLBACK IF NEEDED
+      If the learner's response is incorrect or vague, follow up with MC:
+      - send_options({ mode: 'mc', prompt: "Not quite — which of these is the bottleneck?", options: [...] })
+      Do NOT immediately reveal the answer. Give one structured chance.
+
+   c) WHEN TO USE WHAT
+      - Major reasoning transitions → open_ended first
+      - Micro concept checks (yes/no, this-or-that) → mc directly
+      - Confirmation after explanation → mc directly
+
+   d) PACING CONSTRAINTS
+      - Keep ALL narration segments short (2-3 sentences max)
+      - Insert 3-5 interaction points per lesson at natural decision moments
+      - Never go more than 3 segments without learner interaction
+      - After interaction, give brief (1-sentence) feedback and move on
 
 8. END WITH THE "SO WHAT"
    Don't just state the result — connect it back to the motivation:
@@ -486,6 +497,41 @@ export async function startAgentSession(session, algorithm, graph, source) {
         }
       }
 
+      // Check for interrupt after any tool (e.g. send_options resolved with __interrupted__)
+      if (!interrupted && session.interruptFlag) {
+        const interrupt = session.interruptFlag;
+        session.interruptFlag = null;
+        interrupted = true;
+
+        session._savedGraphState = {
+          graph: session.currentGraph,
+          trace: session.currentTrace,
+          algorithm: session.currentAlgorithm,
+          renderer: session.currentRenderer,
+          mapperState: { ...session.mapperState },
+          emittedTraceSteps: session._emittedTraceSteps ? [...session._emittedTraceSteps] : [],
+        };
+
+        // Add remaining tool results for any unprocessed tool_use blocks
+        for (const remaining of response.content) {
+          if (remaining.type !== 'tool_use') continue;
+          if (toolResults.some((r) => r.tool_use_id === remaining.id)) continue;
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: remaining.id,
+            content: JSON.stringify({ skipped: true, reason: 'learner interrupt' }),
+          });
+        }
+
+        toolResults.push({
+          type: 'text',
+          text: `[LEARNER INTERRUPT] The learner has a question: "${interrupt.question}". Please use respond_to_interrupt to answer their question, then continue teaching from where you left off.`,
+        });
+
+        messages.push({ role: 'user', content: [...toolResults] });
+        session._useOpus = true;
+      }
+
       if (!interrupted && toolResults.length > 0) {
         messages.push({ role: 'user', content: toolResults });
 
@@ -629,14 +675,67 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
   switch (name) {
     case 'create_graph': {
       const graphData = {
-        nodes: input.nodes || graph.nodes,
-        edges: input.edges || graph.edges,
-        positions: input.positions || graph.positions,
-        directed: input.directed !== undefined ? input.directed : (graph.directed !== undefined ? graph.directed : true),
+        nodes: input.nodes || graph?.nodes || [],
+        edges: input.edges || graph?.edges || [],
+        positions: input.positions || graph?.positions,
+        directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
       };
+      // Auto-layout if no positions provided
+      if (!graphData.positions || Object.keys(graphData.positions).length === 0) {
+        graphData.positions = layoutGrid(graphData.nodes, {});
+      }
       sendJSON(ws, { type: 'create_graph', graph: graphData });
       session.currentGraph = graphData;
       return { success: true, message: 'Graph created and displayed to learner.' };
+    }
+
+    case 'update_graph': {
+      if (!session.currentGraph) {
+        session.currentGraph = {
+          nodes: [],
+          edges: [],
+          positions: {},
+          directed: input.directed !== undefined ? input.directed : true,
+        };
+      }
+      const g = session.currentGraph;
+
+      if (input.remove_nodes) {
+        const removeSet = new Set(input.remove_nodes);
+        g.nodes = g.nodes.filter((n) => !removeSet.has(n.id));
+        g.edges = g.edges.filter((e) => !removeSet.has(e.source) && !removeSet.has(e.target));
+        for (const id of input.remove_nodes) delete g.positions[id];
+      }
+      if (input.remove_edges) {
+        for (const re of input.remove_edges) {
+          g.edges = g.edges.filter((e) => !(e.source === re.source && e.target === re.target));
+        }
+      }
+      if (input.add_nodes) {
+        for (const node of input.add_nodes) {
+          if (!g.nodes.some((n) => n.id === node.id)) {
+            g.nodes.push({ id: node.id, label: node.label || node.id });
+          }
+        }
+      }
+      if (input.add_edges) {
+        for (const edge of input.add_edges) {
+          if (!g.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
+            g.edges.push(edge);
+          }
+        }
+      }
+      if (input.directed !== undefined) g.directed = input.directed;
+
+      g.positions = layoutGrid(g.nodes, g.positions);
+      sendJSON(ws, { type: 'create_graph', graph: g });
+
+      return {
+        success: true,
+        node_count: g.nodes.length,
+        edge_count: g.edges.length,
+        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges.`,
+      };
     }
 
     case 'create_visualization': {
@@ -851,7 +950,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
     case 'send_options': {
       const { prompt, options } = input;
 
-      sendJSON(ws, { type: 'guided_options', prompt, options });
+      sendJSON(ws, { type: 'guided_options', prompt, options: input.options || [], mode: input.mode || 'mc', input_placeholder: input.input_placeholder });
 
       // TTS the prompt
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
@@ -876,6 +975,13 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           student_response: null,
           timed_out: true,
           message: 'Learner did not respond within 2 minutes. Give a brief clarification and move on.',
+        };
+      } else if (raceResult === '__interrupted__') {
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          interrupted: true,
+          message: 'Learner interrupted with a question. The interrupt will be handled next.',
         };
       } else {
         const studentResponse = session.guidedResponse;

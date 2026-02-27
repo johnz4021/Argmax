@@ -4,13 +4,19 @@
  * so the agent doesn't need to specify them.
  */
 
+import { PSEUDOCODE } from './pseudocode.js';
+
 const PANEL_DEFAULTS = {
   // --- Graph algorithms ---
   dijkstra: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.dijkstra } },
     { id: 'distances', type: 'key_value', title: 'Distances' },
     { id: 'pq', type: 'collection', title: 'Priority Queue' },
   ],
   bfs: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.bfs } },
     { id: 'visited', type: 'collection', title: 'Visited' },
     { id: 'queue', type: 'collection', title: 'Queue' },
   ],
@@ -18,6 +24,8 @@ const PANEL_DEFAULTS = {
     { id: 'visited', type: 'collection', title: 'Visited' },
   ],
   kruskal: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.kruskal } },
     { id: 'mst_weight', type: 'key_value', title: 'MST' },
     { id: 'decisions', type: 'log', title: 'Edge Decisions' },
   ],
@@ -26,6 +34,8 @@ const PANEL_DEFAULTS = {
     { id: 'decisions', type: 'log', title: 'Decisions' },
   ],
   maxflow: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.maxflow } },
     { id: 'flow_status', type: 'key_value', title: 'Flow Status' },
     { id: 'residual', type: 'key_value', title: 'Residual Capacities' },
     { id: 'aug_paths', type: 'log', title: 'Augmenting Paths' },
@@ -50,11 +60,15 @@ const PANEL_DEFAULTS = {
 
   // --- Searching ---
   binary_search: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.binary_search } },
     { id: 'bounds', type: 'key_value', title: 'Search Bounds' },
   ],
 
   // --- DP algorithms ---
   knapsack: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.knapsack } },
     { id: 'items', type: 'key_value', title: 'Items' },
     { id: 'expression', type: 'expression', title: 'Recurrence' },
     { id: 'decisions', type: 'log', title: 'Decisions' },
@@ -89,6 +103,11 @@ const PANEL_DEFAULTS = {
   ],
   queue_operations: [
     { id: 'stats', type: 'key_value', title: 'Queue Info' },
+  ],
+
+  // --- Math ---
+  gcd: [
+    { id: 'stats', type: 'key_value', title: 'GCD Progress' },
   ],
 };
 

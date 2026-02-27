@@ -4,6 +4,7 @@ import { binarySearch } from './searching/index.js';
 import { knapsack, lcs, editDistance, coinChange } from './dp/index.js';
 import { linkedListReversal, stackOperations, queueOperations } from './linked/index.js';
 import { bstInsert, heapOperations } from './tree/index.js';
+import { gcd } from './math/gcd.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -177,6 +178,12 @@ export const ALGORITHMS = {
         { type: 'peek' },
       ],
     },
+  },
+  gcd: {
+    run: (input) => gcd(input.a, input.b),
+    renderer: 'array',
+    category: 'Math',
+    defaultInput: { a: 48, b: 18 },
   },
 };
 

@@ -4,6 +4,7 @@ export function binarySearch(arr, target) {
 
   trace.push({
     type: 'init',
+    pseudocode_line: 0,
     description: `Binary search for ${target} in sorted array of ${data.length} elements`,
     array: [...data],
     target,
@@ -17,6 +18,7 @@ export function binarySearch(arr, target) {
 
     trace.push({
       type: 'check_mid',
+      pseudocode_line: 2,
       left,
       right,
       mid,
@@ -28,6 +30,7 @@ export function binarySearch(arr, target) {
     if (data[mid] === target) {
       trace.push({
         type: 'found',
+        pseudocode_line: 3,
         index: mid,
         value: data[mid],
         description: `Found ${target} at index ${mid}!`,
@@ -35,6 +38,7 @@ export function binarySearch(arr, target) {
 
       trace.push({
         type: 'result',
+        pseudocode_line: 3,
         found: true,
         index: mid,
         description: `Binary search complete. ${target} found at index ${mid}.`,
@@ -45,6 +49,7 @@ export function binarySearch(arr, target) {
     if (data[mid] < target) {
       trace.push({
         type: 'eliminate_left',
+        pseudocode_line: 5,
         mid,
         description: `${data[mid]} < ${target}: eliminate left half. New range [${mid + 1}..${right}]`,
       });
@@ -52,6 +57,7 @@ export function binarySearch(arr, target) {
     } else {
       trace.push({
         type: 'eliminate_right',
+        pseudocode_line: 7,
         mid,
         description: `${data[mid]} > ${target}: eliminate right half. New range [${left}..${mid - 1}]`,
       });
@@ -61,6 +67,7 @@ export function binarySearch(arr, target) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 1,
     found: false,
     description: `Binary search complete. ${target} not found in the array.`,
   });

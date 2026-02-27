@@ -337,9 +337,65 @@ export const tools = [
     },
   },
   {
+    name: 'update_graph',
+    description:
+      'Incrementally modify the current graph. Add or remove nodes and edges. Nodes are auto-positioned if no positions exist.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        add_nodes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              label: { type: 'string' },
+            },
+            required: ['id'],
+          },
+          description: 'Nodes to add',
+        },
+        add_edges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              source: { type: 'string' },
+              target: { type: 'string' },
+              weight: { type: 'number' },
+            },
+            required: ['source', 'target'],
+          },
+          description: 'Edges to add',
+        },
+        remove_nodes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Node IDs to remove',
+        },
+        remove_edges: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              source: { type: 'string' },
+              target: { type: 'string' },
+            },
+            required: ['source', 'target'],
+          },
+          description: 'Edges to remove',
+        },
+        directed: {
+          type: 'boolean',
+          description: 'Whether the graph is directed (default true)',
+        },
+      },
+    },
+  },
+  {
     name: 'send_options',
     description:
-      'Send clickable multiple-choice options to the learner and wait for their response. Use this for lightweight comprehension checks at concept transitions during the lesson. The tool blocks until the learner responds.',
+      'Send an interaction prompt to the learner and wait for their response. Supports two modes: "mc" (default) shows clickable multiple-choice buttons, "open_ended" shows a text input for free-form predictions. Use this for comprehension checks and active recall at concept transitions.',
     input_schema: {
       type: 'object',
       properties: {
@@ -357,10 +413,19 @@ export const tools = [
             },
             required: ['id', 'label'],
           },
-          description: 'Clickable options for the learner to choose from',
+          description: 'Clickable options for the learner to choose from (required for mc mode)',
+        },
+        mode: {
+          type: 'string',
+          enum: ['open_ended', 'mc'],
+          description: 'open_ended = text input for prediction, mc = multiple choice buttons (default: mc)',
+        },
+        input_placeholder: {
+          type: 'string',
+          description: 'Placeholder text for the input field (open_ended mode)',
         },
       },
-      required: ['prompt', 'options'],
+      required: ['prompt'],
     },
   },
 ];

@@ -31,6 +31,7 @@ wss.on('connection', (ws) => {
     speedMultiplier: 1,
     guidedResponse: null,
     guidedResponseResolver: null,
+    guidedMessageQueue: [],
   };
   sessions.set(sessionId, session);
   console.log(`[WS] Client connected: ${sessionId}`);
@@ -89,6 +90,18 @@ wss.on('connection', (ws) => {
           break;
         }
 
+        case 'guided_message': {
+          if (!session.active) return;
+          session.guidedMessageQueue.push(msg.text);
+          // If the agent is waiting for a response (send_options), resolve it with the freeform text
+          if (session.guidedResponseResolver) {
+            session.guidedResponse = { text: msg.text, timestamp: Date.now() };
+            session.guidedResponseResolver();
+            session.guidedResponseResolver = null;
+          }
+          break;
+        }
+
         case 'interrupt': {
           if (!session.active) return;
           session.interruptFlag = {
@@ -96,6 +109,11 @@ wss.on('connection', (ws) => {
             timestamp: Date.now(),
           };
           console.log(`[WS] Interrupt queued: "${msg.question}"`);
+          // Unblock guided response promise if waiting
+          if (session.guidedResponseResolver) {
+            session.guidedResponseResolver('__interrupted__');
+            session.guidedResponseResolver = null;
+          }
           break;
         }
 

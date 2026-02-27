@@ -15,6 +15,7 @@ const initialState = {
   mode: 'direct',            // 'direct' | 'guided'
   guidedPhase: null,          // 'analyzing' | 'identifying' | 'modeling' | 'executing' | 'verifying' | null
   guidedOptions: null,        // null | { prompt, options: [{ id, label }] }
+  guidedPrompt: null,         // current prompt text for the input field in guided mode
 };
 
 /**
@@ -146,7 +147,7 @@ function reducer(state, action) {
       return {
         ...state,
         contextPanels: state.contextPanels.map((p) =>
-          p.id === action.panel_id ? { ...p, data: action.data } : p
+          p.id === action.panel_id ? { ...p, data: { ...p.data, ...action.data } } : p
         ),
       };
 
@@ -168,10 +169,44 @@ function reducer(state, action) {
       return { ...state, guidedPhase: action.phase };
 
     case 'GUIDED_OPTIONS':
-      return { ...state, guidedOptions: { prompt: action.prompt, options: action.options } };
+      return { ...state, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder } };
 
     case 'CLEAR_GUIDED_OPTIONS':
       return { ...state, guidedOptions: null };
+
+    case 'ADD_GUIDED_ANSWER':
+      return { ...state, segments: [...state.segments, { id: 'ga_' + Date.now(), narration: action.text, type: 'guided_answer', active: false }] };
+
+    case 'GUIDED_PROMPT':
+      return { ...state, guidedPrompt: action.prompt };
+
+    case 'ADD_STUDENT_MESSAGE':
+      return {
+        ...state,
+        segments: [
+          ...state.segments,
+          { id: 'sm_' + Date.now(), narration: action.text, type: 'student_message', active: false },
+        ],
+      };
+
+    case 'VERIFICATION_RESULT':
+      return {
+        ...state,
+        segments: [
+          ...state.segments,
+          {
+            id: 'vr_' + Date.now(),
+            narration: action.matches
+              ? `Result matches expected output (${action.expected}).`
+              : `Mismatch: expected ${action.expected}, got ${action.computed}.`,
+            type: 'verification',
+            matches: action.matches,
+            expected: action.expected,
+            computed: action.computed,
+            active: false,
+          },
+        ],
+      };
 
     case 'GUIDED_TRANSITION':
       return { ...state, status: 'teaching', guidedPhase: 'executing' };
@@ -251,10 +286,27 @@ export function useTutorState() {
         dispatch({ type: 'GUIDED_PHASE', phase: msg.phase });
         break;
       case 'guided_options':
-        dispatch({ type: 'GUIDED_OPTIONS', prompt: msg.prompt, options: msg.options });
+        dispatch({ type: 'GUIDED_OPTIONS', prompt: msg.prompt, options: msg.options, mode: msg.mode, input_placeholder: msg.input_placeholder });
         break;
       case 'clear_guided_options':
         dispatch({ type: 'CLEAR_GUIDED_OPTIONS' });
+        break;
+      case 'add_guided_answer':
+        dispatch({ type: 'ADD_GUIDED_ANSWER', text: msg.text });
+        break;
+      case 'guided_prompt':
+        dispatch({ type: 'GUIDED_PROMPT', prompt: msg.prompt });
+        break;
+      case 'add_student_message':
+        dispatch({ type: 'ADD_STUDENT_MESSAGE', text: msg.text });
+        break;
+      case 'verification_result':
+        dispatch({
+          type: 'VERIFICATION_RESULT',
+          matches: msg.matches,
+          expected: msg.expected,
+          computed: msg.computed,
+        });
         break;
       case 'guided_transition':
         dispatch({ type: 'GUIDED_TRANSITION' });

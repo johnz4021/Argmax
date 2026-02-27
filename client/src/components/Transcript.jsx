@@ -28,6 +28,14 @@ export default function Transcript({ segments }) {
                 ? 'bg-blue-900/30 border border-blue-800 text-blue-200'
                 : seg.type === 'answer'
                 ? 'bg-purple-900/30 border border-purple-800 text-purple-200'
+                : seg.type === 'guided_answer'
+                ? 'bg-green-900/30 border border-green-800 text-green-200'
+                : seg.type === 'student_message'
+                ? 'bg-emerald-900/30 border border-emerald-800 text-emerald-200'
+                : seg.type === 'verification'
+                ? seg.matches
+                  ? 'bg-green-900/40 border border-green-700 text-green-200'
+                  : 'bg-red-900/40 border border-red-700 text-red-200'
                 : seg.active
                 ? 'bg-gray-800 text-gray-100'
                 : 'text-gray-300'
@@ -38,6 +46,17 @@ export default function Transcript({ segments }) {
             )}
             {seg.type === 'answer' && (
               <span className="text-xs text-purple-400 font-medium block mb-1">Argmax:</span>
+            )}
+            {seg.type === 'guided_answer' && (
+              <span className="text-xs text-green-400 font-medium block mb-1">Your answer:</span>
+            )}
+            {seg.type === 'student_message' && (
+              <span className="text-xs text-emerald-400 font-medium block mb-1">You:</span>
+            )}
+            {seg.type === 'verification' && (
+              <span className={`text-xs font-medium block mb-1 ${seg.matches ? 'text-green-400' : 'text-red-400'}`}>
+                {seg.matches ? '\u2713 Verified' : '\u2717 Mismatch'}
+              </span>
             )}
             {seg.narration}
             {seg.active && (

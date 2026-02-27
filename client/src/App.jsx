@@ -14,6 +14,7 @@ import { initContextManager, destroyContextManager } from './lib/contextManager'
 export default function App() {
   const { state, processMessage, interrupt, reset, dispatchContext } = useTutorState();
   const audioPlayer = useAudioPlayer();
+  const insertRefHolder = useRef(null);
 
   const contextPanelsRef = useRef(state.contextPanels);
   contextPanelsRef.current = state.contextPanels;
@@ -110,9 +111,25 @@ export default function App() {
   );
 
   const handleGuidedResponse = useCallback(
-    (optionId) => {
-      send({ type: 'guided_response', optionId });
+    (response) => {
+      const displayText = response.text || response.label || String(response);
+      processMessage({ type: 'add_guided_answer', text: displayText });
+      if (typeof response === 'object' && response.text) {
+        send({ type: 'guided_response', text: response.text });
+      } else if (typeof response === 'object' && response.optionId) {
+        send({ type: 'guided_response', optionId: response.optionId });
+      } else {
+        send({ type: 'guided_response', optionId: response });
+      }
       processMessage({ type: 'clear_guided_options' });
+    },
+    [send, processMessage]
+  );
+
+  const handleGuidedMessage = useCallback(
+    (text) => {
+      processMessage({ type: 'add_student_message', text });
+      send({ type: 'guided_message', text });
     },
     [send, processMessage]
   );
@@ -129,10 +146,11 @@ export default function App() {
   const handleInterrupt = useCallback(
     (question) => {
       interrupt(question);
+      processMessage({ type: 'clear_guided_options' });
       send({ type: 'interrupt', question });
       send({ type: 'resume' });
     },
-    [send, interrupt]
+    [send, interrupt, processMessage]
   );
 
   const handleRestart = useCallback(() => {
@@ -146,6 +164,18 @@ export default function App() {
     },
     [send]
   );
+
+  // Phase 7: Clickable graph element references
+  const handleElementClick = useCallback((refText) => {
+    const inputEl = insertRefHolder.current?.current;
+    if (inputEl && inputEl._insertAtCursor) {
+      inputEl._insertAtCursor(refText);
+    }
+  }, []);
+
+  const registerInsertRef = useCallback((ref) => {
+    insertRefHolder.current = ref;
+  }, []);
 
   const showSelector = state.status === 'idle' || state.status === 'error';
 
@@ -191,6 +221,7 @@ export default function App() {
                   segmentCount={state.segmentCount}
                   algorithm={state.algorithm}
                   residualEdges={state.latestResidualEdges}
+                  onElementClick={handleElementClick}
                 />
               ) : (
                 <GraphRenderer
@@ -200,6 +231,7 @@ export default function App() {
                   segmentCount={state.segmentCount}
                   algorithm={state.algorithm}
                   residualEdges={state.latestResidualEdges}
+                  onElementClick={handleElementClick}
                 />
               )}
             </div>
@@ -220,6 +252,10 @@ export default function App() {
                 explanationMode={state.explanationMode}
                 guidedOptions={state.guidedOptions}
                 onGuidedResponse={handleGuidedResponse}
+                mode={state.mode}
+                onGuidedMessage={handleGuidedMessage}
+                guidedPrompt={state.guidedPrompt}
+                registerInsertRef={registerInsertRef}
               />
             </div>
           </>

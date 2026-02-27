@@ -80,14 +80,22 @@ function residualEntries(residualGraph, path) {
  * @returns {{ viz: object[], ctx: object[] }}
  */
 export function mapTraceStep(algorithm, rendererType, step, state) {
+  let result;
   switch (rendererType) {
-    case 'graph':  return mapGraphStep(algorithm, step, state);
-    case 'array':  return mapArrayStep(algorithm, step, state);
-    case 'table':  return mapTableStep(algorithm, step, state);
-    case 'tree':   return mapTreeStep(algorithm, step, state);
-    case 'linked': return mapLinkedStep(algorithm, step, state);
-    default:       return { viz: [], ctx: [] };
+    case 'graph':  result = mapGraphStep(algorithm, step, state); break;
+    case 'array':  result = mapArrayStep(algorithm, step, state); break;
+    case 'table':  result = mapTableStep(algorithm, step, state); break;
+    case 'tree':   result = mapTreeStep(algorithm, step, state); break;
+    case 'linked': result = mapLinkedStep(algorithm, step, state); break;
+    default:       result = { viz: [], ctx: [] };
   }
+
+  // Generic pseudocode line update — any step with pseudocode_line automatically updates the panel
+  if (step.pseudocode_line !== undefined) {
+    result.ctx.push(ctxUpdate('pseudocode', { current_line: step.pseudocode_line }));
+  }
+
+  return result;
 }
 
 // ─── GRAPH mapper ─────────────────────────────────────────────────────────────

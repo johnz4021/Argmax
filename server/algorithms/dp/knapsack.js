@@ -7,6 +7,7 @@ export function knapsack(items, capacity) {
 
   trace.push({
     type: 'init_table',
+    pseudocode_line: 0,
     rows: n + 1,
     cols: capacity + 1,
     rowLabels: ['0 (no items)', ...items.map((item, i) => `${i + 1} (+${item.name})`)],
@@ -21,6 +22,7 @@ export function knapsack(items, capacity) {
 
     trace.push({
       type: 'consider_item',
+      pseudocode_line: 1,
       row: i,
       item: { ...item },
       description: `Consider item ${i}: "${item.name}" (weight=${item.weight}, value=${item.value}).`,
@@ -33,6 +35,7 @@ export function knapsack(items, capacity) {
 
         trace.push({
           type: 'skip_cell',
+          pseudocode_line: 4,
           row: i,
           col: w,
           value: dp[i][w],
@@ -52,6 +55,7 @@ export function knapsack(items, capacity) {
 
           trace.push({
             type: 'fill_cell',
+            pseudocode_line: 8,
             row: i,
             col: w,
             value: dp[i][w],
@@ -73,6 +77,7 @@ export function knapsack(items, capacity) {
 
           trace.push({
             type: 'fill_cell',
+            pseudocode_line: 8,
             row: i,
             col: w,
             value: dp[i][w],
@@ -104,6 +109,7 @@ export function knapsack(items, capacity) {
 
       trace.push({
         type: 'traceback',
+        pseudocode_line: 9,
         row: i,
         col: remainingCapacity,
         item: { ...item },
@@ -115,6 +121,7 @@ export function knapsack(items, capacity) {
     } else {
       trace.push({
         type: 'traceback',
+        pseudocode_line: 9,
         row: i,
         col: remainingCapacity,
         item: { ...items[i - 1] },
@@ -128,6 +135,7 @@ export function knapsack(items, capacity) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 9,
     maxValue: dp[n][capacity],
     selectedItems,
     table: dp.map(row => [...row]),

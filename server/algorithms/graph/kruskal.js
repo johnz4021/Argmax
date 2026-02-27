@@ -12,12 +12,14 @@ export function kruskal(graph) {
 
   trace.push({
     type: 'init',
+    pseudocode_line: 1,
     description: `Kruskal's algorithm: ${nodes.length} nodes, ${edges.length} edges. Sort edges by weight.`,
     edges: edges.map((e) => `${e.source}-${e.target}(${e.weight})`),
   });
 
   trace.push({
     type: 'sort_edges',
+    pseudocode_line: 0,
     edges: edges.map((e) => ({ ...e })),
     description: `Edges sorted by weight: ${edges.map((e) => `${e.source}-${e.target}(${e.weight})`).join(', ')}`,
   });
@@ -56,6 +58,7 @@ export function kruskal(graph) {
   for (const edge of edges) {
     trace.push({
       type: 'consider_edge',
+      pseudocode_line: 2,
       from: edge.source,
       to: edge.target,
       weight: edge.weight,
@@ -67,6 +70,7 @@ export function kruskal(graph) {
 
     trace.push({
       type: 'check_cycle',
+      pseudocode_line: 3,
       from: edge.source,
       to: edge.target,
       root_from: rootA,
@@ -91,6 +95,7 @@ export function kruskal(graph) {
 
       trace.push({
         type: 'add_to_mst',
+        pseudocode_line: 4,
         from: edge.source,
         to: edge.target,
         weight: edge.weight,
@@ -102,6 +107,7 @@ export function kruskal(graph) {
     } else {
       trace.push({
         type: 'reject_edge',
+        pseudocode_line: 7,
         from: edge.source,
         to: edge.target,
         weight: edge.weight,
@@ -114,6 +120,7 @@ export function kruskal(graph) {
 
   trace.push({
     type: 'result',
+    pseudocode_line: 4,
     mst_edges: mstEdges.map((e) => ({ ...e })),
     total_weight: totalWeight,
     description: `Kruskal's complete! MST has ${mstEdges.length} edges with total weight ${totalWeight}.`,

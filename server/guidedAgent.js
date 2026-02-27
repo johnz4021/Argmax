@@ -258,9 +258,7 @@ export async function startGuidedSession(session, problemText) {
     let response;
     try {
       response = await anthropic.messages.create({
-        model: !sessionPlan
-          ? 'claude-opus-4-6'
-          : 'claude-sonnet-4-5-20250929',
+        model: 'claude-opus-4-6',
         max_tokens: 4096,
         system: GUIDED_SYSTEM_PROMPT,
         tools: guidedTools,

@@ -112,6 +112,25 @@ HANDLING STUDENT MESSAGES:
 - When a student answers a send_options question, you'll get the result in the tool response.
 - If the student gives a wrong answer, provide a conceptual nudge (not the answer) and try again.
 
+SOCRATIC DIALOGUE MODE:
+- When a student asks "why does X work?", "how does X apply here?", or similar
+  conceptual questions, do NOT give a full explanation via emit_segment.
+- Use conversational_reply to pose a 1-2 sentence counter-question guiding them
+  toward the insight.
+- Examples:
+  - Student: "Why do we minimize total flow?"
+    → conversational_reply("What would happen if we set all flows to zero —
+       would that satisfy our demand constraint?")
+  - Student: "How does this connect to shortest paths?"
+    → conversational_reply("When all capacities are 1, can the optimal flow
+       ever split across multiple paths? What does that tell you?")
+- Max 2-3 conversational_reply exchanges before moving on.
+- After the student responds, either refine with one more conversational_reply
+  or proceed with emit_segment if a fuller explanation is needed.
+- Anti-patterns to avoid: paragraphs of explanation, "Think of it this way..."
+  + 3 sentences, restating the same point, preemptively answering follow-ups.
+- If the question is not conceptual (e.g., "go back", "skip"), use normal flow.
+
 VERIFICATION:
 - If the problem provides sample input/output, you MUST call verify_result after running the algorithm.
 - If the result mismatches: "Our answer doesn't match. My model has a bug — let me find it."
@@ -212,7 +231,8 @@ SEGMENT BUDGETING:
 - Modeling template: 2-3 segments per step (objects, objective, constraints, trick, sanity)
 - Greedy/DP/DC design: 2-3 segments per step
 - Execution: 10-20 segments (standard teaching)
-- Verification: 1-2 segments`;
+- Verification: 1-2 segments
+- Socratic dialogue: 0 segments (uses conversational_reply, not emit_segment)`;
 
 // Tools specific to guided mode
 const guidedTools = [
@@ -303,6 +323,18 @@ const guidedTools = [
         },
       },
       required: ['expected', 'computed', 'comparison_type'],
+    },
+  },
+  {
+    name: 'conversational_reply',
+    description: 'Send a short Socratic counter-question or conversational nudge (1-2 sentences). Use instead of emit_segment when responding to student why/how questions.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The reply or counter-question (1-2 sentences max)' },
+        wait_for_response: { type: 'boolean', description: 'Wait for student reply before continuing. Default true.' },
+      },
+      required: ['text'],
     },
   },
 ];
@@ -598,6 +630,56 @@ export async function startGuidedSession(session, problemText) {
               ? 'Result matches expected output. The reduction is correct!'
               : 'MISMATCH: Result does not match expected output. Your reduction has a bug. Re-examine your model contract assumptions and find the error. Tell the student: "Our answer doesn\'t match — my model has a bug. Let me find it."',
           };
+        } else if (block.name === 'conversational_reply') {
+          const { text, wait_for_response } = block.input;
+
+          // Send as interrupt_response to reuse existing purple "Argmax:" segment
+          sendJSON(ws, { type: 'interrupt_response', answer: text, explanation_mode: 'none' });
+
+          // TTS for the reply
+          const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+          const sendJsonFn = (obj) => sendJSON(ws, obj);
+          await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn);
+
+          if (wait_for_response !== false) {
+            // Activate input field and wait for student response
+            sendJSON(ws, { type: 'guided_prompt', prompt: text });
+
+            const responsePromise = new Promise((resolve) => {
+              session.guidedResponseResolver = resolve;
+            });
+            const timeoutPromise = new Promise((resolve) => {
+              setTimeout(() => resolve('__timeout__'), 120000);
+            });
+
+            const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+
+            session.guidedResponseResolver = null;
+
+            if (raceResult === '__timeout__') {
+              result = {
+                student_response: null,
+                timed_out: true,
+                message: 'Student did not respond within 2 minutes. Move on with a brief explanation.',
+              };
+            } else if (raceResult === '__interrupted__') {
+              result = {
+                student_response: null,
+                interrupted: true,
+                message: 'Student interrupted with a question. The interrupt will be handled next.',
+              };
+            } else {
+              const studentResponse = session.guidedResponse;
+              session.guidedResponse = null;
+              result = {
+                student_response: studentResponse,
+                timed_out: false,
+                freeform_text: studentResponse?.text || null,
+              };
+            }
+          } else {
+            result = { success: true, message: 'Reply sent.' };
+          }
         } else if (block.name === 'send_options') {
           // Handle send_options — send choices and wait for response
           const { prompt, options } = block.input;
@@ -664,8 +746,8 @@ export async function startGuidedSession(session, problemText) {
           content: JSON.stringify(result),
         });
 
-        // Check for pause after emit_segment
-        if (block.name === 'emit_segment' && session.pauseFlag) {
+        // Check for pause after emit_segment or conversational_reply
+        if ((block.name === 'emit_segment' || block.name === 'conversational_reply') && session.pauseFlag) {
           session.pauseFlag = false;
           sendJSON(ws, { type: 'paused' });
           await new Promise((resolve) => {
@@ -677,8 +759,8 @@ export async function startGuidedSession(session, problemText) {
           }
         }
 
-        // Check for interrupt after emit_segment
-        if (block.name === 'emit_segment' && session.interruptFlag) {
+        // Check for interrupt after emit_segment or conversational_reply
+        if ((block.name === 'emit_segment' || block.name === 'conversational_reply') && session.interruptFlag) {
           const interruptData = session.interruptFlag;
           session.interruptFlag = null;
           interrupted = true;

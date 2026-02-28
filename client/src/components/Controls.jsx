@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import GuidedOptions from './GuidedOptions';
+import MathText from './MathText';
 
 export default function Controls({ status, onInterrupt, onPause, onResume, onRestart, onSpeedChange, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
   const [question, setQuestion] = useState('');
@@ -100,7 +101,7 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
       )}
       {isGuided && guidedPrompt && !guidedOptions && (
         <div className="text-sm text-gray-400 italic px-1">
-          {guidedPrompt}
+          <MathText>{guidedPrompt}</MathText>
         </div>
       )}
       {showInput && (

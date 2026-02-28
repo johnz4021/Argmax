@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import MathText from './MathText';
 
 export default function Transcript({ segments }) {
   const bottomRef = useRef(null);
@@ -58,7 +59,7 @@ export default function Transcript({ segments }) {
                 {seg.matches ? '\u2713 Verified' : '\u2717 Mismatch'}
               </span>
             )}
-            {seg.narration}
+            <MathText>{seg.narration}</MathText>
             {seg.active && (
               <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse" />
             )}

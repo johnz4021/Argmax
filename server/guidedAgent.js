@@ -145,6 +145,11 @@ GUARDRAILS:
 - When saying "let me highlight X", ALWAYS include corresponding viz_actions with
   renderer:"graph" actions. Never narrate highlighting without sending the actions.
 - Each formulation panel update must include ALL accumulated lines (the array is replaced, not appended).
+- MATH NOTATION: Use LaTeX notation wrapped in $...$ for all mathematical expressions,
+  both in narration text (emit_segment) and in panel lines (text fields).
+  Examples: $f_{uv}$, $\\sum_{e} c_e \\cdot f_e$, $d_{\\text{flow}}(s,t)$, $\\leq$, $\\geq$.
+  Do NOT use plain Unicode symbols like Σ — use $\\Sigma$ or $\\sum$ instead.
+  This applies to panel labels, panel line text, and narration strings.
 
 TOOL USAGE FOR NON-EXECUTION MODES:
 
@@ -158,7 +163,7 @@ A. Creating an expression panel with initial content:
         title: "LP Formulation",
         initial_data: {
           label: "LP: Flow Distance",
-          lines: [{ label: "Variables", text: "f_uv for each directed edge (u,v)" }]
+          lines: [{ label: "Variables", text: "$f_{uv}$ for each directed edge $(u,v)$" }]
         }
       }]
     })
@@ -173,10 +178,10 @@ B. Updating the panel incrementally as you build the formulation:
         action: "update",
         params: {
           panel_id: "formulation",
-          label: "LP: Flow Distance",
+          label: "$\\text{LP: Flow Distance}$",
           lines: [
-            { label: "Variables", text: "f_uv for each directed edge (u,v)" },
-            { label: "min", text: "Σ c_e · f_e", highlight: true }
+            { label: "Variables", text: "$f_{uv}$ for each directed edge $(u,v)$" },
+            { label: "$\\min$", text: "$\\sum_e c_e \\cdot f_e$", highlight: true }
           ]
         }
       }]

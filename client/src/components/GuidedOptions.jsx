@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import MathText from './MathText';
 
 export default function GuidedOptions({ options, prompt, mode, inputPlaceholder, onSelect }) {
   const [text, setText] = useState('');
@@ -13,7 +14,7 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
   return (
     <div className="space-y-2">
       {prompt && (
-        <p className="text-sm text-gray-300">{prompt}</p>
+        <p className="text-sm text-gray-300"><MathText>{prompt}</MathText></p>
       )}
       {mode === 'open_ended' ? (
         <form onSubmit={handleSubmitText} className="flex gap-2">
@@ -41,7 +42,7 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
               onClick={() => onSelect({ optionId: option.id, label: option.label })}
               className="border border-blue-500 text-blue-400 hover:bg-blue-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             >
-              {option.label}
+              <MathText>{option.label}</MathText>
             </button>
           ))}
         </div>

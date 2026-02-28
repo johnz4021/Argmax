@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+/* Prevent Tailwind's preflight from breaking KaTeX rendering */
+.katex .base {
+  display: inline-block;
+}
+.katex .katex-html {
+  display: inline;
+}
+.katex .mord,
+.katex .mbin,
+.katex .mrel,
+.katex .mopen,
+.katex .mclose,
+.katex .mpunct,
+.katex .minner {
+  display: inline;
+}

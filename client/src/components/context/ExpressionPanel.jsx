@@ -1,3 +1,5 @@
+import MathText from '../MathText';
+
 export default function ExpressionPanel({ data }) {
   const { expression, result, highlight_terms, lines, label } = data || {};
 
@@ -5,11 +7,11 @@ export default function ExpressionPanel({ data }) {
   if (lines?.length) {
     return (
       <div className="font-mono text-sm text-gray-200 bg-gray-800/50 rounded px-3 py-2 space-y-1">
-        {label && <div className="text-xs text-gray-400 mb-1">{label}</div>}
+        {label && <div className="text-xs text-gray-400 mb-1"><MathText>{label}</MathText></div>}
         {lines.map((line, i) => (
           <div key={i} className={line.highlight ? 'text-blue-300 bg-blue-500/20 rounded px-1' : ''}>
-            {line.label && <span className="text-gray-500 mr-2">{line.label}:</span>}
-            {line.text}
+            {line.label && <span className="text-gray-500 mr-2"><MathText>{line.label}</MathText>:</span>}
+            <MathText>{line.text}</MathText>
           </div>
         ))}
       </div>
@@ -38,9 +40,9 @@ export default function ExpressionPanel({ data }) {
         <span>
           {parts.map((p, i) =>
             p.highlight ? (
-              <span key={i} className="bg-blue-500/30 text-blue-300 rounded px-0.5">{p.text}</span>
+              <span key={i} className="bg-blue-500/30 text-blue-300 rounded px-0.5"><MathText>{p.text}</MathText></span>
             ) : (
-              <span key={i}>{p.text}</span>
+              <MathText key={i}>{p.text}</MathText>
             )
           )}
         </span>
@@ -50,7 +52,7 @@ export default function ExpressionPanel({ data }) {
 
   return (
     <div className="font-mono text-sm text-gray-200 bg-gray-800/50 rounded px-3 py-2">
-      <div>{rendered}</div>
+      <div>{typeof rendered === 'string' ? <MathText>{rendered}</MathText> : rendered}</div>
       {result !== undefined && result !== null && (
         <div className="text-green-400 mt-1">= {result}</div>
       )}

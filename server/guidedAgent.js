@@ -29,28 +29,82 @@ ${buildAlgorithmList()}
 CLASSIFICATION TREE (use this to guide your send_options questions):
 ${treeToPromptText()}
 
-THREE CONVERSATIONAL STAGES (flow naturally between them, no rigid transitions):
+CONVERSATIONAL FLOW:
 
-1. CLASSIFY (2-4 exchanges):
-   - Read the problem. Think about which algorithm applies.
-   - Use send_options to ask the student classification questions following the tree above.
-     Example flow: "What's the core structure?" → "Graph" → "What are you looking for?" → "Shortest path" → "Weighted?" → "Yes" → dijkstra
-   - After classification, call classify_problem with your analysis.
-   - The internal_model_contract stays in YOUR REASONING ONLY — it is NOT shown to students.
-   - If the student picks wrong, give a nudge and re-ask (max 2 attempts before revealing).
+STAGE 0 — REASONING MODE (1-2 exchanges):
+  Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
+  Use send_options with the top-level classification tree question.
 
-2. REFRESH (optional):
-   - After classification, offer: "Want a quick refresher on [algorithm]?" via send_options.
-   - If yes, call show_canonical_example to run a small built-in example.
-   - Keep refresher brief: 5-8 segments max.
+  Modes:
+  - algorithm_execution → existing flow (classify algorithm → refresh → reduce → run)
+  - modeling → Modeling Template flow (see below)
+  - greedy_design → Greedy Design flow
+  - dp_design → DP Design flow
+  - dc_design → Divide-and-Conquer flow
+  - runtime → Runtime Analysis flow
 
-3. REDUCTION SKETCH:
-   - Guide the student to describe the algorithm input in their own words.
-   - Ask them: "What are the nodes? What are the edges? What are the weights?"
-     (or "What are the items? What's the capacity?" for knapsack, etc.)
-   - Build the graph/input incrementally using update_graph (for graph algorithms)
-     or create_visualization (for non-graph algorithms).
-   - When the input is complete, run the algorithm, narrate the trace, then verify.
+  Call classify_problem with the reasoning_mode once determined.
+
+ALGORITHM EXECUTION MODE (existing flow):
+  1. CLASSIFY algorithm (2-4 exchanges using the algorithm subtree)
+  2. REFRESH (optional — offer canonical example)
+  3. REDUCTION SKETCH (build input → run algorithm → narrate → verify)
+
+MODELING MODE (LP, reductions, duality):
+  Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
+
+  Follow the Modeling Template:
+  1. OBJECTS — Ask "What are the decision variables?"
+     Call create_visualization with context_panels containing an expression panel
+     with initial_data that has the first line (variables).
+     Also set up the example graph via update_graph if applicable.
+  2. OBJECTIVE — Ask "What is being optimized?"
+     Use emit_segment with viz_actions to update the formulation panel (add objective line)
+     and highlight relevant graph edges.
+  3. CONSTRAINTS — Ask "What constraints must hold?"
+     Update panel with each new constraint line. Highlight graph structures that
+     correspond to each constraint.
+  4. TRICK — "Is there a transformation needed?" (absolute value linearization, graph layering, etc.)
+  5. SANITY CHECK — "Does this enforce exactly what the problem states? Missing anything?"
+
+  IMPORTANT: Each panel update must include ALL accumulated lines, not just the new one.
+  IMPORTANT: Use emit_segment viz_actions with renderer:"graph" to highlight — do NOT
+  just say "let me highlight" without sending actual highlight actions.
+  Do NOT call run_algorithm unless the student explicitly asks.
+  The related algorithm provides context, not execution.
+
+GREEDY DESIGN MODE:
+  1. RULE — Guide student to propose the greedy criterion
+  2. PROOF STRUCTURE — Set up an expression panel with exchange argument skeleton via
+     create_visualization with initial_data:
+     - Assume optimal solution O differs from greedy solution G
+     - Find first point of difference
+     - Show swapping doesn't worsen the solution
+  3. WALK THROUGH — Use a concrete example on the graph/array to illustrate.
+     Use emit_segment viz_actions with renderer:"graph" to highlight relevant elements.
+  4. RUNTIME — Analyze the greedy algorithm's complexity
+
+DP DESIGN MODE:
+  1. SUBPROBLEM — "What does dp[i] (or dp[i][j]) represent?"
+  2. RECURRENCE — Use create_visualization to set up an expression panel with initial_data,
+     then update via emit_segment viz_actions as the recurrence is built.
+  3. BASE CASES — Identify boundary conditions
+  4. ORDER — "In what order do we fill the table?"
+  5. RUNTIME — Analyze from table dimensions
+  Optionally run the algorithm on a small example if one exists in the registry.
+
+DIVIDE-AND-CONQUER MODE:
+  1. SPLIT — How to divide the input
+  2. SUBPROBLEMS — What recursive calls are made
+  3. COMBINE — How to merge subproblem results
+  4. RECURRENCE — Write T(n) = ... and solve it
+
+RUNTIME / ASYMPTOTICS MODE:
+  1. Identify what bound is needed (upper, lower, tight)
+  2. For recurrences: identify which method applies (Master theorem, substitution, recursion tree)
+  3. Walk through the proof steps using expression panels.
+     Use emit_segment viz_actions with renderer:"context" to display recurrence steps.
+  4. Use concrete values to build intuition
 
 HANDLING STUDENT MESSAGES:
 - Messages tagged [STUDENT MESSAGE] are first-class conversation continuations.
@@ -70,11 +124,12 @@ INPUT SIZE LIMITS:
 - If the problem exceeds these, build a smaller example for visualization.
 
 SCOPE BOUNDARY HANDLING:
-- If the problem requires a proof → offer concrete examples that illustrate the theorem.
-- If the problem is about linear programming → identify the underlying algorithm (e.g., max flow).
-- If the problem involves number theory → try GCD or explain the closest available algorithm.
-- If the problem mentions NP-completeness → show both the decision and optimization versions.
-- If the problem is completely out of scope, say so honestly and suggest the closest algorithm.
+- LP / formulation → reasoning_mode: 'modeling'. The underlying algorithm provides context only.
+- Proof of greedy correctness → reasoning_mode: 'greedy_design'.
+- "Design a DP solution" → reasoning_mode: 'dp_design'.
+- NP-completeness reduction → reasoning_mode: 'modeling' (reduction variant).
+- Pure runtime analysis → reasoning_mode: 'runtime'.
+- If completely out of scope, say so honestly.
 
 GUARDRAILS:
 - Never make up an algorithm trace. Always use run_algorithm.
@@ -82,6 +137,62 @@ GUARDRAILS:
 - Model Contract stays internal — never display it to students.
 - Use emit_segment for all narration (same as standard teaching mode).
 - Build input visually BEFORE running the algorithm.
+- In non-execution modes (modeling, greedy_design, dp_design, dc_design, runtime),
+  do NOT call run_algorithm unless the student explicitly asks to see it run.
+- Use formal model panels (expression panels with lines mode) to keep structured
+  information visible: variables, objective, constraints, recurrences, invariants.
+- Set up panels via create_visualization with context_panels AND initial_data before narrating.
+- When saying "let me highlight X", ALWAYS include corresponding viz_actions with
+  renderer:"graph" actions. Never narrate highlighting without sending the actions.
+- Each formulation panel update must include ALL accumulated lines (the array is replaced, not appended).
+
+TOOL USAGE FOR NON-EXECUTION MODES:
+
+A. Creating an expression panel with initial content:
+  To set up a formal model panel, call create_visualization with initial_data containing lines:
+    create_visualization({
+      panels: [],
+      context_panels: [{
+        id: "formulation",
+        type: "expression",
+        title: "LP Formulation",
+        initial_data: {
+          label: "LP: Flow Distance",
+          lines: [{ label: "Variables", text: "f_uv for each directed edge (u,v)" }]
+        }
+      }]
+    })
+
+B. Updating the panel incrementally as you build the formulation:
+  To add lines to an existing panel, use emit_segment with a context viz_action.
+  NOTE: lines is an array — each update must include ALL lines accumulated so far.
+    emit_segment({
+      narration: "Now let's add the objective...",
+      viz_actions: [{
+        renderer: "context",
+        action: "update",
+        params: {
+          panel_id: "formulation",
+          label: "LP: Flow Distance",
+          lines: [
+            { label: "Variables", text: "f_uv for each directed edge (u,v)" },
+            { label: "min", text: "Σ c_e · f_e", highlight: true }
+          ]
+        }
+      }]
+    })
+
+C. Highlighting graph edges/nodes without a trace:
+  To highlight graph elements in non-execution modes, use emit_segment with graph viz_actions:
+    emit_segment({
+      narration: "Notice this edge from s to a has capacity 2...",
+      viz_actions: [
+        { renderer: "graph", action: "highlight_edge", params: { from: "s", to: "a", className: "highlighted" } },
+        { renderer: "graph", action: "highlight_node", params: { node: "s", className: "current" } }
+      ]
+    })
+  To clear highlights: { renderer: "graph", action: "reset_highlights", params: {} }
+  Available classNames: highlighted (gold), current (blue), visited (green), path (purple), examining (orange)
 
 CONFIDENCE CALIBRATION:
 - Single well-known reduction → narrate confidently.
@@ -90,9 +201,11 @@ CONFIDENCE CALIBRATION:
 - Unverified assumptions → use hedged language.
 
 SEGMENT BUDGETING:
-- Classification: 2-4 segments + 1-2 send_options calls
+- Reasoning mode classification: 1-2 segments + 1 send_options
+- Algorithm classification (if execution mode): 2-4 segments + 1-2 send_options
 - Refresher: 5-8 segments (if requested)
-- Reduction sketch: 2-4 segments showing the transformation
+- Modeling template: 2-3 segments per step (objects, objective, constraints, trick, sanity)
+- Greedy/DP/DC design: 2-3 segments per step
 - Execution: 10-20 segments (standard teaching)
 - Verification: 1-2 segments`;
 
@@ -106,17 +219,22 @@ const guidedTools = [
     input_schema: {
       type: 'object',
       properties: {
+        reasoning_mode: {
+          type: 'string',
+          enum: ['algorithm_execution', 'modeling', 'greedy_design', 'dp_design', 'dc_design', 'runtime'],
+          description: 'The type of reasoning this problem requires',
+        },
         is_in_scope: {
           type: 'boolean',
           description: 'Whether the problem maps to an available algorithm',
         },
         target_algorithm: {
           type: 'string',
-          description: 'Algorithm ID from registry (e.g., "dijkstra", "knapsack"), or "out_of_scope"',
+          description: 'Algorithm ID from registry (e.g., "dijkstra", "knapsack"), or "out_of_scope". Required for algorithm_execution mode.',
         },
         closest_algorithm: {
           type: 'string',
-          description: 'If out of scope, the closest available algorithm for partial exploration',
+          description: 'If out of scope or non-execution mode, the closest available algorithm for context',
         },
         problem_summary: {
           type: 'string',
@@ -142,7 +260,7 @@ const guidedTools = [
           required: ['state_definition', 'transition_rules', 'cost_model', 'feasibility_constraints', 'assumptions_to_verify'],
         },
       },
-      required: ['is_in_scope', 'target_algorithm', 'problem_summary', 'key_insight', 'internal_model_contract'],
+      required: ['reasoning_mode', 'is_in_scope', 'problem_summary', 'key_insight', 'internal_model_contract'],
     },
   },
   {
@@ -302,9 +420,10 @@ export async function startGuidedSession(session, problemText) {
           const plan = block.input;
           sessionPlan = plan;
           session.modelContract = plan.internal_model_contract;
+          session.reasoningMode = plan.reasoning_mode;
 
           const validAlgorithms = Object.keys(ALGORITHMS);
-          if (plan.is_in_scope && !validAlgorithms.includes(plan.target_algorithm)) {
+          if (plan.reasoning_mode === 'algorithm_execution' && plan.is_in_scope && plan.target_algorithm && !validAlgorithms.includes(plan.target_algorithm)) {
             result = {
               success: false,
               error: `Unknown algorithm: ${plan.target_algorithm}. Available: ${validAlgorithms.join(', ')}`,
@@ -312,9 +431,19 @@ export async function startGuidedSession(session, problemText) {
           } else {
             result = {
               success: true,
-              message: plan.is_in_scope
-                ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
-                : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`,
+              message: plan.reasoning_mode === 'algorithm_execution'
+                ? (plan.is_in_scope
+                  ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
+                  : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
+                : plan.reasoning_mode === 'modeling'
+                ? `Classification accepted: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
+                : plan.reasoning_mode === 'greedy_design'
+                ? `Classification accepted: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
+                : plan.reasoning_mode === 'dp_design'
+                ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
+                : plan.reasoning_mode === 'dc_design'
+                ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime.`
+                : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence.`,
             };
           }
         } else if (block.name === 'update_graph') {
@@ -577,8 +706,8 @@ export async function startGuidedSession(session, problemText) {
       if (!interrupted && session.guidedMessageQueue && session.guidedMessageQueue.length > 0) {
         const queuedMessages = session.guidedMessageQueue.splice(0);
         for (const msg of queuedMessages) {
-          // Add student message to transcript
-          sendJSON(ws, { type: 'add_student_message', text: msg });
+          // Client already added the message to its transcript when it sent it,
+          // so do NOT send add_student_message back (that would duplicate it).
           messages.push({
             role: 'user',
             content: `[STUDENT MESSAGE] ${msg}`,

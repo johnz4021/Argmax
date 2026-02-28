@@ -1,6 +1,22 @@
 export default function ExpressionPanel({ data }) {
-  const { expression, result, highlight_terms } = data || {};
+  const { expression, result, highlight_terms, lines, label } = data || {};
 
+  // Multi-line mode: structured formulation display
+  if (lines?.length) {
+    return (
+      <div className="font-mono text-sm text-gray-200 bg-gray-800/50 rounded px-3 py-2 space-y-1">
+        {label && <div className="text-xs text-gray-400 mb-1">{label}</div>}
+        {lines.map((line, i) => (
+          <div key={i} className={line.highlight ? 'text-blue-300 bg-blue-500/20 rounded px-1' : ''}>
+            {line.label && <span className="text-gray-500 mr-2">{line.label}:</span>}
+            {line.text}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Existing single-expression mode
   if (!expression) return null;
 
   // Build highlighted expression

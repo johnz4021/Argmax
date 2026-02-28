@@ -4,102 +4,134 @@
  */
 
 const CLASSIFICATION_TREE = {
-  question: 'What is the core structure of this problem?',
+  question: 'What type of reasoning does this problem require?',
   children: [
     {
-      label: 'Graph',
-      question: 'What are you trying to find in the graph?',
+      label: 'Algorithm execution / reduction',
+      description: 'Run a known algorithm on modeled input',
+      question: 'What is the core structure of this problem?',
       children: [
         {
-          label: 'Shortest path',
-          question: 'Are the edge weights all equal (or unweighted)?',
+          label: 'Graph',
+          question: 'What are you trying to find in the graph?',
           children: [
-            { label: 'Yes (unweighted)', leaf: 'bfs' },
             {
-              label: 'No (weighted, non-negative)',
-              leaf: 'dijkstra',
+              label: 'Shortest path',
+              question: 'Are the edge weights all equal (or unweighted)?',
+              children: [
+                { label: 'Yes (unweighted)', leaf: 'bfs' },
+                {
+                  label: 'No (weighted, non-negative)',
+                  leaf: 'dijkstra',
+                },
+              ],
+            },
+            {
+              label: 'Spanning tree (connect all nodes cheaply)',
+              question: 'Do you want to grow from a start node or sort edges globally?',
+              children: [
+                { label: 'Grow from a node', leaf: 'prim' },
+                { label: 'Sort edges globally', leaf: 'kruskal' },
+              ],
+            },
+            {
+              label: 'Maximum flow / matching',
+              leaf: 'maxflow',
+            },
+            {
+              label: 'Traversal / reachability',
+              question: 'Do you need shortest distances, or just reachability/ordering?',
+              children: [
+                { label: 'Just reachability or ordering', leaf: 'dfs' },
+                { label: 'Shortest distances (unweighted)', leaf: 'bfs' },
+              ],
             },
           ],
         },
         {
-          label: 'Spanning tree (connect all nodes cheaply)',
-          question: 'Do you want to grow from a start node or sort edges globally?',
+          label: 'Optimization (choose best subset/sequence)',
+          question: 'What kind of optimization?',
           children: [
-            { label: 'Grow from a node', leaf: 'prim' },
-            { label: 'Sort edges globally', leaf: 'kruskal' },
+            {
+              label: 'Select items with weight/value tradeoff',
+              leaf: 'knapsack',
+            },
+            {
+              label: 'Find longest common subsequence',
+              leaf: 'lcs',
+            },
+            {
+              label: 'Transform one string to another',
+              leaf: 'edit_distance',
+            },
+            {
+              label: 'Make change with fewest coins',
+              leaf: 'coin_change',
+            },
           ],
         },
         {
-          label: 'Maximum flow / matching',
-          leaf: 'maxflow',
+          label: 'Sorting / Searching',
+          question: 'Do you need to sort data or search within sorted data?',
+          children: [
+            {
+              label: 'Sort data',
+              question: 'Any preference on sorting approach?',
+              children: [
+                { label: 'Divide and conquer (fast)', leaf: 'quicksort' },
+                { label: 'Divide and conquer (stable)', leaf: 'mergesort' },
+                { label: 'Simple / educational', leaf: 'insertion_sort' },
+              ],
+            },
+            {
+              label: 'Search in sorted data',
+              leaf: 'binary_search',
+            },
+          ],
         },
         {
-          label: 'Traversal / reachability',
-          question: 'Do you need shortest distances, or just reachability/ordering?',
+          label: 'Data structures',
+          question: 'What data structure operation?',
           children: [
-            { label: 'Just reachability or ordering', leaf: 'dfs' },
-            { label: 'Shortest distances (unweighted)', leaf: 'bfs' },
+            { label: 'Binary search tree insertion', leaf: 'bst_insert' },
+            { label: 'Heap / priority queue', leaf: 'heap_operations' },
+            { label: 'Linked list reversal', leaf: 'linked_list_reversal' },
+            { label: 'Stack operations', leaf: 'stack_operations' },
+          ],
+        },
+        {
+          label: 'Math / Number theory',
+          question: 'What mathematical operation?',
+          children: [
+            { label: 'Greatest common divisor', leaf: 'gcd' },
           ],
         },
       ],
     },
     {
-      label: 'Optimization (choose best subset/sequence)',
-      question: 'What kind of optimization?',
-      children: [
-        {
-          label: 'Select items with weight/value tradeoff',
-          leaf: 'knapsack',
-        },
-        {
-          label: 'Find longest common subsequence',
-          leaf: 'lcs',
-        },
-        {
-          label: 'Transform one string to another',
-          leaf: 'edit_distance',
-        },
-        {
-          label: 'Make change with fewest coins',
-          leaf: 'coin_change',
-        },
-      ],
+      label: 'Formal modeling (LP, reduction, duality)',
+      description: 'Define variables, objective, constraints — prove equivalence',
+      leaf: '__modeling__',
     },
     {
-      label: 'Sorting / Searching',
-      question: 'Do you need to sort data or search within sorted data?',
-      children: [
-        {
-          label: 'Sort data',
-          question: 'Any preference on sorting approach?',
-          children: [
-            { label: 'Divide and conquer (fast)', leaf: 'quicksort' },
-            { label: 'Divide and conquer (stable)', leaf: 'mergesort' },
-            { label: 'Simple / educational', leaf: 'insertion_sort' },
-          ],
-        },
-        {
-          label: 'Search in sorted data',
-          leaf: 'binary_search',
-        },
-      ],
+      label: 'Greedy design + proof',
+      description: 'Propose a greedy rule, prove it works via exchange argument',
+      leaf: '__greedy_design__',
     },
     {
-      label: 'Data structures',
-      question: 'What data structure operation?',
-      children: [
-        { label: 'Binary search tree insertion', leaf: 'bst_insert' },
-        { label: 'Heap / priority queue', leaf: 'heap_operations' },
-        { label: 'Linked list reversal', leaf: 'linked_list_reversal' },
-        { label: 'Stack operations', leaf: 'stack_operations' },
-      ],
+      label: 'Dynamic programming design',
+      description: 'Define subproblem, write recurrence, prove correctness',
+      leaf: '__dp_design__',
     },
     {
-      label: 'Math / Number theory',
-      question: 'What mathematical operation?',
-      children: [
-        { label: 'Greatest common divisor', leaf: 'gcd' },
-      ],
+      label: 'Divide-and-conquer design',
+      description: 'Split problem, solve recursively, combine — solve recurrence',
+      leaf: '__dc_design__',
+    },
+    {
+      label: 'Runtime / asymptotics / recurrence',
+      description: 'Prove Big-O bounds, solve recurrences, analyze complexity',
+      leaf: '__runtime__',
     },
   ],
 };

@@ -99,6 +99,11 @@ wss.on('connection', (ws) => {
             session.guidedResponseResolver();
             session.guidedResponseResolver = null;
           }
+          // If paused, auto-resume so the student message gets processed immediately
+          if (session.pauseResolver) {
+            session.pauseResolver();
+            session.pauseResolver = null;
+          }
           break;
         }
 

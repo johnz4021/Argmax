@@ -33,7 +33,10 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!question.trim()) return;
-    if (mode === 'guided' && onGuidedMessage) {
+    if (mode === 'guided' && guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
+      // Open-ended guided question — route through guided response handler
+      onGuidedResponse({ text: question.trim() });
+    } else if (mode === 'guided' && onGuidedMessage) {
       onGuidedMessage(question.trim());
     } else {
       onInterrupt(question.trim());
@@ -83,14 +86,16 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
   const showInput = status === 'teaching' || status === 'paused' || status === 'complete';
   const isGuided = mode === 'guided';
   const placeholder = isGuided
-    ? 'Type your thoughts...'
+    ? (guidedOptions?.mode === 'open_ended' && guidedOptions?.input_placeholder)
+      ? guidedOptions.input_placeholder
+      : 'Type your thoughts...'
     : status === 'complete'
       ? 'Any questions about the lesson?'
       : 'Ask a question...';
 
   return (
     <div className="border-t border-gray-800 px-4 py-3 space-y-3">
-      {guidedOptions && (
+      {guidedOptions && guidedOptions.mode !== 'open_ended' && (
         <GuidedOptions
           options={guidedOptions.options}
           prompt={guidedOptions.prompt}
@@ -99,9 +104,9 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
           onSelect={onGuidedResponse}
         />
       )}
-      {isGuided && guidedPrompt && !guidedOptions && (
+      {isGuided && (guidedPrompt || (guidedOptions && guidedOptions.mode === 'open_ended')) && !(guidedOptions && guidedOptions.mode !== 'open_ended') && (
         <div className="text-sm text-gray-400 italic px-1">
-          <MathText>{guidedPrompt}</MathText>
+          <MathText>{guidedOptions?.prompt || guidedPrompt}</MathText>
         </div>
       )}
       {showInput && (

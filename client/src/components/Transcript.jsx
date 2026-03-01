@@ -29,6 +29,8 @@ export default function Transcript({ segments }) {
                 ? 'bg-blue-900/30 border border-blue-800 text-blue-200'
                 : seg.type === 'answer'
                 ? 'bg-purple-900/30 border border-purple-800 text-purple-200'
+                : seg.type === 'guided_question'
+                ? 'bg-gray-800/50 border border-gray-700 text-gray-300'
                 : seg.type === 'guided_answer'
                 ? 'bg-green-900/30 border border-green-800 text-green-200'
                 : seg.type === 'student_message'
@@ -47,6 +49,9 @@ export default function Transcript({ segments }) {
             )}
             {seg.type === 'answer' && (
               <span className="text-xs text-purple-400 font-medium block mb-1">Argmax:</span>
+            )}
+            {seg.type === 'guided_question' && (
+              <span className="text-xs text-gray-400 font-medium block mb-1">Argmax asked:</span>
             )}
             {seg.type === 'guided_answer' && (
               <span className="text-xs text-green-400 font-medium block mb-1">Your answer:</span>

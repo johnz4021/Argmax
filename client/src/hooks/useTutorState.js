@@ -174,6 +174,9 @@ function reducer(state, action) {
     case 'CLEAR_GUIDED_OPTIONS':
       return { ...state, guidedOptions: null };
 
+    case 'ADD_GUIDED_QUESTION':
+      return { ...state, segments: [...state.segments, { id: 'gq_' + Date.now(), narration: action.text, type: 'guided_question', active: false }] };
+
     case 'ADD_GUIDED_ANSWER':
       return { ...state, segments: [...state.segments, { id: 'ga_' + Date.now(), narration: action.text, type: 'guided_answer', active: false }] };
 
@@ -290,6 +293,9 @@ export function useTutorState() {
         break;
       case 'clear_guided_options':
         dispatch({ type: 'CLEAR_GUIDED_OPTIONS' });
+        break;
+      case 'add_guided_question':
+        dispatch({ type: 'ADD_GUIDED_QUESTION', text: msg.text });
         break;
       case 'add_guided_answer':
         dispatch({ type: 'ADD_GUIDED_ANSWER', text: msg.text });

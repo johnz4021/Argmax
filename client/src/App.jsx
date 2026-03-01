@@ -113,6 +113,10 @@ export default function App() {
   const handleGuidedResponse = useCallback(
     (response) => {
       const displayText = response.text || response.label || String(response);
+      // Add the question to transcript before the answer
+      if (state.guidedOptions?.prompt) {
+        processMessage({ type: 'add_guided_question', text: state.guidedOptions.prompt });
+      }
       processMessage({ type: 'add_guided_answer', text: displayText });
       if (typeof response === 'object' && response.text) {
         send({ type: 'guided_response', text: response.text });
@@ -123,7 +127,7 @@ export default function App() {
       }
       processMessage({ type: 'clear_guided_options' });
     },
-    [send, processMessage]
+    [send, processMessage, state.guidedOptions]
   );
 
   const handleGuidedMessage = useCallback(
@@ -213,7 +217,7 @@ export default function App() {
         ) : (
           <>
             {/* Visualization panel - 60% */}
-            <div className="w-2/3 border-r border-gray-800">
+            <div className="w-2/3 h-full overflow-hidden border-r border-gray-800">
               {useVizLayout ? (
                 <VizLayout
                   panels={state.vizPanels}

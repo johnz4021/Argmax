@@ -10,8 +10,114 @@ const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
  * ElevenLabs cannot handle symbols like dp[i][w], O(n log n), ≤, →, ∞, etc.
  * This runs before sending text to the API; the UI still shows original text.
  */
+/**
+ * Convert a single LaTeX math fragment (already stripped of $..$ delimiters)
+ * into speakable English.
+ */
+function latexToSpeech(latex) {
+  let t = latex;
+
+  // \text{...} → plain text
+  t = t.replace(/\\text\{([^}]*)\}/g, '$1');
+
+  // \frac{a}{b} → "a over b"
+  t = t.replace(/\\frac\{([^}]*)\}\{([^}]*)\}/g, '$1 over $2');
+
+  // \sqrt{x} → "square root of x"
+  t = t.replace(/\\sqrt\{([^}]*)\}/g, 'square root of $1');
+
+  // Named operators / Greek letters → English words
+  const symbols = [
+    [/\\sum/g, 'sum'],
+    [/\\prod/g, 'product'],
+    [/\\int/g, 'integral'],
+    [/\\min/g, 'min'],
+    [/\\max/g, 'max'],
+    [/\\log/g, 'log'],
+    [/\\ln/g, 'ln'],
+    [/\\inf/g, 'infimum'],
+    [/\\sup/g, 'supremum'],
+    [/\\lim/g, 'limit'],
+    [/\\forall/g, 'for all'],
+    [/\\exists/g, 'there exists'],
+    [/\\in/g, ' in '],
+    [/\\notin/g, ' not in '],
+    [/\\subset/g, ' subset of '],
+    [/\\subseteq/g, ' subset of '],
+    [/\\cup/g, ' union '],
+    [/\\cap/g, ' intersect '],
+    [/\\emptyset/g, 'empty set'],
+    [/\\neg/g, 'not '],
+    [/\\land/g, ' and '],
+    [/\\lor/g, ' or '],
+    [/\\Sigma/g, 'sigma'],
+    [/\\sigma/g, 'sigma'],
+    [/\\Pi/g, 'pi'],
+    [/\\pi/g, 'pi'],
+    [/\\alpha/g, 'alpha'],
+    [/\\beta/g, 'beta'],
+    [/\\gamma/g, 'gamma'],
+    [/\\delta/g, 'delta'],
+    [/\\epsilon/g, 'epsilon'],
+    [/\\lambda/g, 'lambda'],
+    [/\\mu/g, 'mu'],
+    [/\\theta/g, 'theta'],
+    [/\\phi/g, 'phi'],
+    [/\\infty/g, 'infinity'],
+    [/\\cdot/g, ' times '],
+    [/\\times/g, ' times '],
+    [/\\div/g, ' divided by '],
+    [/\\pm/g, ' plus or minus '],
+    [/\\leq/g, ' less than or equal to '],
+    [/\\geq/g, ' greater than or equal to '],
+    [/\\neq/g, ' not equal to '],
+    [/\\le/g, ' less than or equal to '],
+    [/\\ge/g, ' greater than or equal to '],
+    [/\\ne/g, ' not equal to '],
+    [/\\lt/g, ' less than '],
+    [/\\gt/g, ' greater than '],
+    [/\\approx/g, ' approximately '],
+    [/\\equiv/g, ' is equivalent to '],
+    [/\\rightarrow/g, ' to '],
+    [/\\leftarrow/g, ' from '],
+    [/\\leftrightarrow/g, ' between '],
+    [/\\Rightarrow/g, ' implies '],
+    [/\\Leftarrow/g, ' is implied by '],
+    [/\\iff/g, ' if and only if '],
+    [/\\star/g, ' star '],
+    [/\\ast/g, ' star '],
+  ];
+  for (const [pat, rep] of symbols) {
+    t = t.replace(pat, rep);
+  }
+
+  // Superscripts: x^{2} → "x to the power of 2", x^2 → "x squared"
+  t = t.replace(/\^{\\prime}/g, ' prime');
+  t = t.replace(/\^\{([^}]*)\}/g, ' to the power of $1');
+  t = t.replace(/\^(\w)/g, (_, c) => {
+    if (c === '2') return ' squared';
+    if (c === '3') return ' cubed';
+    return ` to the power of ${c}`;
+  });
+
+  // Subscripts: x_{uv} → "x sub u v", x_i → "x sub i"
+  t = t.replace(/_\{([^}]*)\}/g, ' sub $1');
+  t = t.replace(/_(\w)/g, ' sub $1');
+
+  // Strip remaining braces and backslashes
+  t = t.replace(/[{}]/g, '');
+  t = t.replace(/\\/g, ' ');
+
+  return t.replace(/\s+/g, ' ').trim();
+}
+
 export function normalizeTTSText(text) {
   let t = text;
+
+  // Process LaTeX math regions: $...$ → speakable English
+  // Handle both $$...$$ (display) and $...$ (inline)
+  t = t.replace(/\$\$([^$]+)\$\$/g, (_, inner) => latexToSpeech(inner));
+  t = t.replace(/\$([^$]+)\$/g, (_, inner) => latexToSpeech(inner));
 
   // Big-O notation: O(n log n) → "O of n log n"
   t = t.replace(/O\(([^)]+)\)/g, 'O of $1');
@@ -21,9 +127,44 @@ export function normalizeTTSText(text) {
   // Single subscript: arr[0] → "arr of 0"
   t = t.replace(/(\w+)\[([^\]]+)\]/g, '$1 of $2');
 
-  // Superscripts
-  t = t.replace(/(\w)²/g, '$1 squared');
-  t = t.replace(/(\w)³/g, '$1 cubed');
+  // Unicode superscripts: handle all digits, not just ² and ³
+  // Multi-digit superscripts first (e.g. 3¹² → "3 to the power of 12")
+  t = t.replace(/(\w)[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (match) => {
+    const base = match[0];
+    const supMap = { '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9' };
+    const exp = [...match].slice(1).map(c => supMap[c] || c).join('');
+    if (exp === '2') return `${base} squared`;
+    if (exp === '3') return `${base} cubed`;
+    return `${base} to the power of ${exp}`;
+  });
+
+  // Unicode subscript digits/letters (e.g. x₀, Mf with subscript f)
+  t = t.replace(/[₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₕₖₗₘₙₚₛₜ]+/g, (match) => {
+    const subMap = { '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9', 'ₐ': 'a', 'ₑ': 'e', 'ₒ': 'o', 'ₓ': 'x', 'ₕ': 'h', 'ₖ': 'k', 'ₗ': 'l', 'ₘ': 'm', 'ₙ': 'n', 'ₚ': 'p', 'ₛ': 's', 'ₜ': 't' };
+    const sub = [...match].map(c => subMap[c] || c).join('');
+    return ` sub ${sub}`;
+  });
+
+  // Greek letters (Unicode, outside of LaTeX)
+  t = t.replace(/ω/g, 'omega');
+  t = t.replace(/Ω/g, 'omega');
+  t = t.replace(/α/g, 'alpha');
+  t = t.replace(/β/g, 'beta');
+  t = t.replace(/γ/g, 'gamma');
+  t = t.replace(/δ/g, 'delta');
+  t = t.replace(/ε/g, 'epsilon');
+  t = t.replace(/λ/g, 'lambda');
+  t = t.replace(/μ/g, 'mu');
+  t = t.replace(/θ/g, 'theta');
+  t = t.replace(/φ/g, 'phi');
+  t = t.replace(/σ/g, 'sigma');
+  t = t.replace(/Σ/g, 'sigma');
+  t = t.replace(/π/g, 'pi');
+  t = t.replace(/Π/g, 'pi');
+  t = t.replace(/τ/g, 'tau');
+
+  // Congruence / equivalence
+  t = t.replace(/≡/g, ' is congruent to ');
 
   // Unicode math symbols
   t = t.replace(/∞/g, 'infinity');

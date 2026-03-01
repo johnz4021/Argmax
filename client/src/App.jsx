@@ -185,6 +185,7 @@ export default function App() {
 
   // Determine if we should use the new VizLayout or legacy GraphRenderer
   const useVizLayout = state.vizPanels && state.vizPanels.some((p) => p.renderer !== 'graph');
+  const contextOnly = !state.graph && (!state.vizPanels || state.vizPanels.length === 0) && state.contextPanels.length > 0;
 
   return (
     <div className="h-screen flex flex-col bg-gray-950">
@@ -213,6 +214,29 @@ export default function App() {
         {showSelector ? (
           <div className="flex-1">
             <LandingTabs onSelect={handleSelectAlgorithm} disabled={!connected} />
+          </div>
+        ) : contextOnly ? (
+          /* Context-only layout: no viz panel, full-width single column */
+          <div className="flex-1 flex flex-col">
+            <ContextPanelHost panels={state.contextPanels} expanded />
+            <div className="flex-1 overflow-hidden">
+              <Transcript segments={state.segments} />
+            </div>
+            <Controls
+              status={state.status}
+              onInterrupt={handleInterrupt}
+              onPause={handlePause}
+              onResume={handleResume}
+              onRestart={handleRestart}
+              onSpeedChange={handleSpeedChange}
+              explanationMode={state.explanationMode}
+              guidedOptions={state.guidedOptions}
+              onGuidedResponse={handleGuidedResponse}
+              mode={state.mode}
+              onGuidedMessage={handleGuidedMessage}
+              guidedPrompt={state.guidedPrompt}
+              registerInsertRef={registerInsertRef}
+            />
           </div>
         ) : (
           <>

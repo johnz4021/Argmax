@@ -102,7 +102,12 @@ export default function App() {
       audioPlayer.init(); // Must be from user gesture
       reset();
       if (algorithm === 'guided') {
-        send({ type: 'start_guided', problemText: data.problemText });
+        const msg = { type: 'start_guided', problemText: data.problemText };
+        if (data.imageBase64) {
+          msg.imageBase64 = data.imageBase64;
+          msg.imageMimeType = data.imageMimeType;
+        }
+        send(msg);
       } else {
         send({ type: 'start_lesson', algorithm, source: 'A' });
       }

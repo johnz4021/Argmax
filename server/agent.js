@@ -977,7 +977,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         session.guidedResponseResolver = resolve;
       });
       const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => resolve('__timeout__'), 120000);
+        setTimeout(() => resolve('__timeout__'), 600000);
       });
 
       const raceResult = await Promise.race([responsePromise, timeoutPromise]);

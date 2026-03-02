@@ -10,6 +10,7 @@ import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
+import { solveProblem } from './solver.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -448,15 +449,70 @@ function compareResults(expected, computed, type) {
   }
 }
 
-export async function startGuidedSession(session, problemText) {
+function buildSolverContext(result) {
+  let ctx = `
+
+===== SOLVER CONTEXT (INTERNAL — NEVER REVEAL TO STUDENT) =====
+OPTIMAL APPROACH: ${result.approach}
+COMPLEXITY: ${result.complexity}
+KEY INSIGHT: ${result.keyInsight}
+SOLUTION: ${result.solution}
+`;
+
+  if (result.paradigmShift) {
+    ctx += `
+PARADIGM SHIFT ALERT — the obvious approach (${result.obviousApproach}) won't achieve the target complexity. Scaffold toward the non-obvious insight early. Do not let the student invest heavily in the wrong approach.
+`;
+  }
+
+  ctx += `
+RULES:
+- Guide toward THIS verified approach
+- Never mention you pre-solved it
+- Still use Socratic method, but steer toward the known answer
+=====`;
+
+  return ctx;
+}
+
+export async function startGuidedSession(session, problemText, imageBase64, imageMimeType) {
   const { ws } = session;
 
   sendJSON(ws, { type: 'guided_start', problemText });
 
+  // Pre-teaching solver pass: solve the problem first to give the tutor a verified north star
+  const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+  let solverResult = null;
+  try {
+    solverResult = await solveProblem(problemText, statusCb, imageBase64, imageMimeType);
+  } catch (err) {
+    console.error('[Solver] Failed:', err.message);
+  }
+
+  const systemPrompt = solverResult?.success
+    ? GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult)
+    : GUIDED_SYSTEM_PROMPT;
+
+  // Build user message content blocks (supports text, image, or both)
+  const userContent = [];
+  if (imageBase64 && imageMimeType) {
+    userContent.push({
+      type: 'image',
+      source: { type: 'base64', media_type: imageMimeType, data: imageBase64 },
+    });
+  }
+  const textPart = problemText
+    ? `Here is the problem the student wants to solve:\n\n${problemText}`
+    : 'See the attached image for the problem the student wants to solve.';
+  userContent.push({
+    type: 'text',
+    text: `${textPart}\n\nBegin by reading the problem carefully. Start a conversation with the student to classify which algorithm applies — use send_options with the classification tree. Do NOT call classify_problem until you've had 2-3 exchanges with the student.`,
+  });
+
   const messages = [
     {
       role: 'user',
-      content: `Here is the problem the student wants to solve:\n\n${problemText}\n\nBegin by reading the problem carefully. Start a conversation with the student to classify which algorithm applies — use send_options with the classification tree. Do NOT call classify_problem until you've had 2-3 exchanges with the student.`,
+      content: userContent,
     },
   ];
 
@@ -473,7 +529,7 @@ export async function startGuidedSession(session, problemText) {
       response = await anthropic.messages.create({
         model: 'claude-opus-4-6',
         max_tokens: 4096,
-        system: GUIDED_SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: guidedTools,
         messages,
       });
@@ -483,9 +539,30 @@ export async function startGuidedSession(session, problemText) {
       break;
     }
 
+    console.log('[GuidedAgent] Response stop_reason:', response.stop_reason, 'content types:', response.content.map(b => b.type));
+
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {
+      // If the model returned text without tool use, treat it as narration and prompt it to use tools
+      const textBlocks = response.content.filter(b => b.type === 'text' && b.text?.trim());
+      if (textBlocks.length > 0) {
+        const narrationText = textBlocks.map(b => b.text).join('\n');
+        sendJSON(ws, {
+          type: 'segment_start',
+          segment_id: 'guided_text_' + Date.now(),
+          narration: narrationText,
+          phase: 'Analyzing problem...',
+          viz_actions: [],
+        });
+        // Push the model to use tools on the next turn
+        messages.push({
+          role: 'user',
+          content: 'Continue guiding the student. Use send_options or emit_segment tools — do not respond with plain text.',
+        });
+        continue;
+      }
+
       // Check if there are queued student messages before ending
       if (session.guidedMessageQueue && session.guidedMessageQueue.length > 0) {
         const queuedMessages = session.guidedMessageQueue.splice(0);
@@ -733,7 +810,7 @@ export async function startGuidedSession(session, problemText) {
               session.guidedResponseResolver = resolve;
             });
             const timeoutPromise = new Promise((resolve) => {
-              setTimeout(() => resolve('__timeout__'), 120000);
+              setTimeout(() => resolve('__timeout__'), 600000);
             });
 
             const raceResult = await Promise.race([responsePromise, timeoutPromise]);
@@ -783,7 +860,7 @@ export async function startGuidedSession(session, problemText) {
             session.guidedResponseResolver = resolve;
           });
           const timeoutPromise = new Promise((resolve) => {
-            setTimeout(() => resolve('__timeout__'), 120000);
+            setTimeout(() => resolve('__timeout__'), 600000);
           });
 
           const raceResult = await Promise.race([responsePromise, timeoutPromise]);

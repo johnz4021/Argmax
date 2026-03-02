@@ -70,7 +70,7 @@ wss.on('connection', (ws) => {
           session.active = true;
           session.mode = 'guided';
           try {
-            await startGuidedSession(session, msg.problemText);
+            await startGuidedSession(session, msg.problemText, msg.imageBase64, msg.imageMimeType);
           } catch (err) {
             console.error('[GuidedAgent] Error:', err);
             ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));

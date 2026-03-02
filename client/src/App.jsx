@@ -220,7 +220,7 @@ export default function App() {
           <div className="flex-1 flex flex-col">
             <ContextPanelHost panels={state.contextPanels} expanded />
             <div className="flex-1 overflow-hidden">
-              <Transcript segments={state.segments} />
+              <Transcript segments={state.segments} agentStatus={state.agentStatus} />
             </div>
             <Controls
               status={state.status}
@@ -268,7 +268,7 @@ export default function App() {
             <div className="w-1/3 flex flex-col">
               <ContextPanelHost panels={state.contextPanels} />
               <div className="flex-1 overflow-hidden">
-                <Transcript segments={state.segments} />
+                <Transcript segments={state.segments} agentStatus={state.agentStatus} />
               </div>
               <Controls
                 status={state.status}

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import MathText from './MathText';
 
-export default function Transcript({ segments }) {
+export default function Transcript({ segments, agentStatus }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [segments]);
+  }, [segments, agentStatus]);
 
   return (
     <div className="flex flex-col h-full">
@@ -70,6 +70,17 @@ export default function Transcript({ segments }) {
             )}
           </div>
         ))}
+
+        {agentStatus && (
+          <div className="flex items-center gap-2 px-1 py-1 text-xs text-gray-400">
+            <span className="flex gap-0.5">
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
+              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
+            </span>
+            {agentStatus.status === 'tool' ? `${agentStatus.tool}...` : 'Thinking...'}
+          </div>
+        )}
 
         <div ref={bottomRef} />
       </div>

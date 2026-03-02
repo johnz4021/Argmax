@@ -9,6 +9,7 @@ import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
+import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -207,6 +208,7 @@ STUDENT-DOES-THE-WORK PRINCIPLE (all modes):
 - "I'm not sure" means ask a simpler question first, not take over.
   Only do the work yourself after prompting and the student is still stuck.
 
+
 TOOL USAGE FOR NON-EXECUTION MODES:
 
 A. Creating an expression panel with initial content:
@@ -243,17 +245,19 @@ B. Updating the panel incrementally as you build the formulation:
       }]
     })
 
-C. Highlighting graph edges/nodes without a trace:
-  To highlight graph elements in non-execution modes, use emit_segment with graph viz_actions:
-    emit_segment({
-      narration: "Notice this edge from s to a has capacity 2...",
-      viz_actions: [
-        { renderer: "graph", action: "highlight_edge", params: { from: "s", to: "a", className: "highlighted" } },
-        { renderer: "graph", action: "highlight_node", params: { node: "s", className: "current" } }
-      ]
-    })
-  To clear highlights: { renderer: "graph", action: "reset_highlights", params: {} }
-  Available classNames: highlighted (gold), current (blue), visited (green), path (purple), examining (orange)
+C. Visualizing with any renderer in non-execution mode:
+  Mount a renderer panel, then send viz_actions via emit_segment.
+  Setup: create_visualization({ panels: [{ renderer: "<type>" }], context_panels: [...] })
+  You can mount multiple renderer panels for problems needing more than one (e.g. table + graph).
+
+  Available renderers and actions:
+  - graph: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label
+  - array: set_data, highlight, swap, compare, partition, place, mark_sorted, set_pointer, clear_pointers, slide_window, set_label, reset
+  - table: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, clear_dependency_arrows, set_row_header, set_col_header, mark_optimal, reset
+  - tree: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset
+  - linked: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset
+
+  Call get_renderer_docs to get full parameter docs, classNames, and examples for any renderer(s) you need.
 
 CONFIDENCE CALIBRATION:
 - Single well-known reduction → narrate confidently.
@@ -374,6 +378,21 @@ const guidedTools = [
       required: ['text'],
     },
   },
+  {
+    name: 'get_renderer_docs',
+    description: 'Get full documentation (params, classNames, examples) for one or more visualization renderers. Call this before constructing viz_actions for a renderer you haven\'t used yet.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        renderers: {
+          type: 'array',
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked'] },
+          description: 'Which renderer(s) to get docs for',
+        },
+      },
+      required: ['renderers'],
+    },
+  },
 ];
 
 // Input size validation
@@ -447,6 +466,8 @@ export async function startGuidedSession(session, problemText) {
   while (continueLoop) {
     if (ws.readyState !== ws.OPEN) break;
 
+    sendJSON(ws, { type: 'agent_status', status: 'thinking' });
+
     let response;
     try {
       response = await anthropic.messages.create({
@@ -485,8 +506,26 @@ export async function startGuidedSession(session, problemText) {
       const toolResults = [];
       let interrupted = false;
 
+      const TOOL_LABELS = {
+        classify_problem: 'Classifying problem',
+        create_visualization: 'Creating visualization',
+        emit_segment: null,
+        send_options: null,
+        conversational_reply: null,
+        run_algorithm: 'Running algorithm',
+        show_canonical_example: 'Loading example',
+        update_graph: 'Building graph',
+        get_renderer_docs: null,
+        verify_result: 'Verifying result',
+      };
+
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue;
+
+        const toolLabel = TOOL_LABELS[block.name];
+        if (toolLabel) {
+          sendJSON(ws, { type: 'agent_status', status: 'tool', tool: toolLabel });
+        }
 
         let result;
 
@@ -503,22 +542,30 @@ export async function startGuidedSession(session, problemText) {
               error: `Unknown algorithm: ${plan.target_algorithm}. Available: ${validAlgorithms.join(', ')}`,
             };
           } else {
-            result = {
-              success: true,
-              message: plan.reasoning_mode === 'algorithm_execution'
-                ? (plan.is_in_scope
-                  ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
-                  : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
-                : plan.reasoning_mode === 'modeling'
-                ? `Classification accepted: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
-                : plan.reasoning_mode === 'greedy_design'
-                ? `Classification accepted: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
-                : plan.reasoning_mode === 'dp_design'
-                ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
-                : plan.reasoning_mode === 'dc_design'
-                ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime.`
-                : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence.`,
-            };
+            let message = plan.reasoning_mode === 'algorithm_execution'
+              ? (plan.is_in_scope
+                ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
+                : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
+              : plan.reasoning_mode === 'modeling'
+              ? `Classification accepted: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
+              : plan.reasoning_mode === 'greedy_design'
+              ? `Classification accepted: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
+              : plan.reasoning_mode === 'dp_design'
+              ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
+              : plan.reasoning_mode === 'dc_design'
+              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime.`
+              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence.`;
+
+            // Auto-inject primary renderer docs for non-execution modes
+            if (plan.reasoning_mode !== 'algorithm_execution') {
+              const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
+              const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
+              const rendererType = algoInfo?.renderer || 'graph';
+              const rendererDocs = buildRendererDocs([rendererType]);
+              message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
+            }
+
+            result = { success: true, message };
           }
         } else if (block.name === 'update_graph') {
           // Incremental graph construction
@@ -768,6 +815,8 @@ export async function startGuidedSession(session, problemText) {
               freeform_text: studentResponse?.text || null,
             };
           }
+        } else if (block.name === 'get_renderer_docs') {
+          result = { docs: buildRendererDocs(block.input.renderers) };
         } else if (block.name === 'run_algorithm') {
           sendJSON(ws, { type: 'guided_transition' });
           sendJSON(ws, { type: 'guided_phase', phase: 'executing' });

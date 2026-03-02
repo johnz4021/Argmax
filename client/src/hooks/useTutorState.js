@@ -16,6 +16,7 @@ const initialState = {
   guidedPhase: null,          // 'analyzing' | 'identifying' | 'modeling' | 'executing' | 'verifying' | null
   guidedOptions: null,        // null | { prompt, options: [{ id, label }] }
   guidedPrompt: null,         // current prompt text for the input field in guided mode
+  agentStatus: null,           // null | { status: 'thinking' | 'tool', tool?: string }
 };
 
 /**
@@ -47,17 +48,19 @@ function reducer(state, action) {
     case 'CREATE_GRAPH':
       return {
         ...state,
+        agentStatus: null,
         graph: action.graph,
         // Auto-create a graph panel when create_graph is used (backward compat)
         vizPanels: [{ id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } }],
       };
 
     case 'SET_VIZ_PANELS':
-      return { ...state, vizPanels: action.panels };
+      return { ...state, agentStatus: null, vizPanels: action.panels };
 
     case 'SEGMENT_START':
       return {
         ...state,
+        agentStatus: null,
         currentPhase: action.phase || state.currentPhase,
         segments: [
           ...state.segments,
@@ -82,6 +85,7 @@ function reducer(state, action) {
     case 'INTERRUPT_RESPONSE':
       return {
         ...state,
+        agentStatus: null,
         status: state.previousStatus === 'complete' ? 'complete' : 'teaching',
         explanationMode:
           action.explanation_mode !== 'none'
@@ -108,7 +112,7 @@ function reducer(state, action) {
       return { ...state, explanationMode: null };
 
     case 'LESSON_COMPLETE':
-      return { ...state, status: 'complete' };
+      return { ...state, agentStatus: null, status: 'complete' };
 
     case 'SET_PAUSED':
       return { ...state, status: 'paused' };
@@ -169,13 +173,13 @@ function reducer(state, action) {
       return { ...state, guidedPhase: action.phase };
 
     case 'GUIDED_OPTIONS':
-      return { ...state, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder } };
+      return { ...state, agentStatus: null, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder } };
 
     case 'CLEAR_GUIDED_OPTIONS':
       return { ...state, guidedOptions: null };
 
     case 'ADD_GUIDED_QUESTION':
-      return { ...state, segments: [...state.segments, { id: 'gq_' + Date.now(), narration: action.text, type: 'guided_question', active: false }] };
+      return { ...state, agentStatus: null, segments: [...state.segments, { id: 'gq_' + Date.now(), narration: action.text, type: 'guided_question', active: false }] };
 
     case 'ADD_GUIDED_ANSWER':
       return { ...state, segments: [...state.segments, { id: 'ga_' + Date.now(), narration: action.text, type: 'guided_answer', active: false }] };
@@ -195,6 +199,7 @@ function reducer(state, action) {
     case 'VERIFICATION_RESULT':
       return {
         ...state,
+        agentStatus: null,
         segments: [
           ...state.segments,
           {
@@ -212,10 +217,13 @@ function reducer(state, action) {
       };
 
     case 'GUIDED_TRANSITION':
-      return { ...state, status: 'teaching', guidedPhase: 'executing' };
+      return { ...state, agentStatus: null, status: 'teaching', guidedPhase: 'executing' };
 
     case 'ERROR':
-      return { ...state, status: 'error', error: action.message };
+      return { ...state, agentStatus: null, status: 'error', error: action.message };
+
+    case 'AGENT_STATUS':
+      return { ...state, agentStatus: action.agentStatus };
 
     case 'RESET':
       return initialState;
@@ -316,6 +324,9 @@ export function useTutorState() {
         break;
       case 'guided_transition':
         dispatch({ type: 'GUIDED_TRANSITION' });
+        break;
+      case 'agent_status':
+        dispatch({ type: 'AGENT_STATUS', agentStatus: { status: msg.status, tool: msg.tool } });
         break;
       case 'error':
         dispatch({ type: 'ERROR', message: msg.message });

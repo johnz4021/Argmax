@@ -337,6 +337,11 @@ CONFIDENCE CALIBRATION:
 - Revised model → teach the revision: "I initially thought X, but that misses Y."
 - Unverified assumptions → use hedged language.
 
+ENDING THE LESSON:
+- When all stages are complete and the student has demonstrated understanding, call the lesson_complete tool.
+- Do NOT stop responding without calling lesson_complete — the system cannot detect end-of-lesson from stop_reason alone.
+- If a student times out or stops responding, prompt them once more. If still no response, call lesson_complete.
+
 POST-LESSON FOLLOW-UP MODE:
 - After the lesson completes, the student may ask follow-up questions.
 - These arrive prefixed with [FOLLOW-UP QUESTION].
@@ -476,6 +481,20 @@ const guidedTools = [
         },
       },
       required: ['renderers'],
+    },
+  },
+  {
+    name: 'lesson_complete',
+    description: 'Signal that the guided lesson is finished. Call this ONLY after the full teaching flow is complete — all stages done, result verified (if applicable), and student has demonstrated understanding. Do NOT call this prematurely.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'Brief summary of what was covered in the lesson',
+        },
+      },
+      required: ['summary'],
     },
   },
 ];
@@ -625,9 +644,11 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
 async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
   const { ws } = session;
   let sessionPlan = null;
+  let emptyEndTurnCount = 0;
 
   let continueLoop = true;
   while (continueLoop) {
+    let lessonDone = false;
     if (ws.readyState !== ws.OPEN) break;
 
     sendJSON(ws, { type: 'agent_status', status: 'thinking' });
@@ -655,6 +676,7 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
       // If the model returned text without tool use, treat it as narration and prompt it to use tools
       const textBlocks = response.content.filter(b => b.type === 'text' && b.text?.trim());
       if (textBlocks.length > 0) {
+        emptyEndTurnCount = 0;
         const narrationText = textBlocks.map(b => b.text).join('\n');
         sendJSON(ws, {
           type: 'segment_start',
@@ -689,39 +711,28 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
         }
         continue;
       }
-      // Send lesson_complete only once (guard with followUpSent flag)
-      if (!session.followUpSent) {
-        session.followUpSent = true;
-        sendJSON(ws, { type: 'lesson_complete' });
-      }
 
-      // Wait for a follow-up question or 5-minute timeout
-      const followUpMsg = await new Promise((resolve) => {
-        session.followUpResolver = resolve;
-        const timer = setTimeout(() => resolve('__timeout__'), 5 * 60 * 1000);
-        // Store timer so we can clear it if resolved by a message
-        session._followUpTimer = timer;
-      });
-      if (session._followUpTimer) {
-        clearTimeout(session._followUpTimer);
-        session._followUpTimer = null;
+      // No text, no queued messages — nudge the model to continue (never infer lesson_complete from end_turn)
+      emptyEndTurnCount++;
+      if (emptyEndTurnCount >= 3) {
+        // Safety valve: 3 consecutive empty end_turns = force completion
+        console.log('[GuidedAgent] Safety valve: 3 consecutive empty end_turns, forcing lesson_complete');
+        if (!session.followUpSent) {
+          session.followUpSent = true;
+          sendJSON(ws, { type: 'lesson_complete' });
+        }
+        lessonDone = true;
+      } else {
+        messages.push({
+          role: 'user',
+          content: 'You returned an empty response. Continue guiding the student using your tools (emit_segment, send_options, conversational_reply). If the lesson is truly finished, call the lesson_complete tool.',
+        });
+        continue;
       }
-      session.followUpResolver = null;
-
-      if (followUpMsg === '__timeout__' || ws.readyState !== 1) {
-        continueLoop = false;
-        break;
-      }
-
-      // Inject follow-up question into conversation and continue the loop
-      messages.push({
-        role: 'user',
-        content: `[FOLLOW-UP QUESTION] ${followUpMsg}`,
-      });
-      continue;
     }
 
     if (response.stop_reason === 'tool_use') {
+      emptyEndTurnCount = 0;
       const toolResults = [];
       let interrupted = false;
 
@@ -736,6 +747,7 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
         update_graph: 'Building graph',
         get_renderer_docs: null,
         verify_result: 'Verifying result',
+        lesson_complete: 'Wrapping up lesson',
       };
 
       for (const block of response.content) {
@@ -1036,6 +1048,11 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
           }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
+        } else if (block.name === 'lesson_complete') {
+          sendJSON(ws, { type: 'lesson_complete' });
+          session.followUpSent = true;
+          lessonDone = true;
+          result = { success: true, message: 'Lesson marked complete. Waiting for follow-up questions.' };
         } else if (block.name === 'run_algorithm') {
           sendJSON(ws, { type: 'guided_transition' });
           sendJSON(ws, { type: 'guided_phase', phase: 'executing' });
@@ -1134,6 +1151,32 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
       if (session.conversationId) {
         saveAgentState(session.conversationId, messages, solverResult);
       }
+    }
+
+    // Shared follow-up wait path — entered when lesson_complete tool is called or safety valve triggers
+    if (lessonDone) {
+      const followUpMsg = await new Promise((resolve) => {
+        session.followUpResolver = resolve;
+        const timer = setTimeout(() => resolve('__timeout__'), 5 * 60 * 1000);
+        session._followUpTimer = timer;
+      });
+      if (session._followUpTimer) {
+        clearTimeout(session._followUpTimer);
+        session._followUpTimer = null;
+      }
+      session.followUpResolver = null;
+
+      if (followUpMsg === '__timeout__' || ws.readyState !== 1) {
+        continueLoop = false;
+        break;
+      }
+
+      // Inject follow-up question into conversation and continue the loop
+      messages.push({
+        role: 'user',
+        content: `[FOLLOW-UP QUESTION] ${followUpMsg}`,
+      });
+      continue;
     }
   }
 

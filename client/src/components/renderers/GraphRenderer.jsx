@@ -51,6 +51,13 @@ const CYTOSCAPE_STYLE = [
     },
   },
   {
+    selector: 'edge[color]',
+    style: {
+      'line-color': 'data(color)',
+      'target-arrow-color': 'data(color)',
+    },
+  },
+  {
     selector: '.highlighted',
     style: {
       'background-color': '#fbbf24',
@@ -364,6 +371,7 @@ export default function GraphRenderer({
           source: edge.source,
           target: edge.target,
           weight: edge.weight ?? '',
+          color: edge.color || '',
         },
       });
     }

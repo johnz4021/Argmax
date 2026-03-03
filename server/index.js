@@ -32,6 +32,8 @@ wss.on('connection', (ws) => {
     guidedResponse: null,
     guidedResponseResolver: null,
     guidedMessageQueue: [],
+    followUpResolver: null,
+    followUpSent: false,
   };
   sessions.set(sessionId, session);
   console.log(`[WS] Client connected: ${sessionId}`);
@@ -77,6 +79,8 @@ wss.on('connection', (ws) => {
           }
           session.active = false;
           session.mode = 'direct';
+          session.followUpResolver = null;
+          session.followUpSent = false;
           break;
         }
 
@@ -98,6 +102,11 @@ wss.on('connection', (ws) => {
             session.guidedResponse = { text: msg.text, timestamp: Date.now() };
             session.guidedResponseResolver();
             session.guidedResponseResolver = null;
+          } else if (session.followUpResolver) {
+            // Follow-up question after lesson completion — pull from queue to avoid double-injection
+            session.guidedMessageQueue.pop();
+            session.followUpResolver(msg.text);
+            session.followUpResolver = null;
           }
           // If paused, auto-resume so the student message gets processed immediately
           if (session.pauseResolver) {
@@ -151,6 +160,11 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     console.log(`[WS] Client disconnected: ${sessionId}`);
     session.active = false;
+    // Resolve followUpResolver so startGuidedSession can return cleanly
+    if (session.followUpResolver) {
+      session.followUpResolver('__timeout__');
+      session.followUpResolver = null;
+    }
     sessions.delete(sessionId);
   });
 });

@@ -237,6 +237,11 @@ STUDENT-DOES-THE-WORK PRINCIPLE (all modes):
   Quick arithmetic, bookkeeping, or setup steps are fine to handle yourself.
 - "I'm not sure" means ask a simpler question first, not take over.
   Only do the work yourself after prompting and the student is still stuck.
+- SUB-STEP COLLAPSING: When the student grasps the main idea (e.g., "create 3 copies per
+  node"), do NOT decompose it into 3+ separate questions about individual cases (e.g.,
+  asking about red edges, then green, then blue separately). If the student shows they
+  understand the pattern from one example, confirm the general rule yourself and move on.
+  Working out every case is arithmetic, not insight.
 
 QUESTION TYPE HIERARCHY (prefer higher types):
   Type 1 — Generative (best): open-ended via conversational_reply.
@@ -258,16 +263,20 @@ QUESTION TYPE HIERARCHY (prefer higher types):
 
 COMPREHENSION GATES:
   Each critical_concept (from classify_problem) must be gated before moving on:
-  1. After teaching a critical concept, ask the student to restate it in their own words
-     via conversational_reply: "Can you explain [concept] back to me in your own words?"
-  2. Reject low-effort acknowledgments. If the student replies with just "ok", "got it",
+  1. IMPLICIT GATING (preferred): If the student already demonstrated understanding of a
+     concept through their working answers (e.g., correctly applying the concept, giving
+     correct examples, or explaining the logic unprompted), the gate is PASSED — do NOT
+     ask them to restate what they just showed you. Move on.
+  2. EXPLICIT GATING (only when needed): If the student received a concept passively
+     (you explained it, they didn't engage), ask them to restate or apply it.
+  3. Reject low-effort acknowledgments. If the student replies with just "ok", "got it",
      "yes", "sure", "makes sense", or similar — do NOT accept it as understanding.
      Instead: "I want to make sure this clicks — can you put [concept] in your own words?"
-  3. Max 2 restate attempts. If after 2 tries the student still can't articulate it:
+  4. Max 2 restate attempts. If after 2 tries the student still can't articulate it:
      - Give a concise 1-2 sentence explanation via emit_segment
      - Then ask ONE verification question: "So if [scenario], what would happen?"
      - Accept any reasonable answer and move on — do not loop further.
-  4. Track gated concepts internally. Do not move to the next stage of the problem
+  5. Track gated concepts internally. Do not move to the next stage of the problem
      until all critical_concepts for the current stage have been gated.
 
 
@@ -326,6 +335,14 @@ CONFIDENCE CALIBRATION:
 - Multi-step reduction → justify each step.
 - Revised model → teach the revision: "I initially thought X, but that misses Y."
 - Unverified assumptions → use hedged language.
+
+POST-LESSON FOLLOW-UP MODE:
+- After the lesson completes, the student may ask follow-up questions.
+- These arrive prefixed with [FOLLOW-UP QUESTION].
+- Answer using conversational_reply ONLY — no emit_segment, send_options, run_algorithm, or create_visualization.
+- Keep answers concise (1-3 sentences). Reference the lesson context.
+- Do NOT restart the lesson flow or re-classify the problem.
+- If the question requires a full new lesson, suggest: "That's a great question — want to start a new lesson on it?"
 
 SEGMENT BUDGETING:
 - Reasoning mode classification: 1-2 segments + 1 send_options
@@ -640,9 +657,36 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
         }
         continue;
       }
-      continueLoop = false;
-      sendJSON(ws, { type: 'lesson_complete' });
-      break;
+      // Send lesson_complete only once (guard with followUpSent flag)
+      if (!session.followUpSent) {
+        session.followUpSent = true;
+        sendJSON(ws, { type: 'lesson_complete' });
+      }
+
+      // Wait for a follow-up question or 5-minute timeout
+      const followUpMsg = await new Promise((resolve) => {
+        session.followUpResolver = resolve;
+        const timer = setTimeout(() => resolve('__timeout__'), 5 * 60 * 1000);
+        // Store timer so we can clear it if resolved by a message
+        session._followUpTimer = timer;
+      });
+      if (session._followUpTimer) {
+        clearTimeout(session._followUpTimer);
+        session._followUpTimer = null;
+      }
+      session.followUpResolver = null;
+
+      if (followUpMsg === '__timeout__' || ws.readyState !== 1) {
+        continueLoop = false;
+        break;
+      }
+
+      // Inject follow-up question into conversation and continue the loop
+      messages.push({
+        role: 'user',
+        content: `[FOLLOW-UP QUESTION] ${followUpMsg}`,
+      });
+      continue;
     }
 
     if (response.stop_reason === 'tool_use') {

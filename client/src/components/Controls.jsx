@@ -198,12 +198,12 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
 
       {status === 'complete' && (
         <div className="flex items-center gap-3">
-          <p className="text-sm text-green-400">Lesson complete!</p>
+          <p className="text-sm text-green-400">Lesson complete! Ask any follow-up questions below.</p>
           <button
             onClick={onRestart}
             className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
           >
-            Restart
+            New Problem
           </button>
         </div>
       )}

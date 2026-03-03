@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
 /* Prevent Tailwind's preflight from breaking KaTeX rendering */
 .katex .base {
   display: inline-block;

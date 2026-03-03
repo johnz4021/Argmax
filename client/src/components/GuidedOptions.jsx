@@ -23,7 +23,6 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={inputPlaceholder || 'Type your answer...'}
-            maxLength={60}
             className="flex-1 bg-gray-800 border border-blue-500 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-400"
             autoFocus
           />

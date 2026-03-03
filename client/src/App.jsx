@@ -259,7 +259,7 @@ export default function App() {
             />
           </div>
         ) : contextOnly ? (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col overflow-hidden">
             <ContextPanelHost panels={state.contextPanels} expanded />
             <div className="flex-1 overflow-hidden">
               <Transcript segments={state.segments} agentStatus={state.agentStatus} />
@@ -307,7 +307,7 @@ export default function App() {
             </div>
 
             {/* Transcript panel */}
-            <div className="w-1/3 flex flex-col">
+            <div className="w-1/3 flex flex-col overflow-hidden">
               <ContextPanelHost panels={state.contextPanels} />
               <div className="flex-1 overflow-hidden">
                 <Transcript segments={state.segments} agentStatus={state.agentStatus} />

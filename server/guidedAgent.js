@@ -34,6 +34,19 @@ ${treeToPromptText()}
 
 CONVERSATIONAL FLOW:
 
+STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
+  Read the full problem. If it contains multiple sub-problems or parts (e.g., "(a)...(b)...(c)..."),
+  ask the student which part they want to work on using conversational_reply.
+  Once the student specifies a part:
+  1. Extract that sub-problem's text, including any shared context from the problem preamble
+     (graph definitions, variable names, constraints referenced across parts).
+  2. Call run_solver with the extracted sub-problem text.
+  3. Proceed to STAGE 0 with the selected sub-problem as the focus.
+  If the problem is a single question (no parts), call run_solver with the full problem text
+  and proceed directly to STAGE 0.
+  IMPORTANT: Always call run_solver before classify_problem. You need the solver's north star
+  to guide effectively.
+
 STAGE 0 — REASONING MODE (1-2 exchanges):
   Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
   Use send_options with the top-level classification tree question.
@@ -576,6 +589,20 @@ const guidedTools = [
       required: ['summary'],
     },
   },
+  {
+    name: 'run_solver',
+    description: 'Run the problem solver on a specific sub-problem to get a verified solution as your teaching north star. Call this AFTER identifying which part of the problem the student wants to work on. Pass the focused sub-problem text (not the entire homework).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        subproblem_text: {
+          type: 'string',
+          description: 'The text of the specific sub-problem to solve. Include enough context (variable definitions, graph descriptions from earlier parts) for the solver to understand the problem standalone.',
+        },
+      },
+      required: ['subproblem_text'],
+    },
+  },
 ];
 
 // Input size validation
@@ -659,23 +686,12 @@ RULES:
 
 export async function startGuidedSession(session, problemText, imageBase64, imageMimeType) {
   const { ws } = session;
-
   sendJSON(ws, { type: 'guided_start', problemText });
 
-  // Pre-teaching solver pass: solve the problem first to give the tutor a verified north star
-  const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-  let solverResult = null;
-  try {
-    solverResult = await solveProblem(problemText, statusCb, imageBase64, imageMimeType);
-  } catch (err) {
-    console.error('[Solver] Failed:', err.message);
-  }
+  // Store image data on session so the solver can access it later
+  session.imageBase64 = imageBase64 || null;
+  session.imageMimeType = imageMimeType || null;
 
-  const systemPrompt = solverResult?.success
-    ? GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult)
-    : GUIDED_SYSTEM_PROMPT;
-
-  // Build user message content blocks (supports text, image, or both)
   const userContent = [];
   if (imageBase64 && imageMimeType) {
     userContent.push({
@@ -688,17 +704,11 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     : 'See the attached image for the problem the student wants to solve.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nBegin by reading the problem carefully. Start a conversation with the student to classify which algorithm applies — use send_options with the classification tree. Do NOT call classify_problem until you've had 2-3 exchanges with the student.`,
+    text: `${textPart}\n\nBegin by reading the problem carefully. If this contains multiple sub-problems or parts, ask the student which part they want to work on first. Then call run_solver with the focused sub-problem text before starting classification.`,
   });
 
-  const messages = [
-    {
-      role: 'user',
-      content: userContent,
-    },
-  ];
-
-  await runGuidedLoop(session, messages, systemPrompt, solverResult);
+  const messages = [{ role: 'user', content: userContent }];
+  await runGuidedLoop(session, messages, GUIDED_SYSTEM_PROMPT, null);
 }
 
 export async function resumeGuidedSession(session, savedMessages, savedSolverResult) {
@@ -720,10 +730,12 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
   await runGuidedLoop(session, messages, systemPrompt, savedSolverResult);
 }
 
-async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
+async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult) {
   const { ws } = session;
   let sessionPlan = null;
   let emptyEndTurnCount = 0;
+  let systemPrompt = initialSystemPrompt;
+  let solverResult = initialSolverResult;
 
   let continueLoop = true;
   while (continueLoop) {
@@ -827,6 +839,7 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
         get_renderer_docs: null,
         verify_result: 'Verifying result',
         lesson_complete: 'Wrapping up lesson',
+        run_solver: 'Analyzing sub-problem...',
       };
 
       for (const block of response.content) {
@@ -1132,6 +1145,36 @@ async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
           session.followUpSent = true;
           lessonDone = true;
           result = { success: true, message: 'Lesson marked complete. Waiting for follow-up questions.' };
+        } else if (block.name === 'run_solver') {
+          const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+          try {
+            const sr = await solveProblem(
+              block.input.subproblem_text,
+              statusCb,
+              session.imageBase64,
+              session.imageMimeType
+            );
+            if (sr.success) {
+              solverResult = sr;
+              // Rebuild system prompt with solver context
+              systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(sr);
+              result = {
+                success: true,
+                message: `Solver completed. Approach: ${sr.approach}. Confidence: ${sr.confidence}. Key insight: ${sr.keyInsight}. Use this as your north star — guide toward this approach without revealing you pre-solved it.`,
+                approach: sr.approach,
+                complexity: sr.complexity,
+                keyInsight: sr.keyInsight,
+                solution: sr.solution,
+                paradigmShift: sr.paradigmShift,
+                obviousApproach: sr.obviousApproach,
+              };
+            } else {
+              result = { success: false, message: 'Solver could not find a solution. Proceed without a north star — guide the student using your own reasoning.' };
+            }
+          } catch (err) {
+            console.error('[GuidedAgent] Solver error:', err.message);
+            result = { success: false, message: 'Solver failed. Proceed without a north star.' };
+          }
         } else if (block.name === 'run_algorithm') {
           sendJSON(ws, { type: 'guided_transition' });
           sendJSON(ws, { type: 'guided_phase', phase: 'executing' });

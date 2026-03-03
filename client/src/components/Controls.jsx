@@ -43,6 +43,10 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
     }
     setQuestion('');
     clearTranscript();
+    // Reset textarea height after clearing
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+    }
   };
 
   const insertAtCursor = useCallback((text) => {
@@ -111,13 +115,23 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
       )}
       {showInput && (
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
+          <textarea
             ref={inputRef}
-            type="text"
+            rows={1}
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = e.target.scrollHeight + 'px';
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit(e);
+              }
+            }}
             placeholder={placeholder}
-            className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 ${
+            className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none max-h-32 overflow-y-auto ${
               isListening ? 'border-red-500' : 'border-gray-700'
             }`}
           />

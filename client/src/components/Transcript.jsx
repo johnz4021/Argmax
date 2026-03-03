@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react';
 import MathText from './MathText';
 
 export default function Transcript({ segments, agentStatus }) {
-  const bottomRef = useRef(null);
+  const scrollContainerRef = useRef(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = scrollContainerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [segments, agentStatus]);
 
   return (
@@ -14,7 +15,7 @@ export default function Transcript({ segments, agentStatus }) {
         Transcript
       </h2>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {segments.length === 0 && (
           <p className="text-gray-500 text-sm italic">
             Start a lesson to see the narration here...
@@ -82,7 +83,6 @@ export default function Transcript({ segments, agentStatus }) {
           </div>
         )}
 
-        <div ref={bottomRef} />
       </div>
 
     </div>

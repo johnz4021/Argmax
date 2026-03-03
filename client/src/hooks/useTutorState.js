@@ -17,6 +17,9 @@ const initialState = {
   guidedOptions: null,        // null | { prompt, options: [{ id, label }] }
   guidedPrompt: null,         // current prompt text for the input field in guided mode
   agentStatus: null,           // null | { status: 'thinking' | 'tool', tool?: string }
+  conversations: [],           // conversation history list
+  loadedConversation: null,    // loaded transcript messages for viewing
+  viewingHistory: false,       // whether we're viewing a transcript
 };
 
 /**
@@ -169,6 +172,20 @@ function reducer(state, action) {
     case 'GUIDED_START':
       return { ...initialState, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
 
+    case 'GUIDED_RESUME':
+      return { ...state, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
+
+    case 'LOAD_TRANSCRIPT':
+      return {
+        ...state,
+        segments: action.messages.map((m, i) => ({
+          id: m.id || `loaded_${i}`,
+          narration: m.content,
+          type: m.type,
+          active: false,
+        })),
+      };
+
     case 'GUIDED_PHASE':
       return { ...state, guidedPhase: action.phase };
 
@@ -224,6 +241,15 @@ function reducer(state, action) {
 
     case 'AGENT_STATUS':
       return { ...state, agentStatus: action.agentStatus };
+
+    case 'SET_CONVERSATIONS':
+      return { ...state, conversations: action.conversations };
+
+    case 'LOAD_CONVERSATION':
+      return { ...state, loadedConversation: action.messages, viewingHistory: true };
+
+    case 'CLEAR_LOADED_CONVERSATION':
+      return { ...state, loadedConversation: null, viewingHistory: false };
 
     case 'RESET':
       return initialState;
@@ -291,7 +317,20 @@ export function useTutorState() {
         dispatch({ type: 'LESSON_COMPLETE' });
         break;
       case 'guided_start':
-        dispatch({ type: 'GUIDED_START' });
+        if (msg.resuming) {
+          dispatch({ type: 'GUIDED_RESUME' });
+        } else {
+          dispatch({ type: 'GUIDED_START' });
+        }
+        break;
+      case 'conversations_list':
+        dispatch({ type: 'SET_CONVERSATIONS', conversations: msg.conversations });
+        break;
+      case 'conversation_loaded':
+        dispatch({ type: 'LOAD_CONVERSATION', messages: msg.messages });
+        break;
+      case 'conversation_created':
+        // No-op on client, server tracks conversationId
         break;
       case 'guided_phase':
         dispatch({ type: 'GUIDED_PHASE', phase: msg.phase });

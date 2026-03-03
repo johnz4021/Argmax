@@ -4,14 +4,18 @@ import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
 import Controls from './components/Controls';
 import LandingTabs from './components/LandingTabs';
+import AuthModal from './components/AuthModal';
 import ContextPanelHost from './components/context/ContextPanelHost';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
+import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
 import { applyActions } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
+import { supabase } from './lib/supabase';
 
 export default function App() {
+  const { session, user, loading: authLoading, signOut } = useAuth();
   const { state, processMessage, interrupt, reset, dispatchContext } = useTutorState();
   const audioPlayer = useAudioPlayer();
   const insertRefHolder = useRef(null);
@@ -58,7 +62,6 @@ export default function App() {
         }
 
         // Extract residual edges from show_residual_overlay actions for the toggle button
-        // Handles both new format ({ renderer, action, params }) and legacy format ({ action, residual_edges })
         const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay');
         const residualEdges = residualAction?.params?.residual_edges || residualAction?.residual_edges;
         if (residualEdges) {
@@ -73,7 +76,6 @@ export default function App() {
         const normalized = normalizeVizActions(msg.viz_actions);
         applyActions(normalized);
       }
-      // create_visualization and explanation_complete are handled by processMessage above
       if (msg.type === 'rewind_step_narration') {
         processMessage({
           type: 'segment_start',
@@ -95,7 +97,9 @@ export default function App() {
     [audioPlayer]
   );
 
-  const { send, connected } = useWebSocket(onMessage, onBinary);
+  // Only connect WebSocket when auth is ready (or if Supabase isn't configured)
+  const wsEnabled = !supabase || !!user;
+  const { send, connected } = useWebSocket(onMessage, onBinary, wsEnabled);
 
   const handleSelectAlgorithm = useCallback(
     (algorithm, data) => {
@@ -118,7 +122,6 @@ export default function App() {
   const handleGuidedResponse = useCallback(
     (response) => {
       const displayText = response.text || response.label || String(response);
-      // Add the question to transcript before the answer
       if (state.guidedOptions?.prompt) {
         processMessage({ type: 'add_guided_question', text: state.guidedOptions.prompt });
       }
@@ -174,7 +177,6 @@ export default function App() {
     [send]
   );
 
-  // Phase 7: Clickable graph element references
   const handleElementClick = useCallback((refText) => {
     const inputEl = insertRefHolder.current?.current;
     if (inputEl && inputEl._insertAtCursor) {
@@ -186,9 +188,25 @@ export default function App() {
     insertRefHolder.current = ref;
   }, []);
 
-  const showSelector = state.status === 'idle' || state.status === 'error';
+  const handleClearHistory = useCallback(() => {
+    dispatchContext({ type: 'CLEAR_LOADED_CONVERSATION' });
+  }, [dispatchContext]);
 
-  // Determine if we should use the new VizLayout or legacy GraphRenderer
+  // Auth gate: if Supabase is configured, require login
+  if (supabase) {
+    if (authLoading) {
+      return (
+        <div className="h-screen flex items-center justify-center bg-gray-950">
+          <div className="text-gray-400 text-sm">Loading...</div>
+        </div>
+      );
+    }
+    if (!user) {
+      return <AuthModal />;
+    }
+  }
+
+  const showSelector = state.status === 'idle' || state.status === 'error';
   const useVizLayout = state.vizPanels && state.vizPanels.some((p) => p.renderer !== 'graph');
   const contextOnly = !state.graph && (!state.vizPanels || state.vizPanels.length === 0) && state.contextPanels.length > 0;
 
@@ -204,7 +222,18 @@ export default function App() {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {user && (
+            <>
+              <span className="text-xs text-gray-400">{user.email}</span>
+              <button
+                onClick={signOut}
+                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Sign Out
+              </button>
+            </>
+          )}
           <div
             className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
           />
@@ -218,10 +247,18 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {showSelector ? (
           <div className="flex-1">
-            <LandingTabs onSelect={handleSelectAlgorithm} disabled={!connected} />
+            <LandingTabs
+              onSelect={handleSelectAlgorithm}
+              disabled={!connected}
+              send={send}
+              conversations={state.conversations}
+              loadedConversation={state.loadedConversation}
+              viewingHistory={state.viewingHistory}
+              onClearHistory={handleClearHistory}
+              processMessage={processMessage}
+            />
           </div>
         ) : contextOnly ? (
-          /* Context-only layout: no viz panel, full-width single column */
           <div className="flex-1 flex flex-col">
             <ContextPanelHost panels={state.contextPanels} expanded />
             <div className="flex-1 overflow-hidden">

@@ -11,6 +11,7 @@ import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem } from './solver.js';
+import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
 
@@ -599,6 +600,30 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     },
   ];
 
+  await runGuidedLoop(session, messages, systemPrompt, solverResult);
+}
+
+export async function resumeGuidedSession(session, savedMessages, savedSolverResult) {
+  const { ws } = session;
+
+  const systemPrompt = savedSolverResult?.success
+    ? GUIDED_SYSTEM_PROMPT + buildSolverContext(savedSolverResult)
+    : GUIDED_SYSTEM_PROMPT;
+
+  sendJSON(ws, { type: 'guided_start', resuming: true });
+
+  // Clone saved messages and append a resume instruction
+  const messages = [...savedMessages];
+  messages.push({
+    role: 'user',
+    content: '[RESUME] The student has returned to continue this session. Pick up exactly where you left off. Briefly acknowledge the resumption (1 sentence) then continue guiding.',
+  });
+
+  await runGuidedLoop(session, messages, systemPrompt, savedSolverResult);
+}
+
+async function runGuidedLoop(session, messages, systemPrompt, solverResult) {
+  const { ws } = session;
   let sessionPlan = null;
 
   let continueLoop = true;
@@ -638,6 +663,10 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
           phase: 'Analyzing problem...',
           viz_actions: [],
         });
+        // Save narration to DB
+        if (session.conversationId) {
+          saveMessage(session.conversationId, 'tutor', 'narration', narrationText);
+        }
         // Push the model to use tools on the next turn
         messages.push({
           role: 'user',
@@ -654,6 +683,9 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
             role: 'user',
             content: `[STUDENT MESSAGE] ${msg}`,
           });
+          if (session.conversationId) {
+            saveMessage(session.conversationId, 'student', 'student_message', msg);
+          }
         }
         continue;
       }
@@ -1019,6 +1051,25 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
           content: JSON.stringify(result),
         });
 
+        // DB save hooks (fire-and-forget)
+        if (session.conversationId) {
+          if (block.name === 'emit_segment' && block.input?.narration) {
+            saveMessage(session.conversationId, 'tutor', 'narration', block.input.narration);
+          } else if (block.name === 'conversational_reply' && block.input?.text) {
+            saveMessage(session.conversationId, 'tutor', 'conversational_reply', block.input.text);
+          } else if (block.name === 'send_options') {
+            // Save the tutor question
+            if (block.input?.prompt) {
+              saveMessage(session.conversationId, 'tutor', 'guided_question', block.input.prompt);
+            }
+            // Save the student answer (result has student_response)
+            const studentText = result?.student_response?.text || result?.student_response?.optionId;
+            if (studentText) {
+              saveMessage(session.conversationId, 'student', 'guided_answer', String(studentText));
+            }
+          }
+        }
+
         // Check for pause after emit_segment or conversational_reply
         if ((block.name === 'emit_segment' || block.name === 'conversational_reply') && session.pauseFlag) {
           session.pauseFlag = false;
@@ -1072,8 +1123,22 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
             role: 'user',
             content: `[STUDENT MESSAGE] ${msg}`,
           });
+          // Save student message to DB
+          if (session.conversationId) {
+            saveMessage(session.conversationId, 'student', 'student_message', msg);
+          }
         }
       }
+
+      // Fire-and-forget agent state save after each round-trip
+      if (session.conversationId) {
+        saveAgentState(session.conversationId, messages, solverResult);
+      }
     }
+  }
+
+  // Mark conversation as complete if it finished naturally
+  if (session.conversationId) {
+    completeConversation(session.conversationId);
   }
 }

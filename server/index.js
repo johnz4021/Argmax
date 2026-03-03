@@ -2,13 +2,20 @@ import 'dotenv/config';
 import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
+import { parse as parseUrl } from 'url';
 import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
-import { startGuidedSession } from './guidedAgent.js';
+import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
+import { verifyJWT } from './supabase.js';
+import { createConversation, listConversations, loadConversationMessages, loadAgentState } from './db.js';
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+
+const authEnabled = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
+
+// Use noServer so we handle the upgrade ourselves — avoids Vite proxy ECONNRESET noise
+const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
@@ -18,11 +25,54 @@ function generateId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-wss.on('connection', (ws) => {
+// Handle HTTP upgrade manually
+server.on('upgrade', async (req, socket, head) => {
+  if (authEnabled) {
+    try {
+      const { query } = parseUrl(req.url, true);
+      const token = query.token;
+
+      if (!token) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      const user = await verifyJWT(token);
+      if (!user) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      if (user.email && !user.email.toLowerCase().endsWith('.edu')) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      req.user = user;
+    } catch (err) {
+      console.error('[WS] Auth error during upgrade:', err.message);
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
+});
+
+wss.on('connection', (ws, req) => {
   const sessionId = generateId();
+  const user = req.user || null;
   const session = {
     id: sessionId,
     ws,
+    userId: user?.id || null,
+    userEmail: user?.email || null,
     interruptFlag: null,
     pauseFlag: false,
     pauseResolver: null,
@@ -34,9 +84,10 @@ wss.on('connection', (ws) => {
     guidedMessageQueue: [],
     followUpResolver: null,
     followUpSent: false,
+    conversationId: null,
   };
   sessions.set(sessionId, session);
-  console.log(`[WS] Client connected: ${sessionId}`);
+  console.log(`[WS] Client connected: ${sessionId}${user ? ` (${user.email})` : ''}`);
 
   ws.on('message', async (data) => {
     try {
@@ -71,6 +122,16 @@ wss.on('connection', (ws) => {
           }
           session.active = true;
           session.mode = 'guided';
+
+          // Create conversation in DB
+          if (session.userId) {
+            const convId = await createConversation(session.userId, msg.problemText);
+            session.conversationId = convId;
+            if (convId) {
+              ws.send(JSON.stringify({ type: 'conversation_created', conversationId: convId }));
+            }
+          }
+
           try {
             await startGuidedSession(session, msg.problemText, msg.imageBase64, msg.imageMimeType);
           } catch (err) {
@@ -81,6 +142,7 @@ wss.on('connection', (ws) => {
           session.mode = 'direct';
           session.followUpResolver = null;
           session.followUpSent = false;
+          session.conversationId = null;
           break;
         }
 
@@ -151,6 +213,56 @@ wss.on('connection', (ws) => {
           session.speedMultiplier = msg.multiplier || 1;
           break;
         }
+
+        case 'list_conversations': {
+          if (!session.userId) {
+            ws.send(JSON.stringify({ type: 'conversations_list', conversations: [] }));
+            return;
+          }
+          const conversations = await listConversations(session.userId);
+          ws.send(JSON.stringify({ type: 'conversations_list', conversations }));
+          break;
+        }
+
+        case 'load_conversation': {
+          const messages = await loadConversationMessages(msg.conversationId);
+          ws.send(JSON.stringify({ type: 'conversation_loaded', messages }));
+          break;
+        }
+
+        case 'resume_conversation': {
+          if (session.active) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
+            return;
+          }
+
+          const agentState = await loadAgentState(msg.conversationId);
+          if (!agentState) {
+            ws.send(JSON.stringify({ type: 'error', message: 'No saved agent state for this conversation' }));
+            return;
+          }
+
+          // Send transcript to client for display
+          const transcript = await loadConversationMessages(msg.conversationId);
+          ws.send(JSON.stringify({ type: 'conversation_loaded', messages: transcript }));
+
+          session.active = true;
+          session.mode = 'guided';
+          session.conversationId = msg.conversationId;
+
+          try {
+            await resumeGuidedSession(session, agentState.messages_json, agentState.solver_result_json);
+          } catch (err) {
+            console.error('[GuidedAgent] Resume error:', err);
+            ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
+          }
+          session.active = false;
+          session.mode = 'direct';
+          session.followUpResolver = null;
+          session.followUpSent = false;
+          session.conversationId = null;
+          break;
+        }
       }
     } catch (err) {
       console.error('[WS] Message parse error:', err);
@@ -171,4 +283,9 @@ wss.on('connection', (ws) => {
 
 server.listen(PORT, () => {
   console.log(`[Server] Argmax running on http://localhost:${PORT}`);
+  if (authEnabled) {
+    console.log(`[Server] Auth enabled (Supabase)`);
+  } else {
+    console.log(`[Server] Auth disabled (no Supabase credentials)`);
+  }
 });

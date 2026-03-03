@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
-export function useWebSocket(onMessage, onBinary) {
+export function useWebSocket(onMessage, onBinary, enabled = true) {
   const wsRef = useRef(null);
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef(null);
@@ -12,9 +13,35 @@ export function useWebSocket(onMessage, onBinary) {
   onBinaryRef.current = onBinary;
 
   useEffect(() => {
-    function connect() {
+    if (!enabled) return;
+
+    let disposed = false;
+
+    async function connect() {
+      if (disposed) return;
+
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      let wsUrl = `${protocol}//${window.location.host}/ws`;
+
+      // Attach auth token if Supabase is configured
+      if (supabase) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            wsUrl += `?token=${session.access_token}`;
+          } else {
+            // No session — don't attempt connection, retry later
+            reconnectTimer.current = setTimeout(connect, 2000);
+            return;
+          }
+        } catch (err) {
+          console.error('[WS] Failed to get auth token:', err);
+          reconnectTimer.current = setTimeout(connect, 2000);
+          return;
+        }
+      }
+
+      if (disposed) return;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -42,7 +69,9 @@ export function useWebSocket(onMessage, onBinary) {
         console.log('[WS] Disconnected');
         setConnected(false);
         wsRef.current = null;
-        reconnectTimer.current = setTimeout(connect, 2000);
+        if (!disposed) {
+          reconnectTimer.current = setTimeout(connect, 2000);
+        }
       };
 
       ws.onerror = (err) => {
@@ -52,10 +81,11 @@ export function useWebSocket(onMessage, onBinary) {
 
     connect();
     return () => {
+      disposed = true;
       clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
-  }, []);
+  }, [enabled]);
 
   const send = useCallback((msg) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

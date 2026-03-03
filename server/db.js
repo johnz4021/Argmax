@@ -1,0 +1,121 @@
+import { supabase } from './supabase.js';
+
+/**
+ * Create a new conversation for a user.
+ */
+export async function createConversation(userId, problemText) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('conversations')
+    .insert({ user_id: userId, problem_text: problemText, status: 'active' })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('[DB] createConversation error:', error.message);
+    return null;
+  }
+  return data.id;
+}
+
+/**
+ * Save a message to a conversation (fire-and-forget).
+ */
+export function saveMessage(conversationId, role, type, content) {
+  if (!supabase || !conversationId) return;
+  supabase
+    .from('messages')
+    .insert({ conversation_id: conversationId, role, type, content })
+    .then(({ error }) => {
+      if (error) console.error('[DB] saveMessage error:', error.message);
+    });
+}
+
+/**
+ * Upsert agent state (messages array + solver result) for a conversation.
+ */
+export function saveAgentState(conversationId, messagesJson, solverResultJson) {
+  if (!supabase || !conversationId) return;
+  supabase
+    .from('agent_states')
+    .upsert(
+      {
+        conversation_id: conversationId,
+        messages_json: messagesJson,
+        solver_result_json: solverResultJson || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'conversation_id' }
+    )
+    .then(({ error }) => {
+      if (error) console.error('[DB] saveAgentState error:', error.message);
+    });
+}
+
+/**
+ * Mark a conversation as complete.
+ */
+export function completeConversation(conversationId) {
+  if (!supabase || !conversationId) return;
+  supabase
+    .from('conversations')
+    .update({ status: 'complete', updated_at: new Date().toISOString() })
+    .eq('id', conversationId)
+    .then(({ error }) => {
+      if (error) console.error('[DB] completeConversation error:', error.message);
+    });
+}
+
+/**
+ * List conversations for a user, most recent first.
+ */
+export async function listConversations(userId) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, problem_text, status, created_at, updated_at')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('[DB] listConversations error:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Load all messages for a conversation.
+ */
+export async function loadConversationMessages(conversationId) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('messages')
+    .select('id, role, type, content, created_at')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('[DB] loadConversationMessages error:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
+ * Load the agent state for a conversation (for resume).
+ */
+export async function loadAgentState(conversationId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('agent_states')
+    .select('messages_json, solver_result_json')
+    .eq('conversation_id', conversationId)
+    .single();
+
+  if (error) {
+    console.error('[DB] loadAgentState error:', error.message);
+    return null;
+  }
+  return data;
+}

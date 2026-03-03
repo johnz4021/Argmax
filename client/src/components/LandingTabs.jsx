@@ -1,39 +1,65 @@
 import { useState } from 'react';
 import AlgoSelector from './AlgoSelector';
 import ProblemSolver from './ProblemSolver';
+import ConversationHistory from './ConversationHistory';
+import ConversationTranscript from './ConversationTranscript';
 
-export default function LandingTabs({ onSelect, disabled }) {
+export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage }) {
   const [activeTab, setActiveTab] = useState('tutorials');
+
+  const handleViewTranscript = (conversationId) => {
+    send({ type: 'load_conversation', conversationId });
+  };
+
+  const handleResume = (conversationId) => {
+    send({ type: 'resume_conversation', conversationId });
+  };
+
+  const tabs = [
+    { id: 'tutorials', label: 'Tutorials' },
+    { id: 'solver', label: 'Problem Solver' },
+    { id: 'history', label: 'History' },
+  ];
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex justify-center gap-1 pt-6 pb-2">
-        <button
-          onClick={() => setActiveTab('tutorials')}
-          className={`px-5 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            activeTab === 'tutorials'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          Tutorials
-        </button>
-        <button
-          onClick={() => setActiveTab('solver')}
-          className={`px-5 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
-            activeTab === 'solver'
-              ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          Problem Solver
-        </button>
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              setActiveTab(tab.id);
+              if (tab.id !== 'history' && viewingHistory) {
+                onClearHistory?.();
+              }
+            }}
+            className={`px-5 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+              activeTab === tab.id
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-gray-500 hover:text-gray-300'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
       <div className="flex-1 overflow-auto">
         {activeTab === 'tutorials' ? (
           <AlgoSelector onSelect={onSelect} disabled={disabled} />
-        ) : (
+        ) : activeTab === 'solver' ? (
           <ProblemSolver onSelect={onSelect} disabled={disabled} />
+        ) : viewingHistory && loadedConversation ? (
+          <ConversationTranscript
+            messages={loadedConversation}
+            onBack={() => onClearHistory?.()}
+          />
+        ) : (
+          <ConversationHistory
+            conversations={conversations}
+            send={send}
+            onViewTranscript={handleViewTranscript}
+            onResume={handleResume}
+          />
         )}
       </div>
     </div>

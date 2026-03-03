@@ -10,7 +10,7 @@ import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
-import { solveProblem } from './solver.js';
+import { solveProblem, solveProblems } from './solver.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
 const anthropic = new Anthropic({ maxRetries: 5 });
@@ -36,16 +36,19 @@ CONVERSATIONAL FLOW:
 
 STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
   Read the full problem. If it contains multiple sub-problems or parts (e.g., "(a)...(b)...(c)..."),
-  ask the student which part they want to work on using conversational_reply.
-  Once the student specifies a part:
-  1. Extract that sub-problem's text, including any shared context from the problem preamble
-     (graph definitions, variable names, constraints referenced across parts).
-  2. Call run_solver with the extracted sub-problem text.
-  3. Proceed to STAGE 0 with the selected sub-problem as the focus.
+  use send_options with multiSelect: true to let the student select which parts to work on.
+  List each part as an option (e.g., id: "a", label: "Part (a): ...").
+  Once the student selects parts:
+  - If they selected MULTIPLE parts: call run_solver_batch with all selected sub-problems.
+    Each subproblem should include shared context from the problem preamble.
+    The batch solver solves all parts in a single call. Then proceed to STAGE 0 with the first part.
+    After completing each part, use switch_part to transition to the next selected part.
+  - If they selected a SINGLE part: call run_solver with the extracted sub-problem text.
+    Proceed to STAGE 0 with that part as the focus.
   If the problem is a single question (no parts), call run_solver with the full problem text
   and proceed directly to STAGE 0.
-  IMPORTANT: Always call run_solver before classify_problem. You need the solver's north star
-  to guide effectively.
+  IMPORTANT: Always call run_solver or run_solver_batch before classify_problem. You need the solver's
+  north star to guide effectively.
 
 STAGE 0 — REASONING MODE (1-2 exchanges):
   Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
@@ -603,6 +606,48 @@ const guidedTools = [
       required: ['subproblem_text'],
     },
   },
+  {
+    name: 'run_solver_batch',
+    description: 'Run the problem solver on MULTIPLE sub-problems in a single call. More efficient than calling run_solver multiple times. Use when the student selects multiple parts to work on.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        subproblems: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              part_label: {
+                type: 'string',
+                description: 'Label for this part (e.g., "a", "b", "1").',
+              },
+              subproblem_text: {
+                type: 'string',
+                description: 'The text of this sub-problem, including shared context.',
+              },
+            },
+            required: ['part_label', 'subproblem_text'],
+          },
+          description: 'Array of sub-problems to solve.',
+        },
+      },
+      required: ['subproblems'],
+    },
+  },
+  {
+    name: 'switch_part',
+    description: 'Switch to a different pre-solved part. Use after completing one part to transition to the next selected part. The solver result for the new part is already available.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        part_label: {
+          type: 'string',
+          description: 'The label of the part to switch to.',
+        },
+      },
+      required: ['part_label'],
+    },
+  },
 ];
 
 // Input size validation
@@ -704,7 +749,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     : 'See the attached image for the problem the student wants to solve.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nBegin by reading the problem carefully. If this contains multiple sub-problems or parts, ask the student which part they want to work on first. Then call run_solver with the focused sub-problem text before starting classification.`,
+    text: `${textPart}\n\nBegin by reading the problem carefully. If this contains multiple sub-problems or parts, use send_options with multiSelect: true to let the student select which parts they want to work on. If they select multiple parts, use run_solver_batch to solve them all at once. If they select a single part, use run_solver. Then proceed to classification.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];
@@ -714,8 +759,13 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
 export async function resumeGuidedSession(session, savedMessages, savedSolverResult) {
   const { ws } = session;
 
-  const systemPrompt = savedSolverResult?.success
-    ? GUIDED_SYSTEM_PROMPT + buildSolverContext(savedSolverResult)
+  // Extract batch state if present (backward compat with old single-result format)
+  const batchState = savedSolverResult?._batchState || null;
+  const cleanSolverResult = savedSolverResult ? { ...savedSolverResult } : null;
+  if (cleanSolverResult) delete cleanSolverResult._batchState;
+
+  const systemPrompt = cleanSolverResult?.success
+    ? GUIDED_SYSTEM_PROMPT + buildSolverContext(cleanSolverResult)
     : GUIDED_SYSTEM_PROMPT;
 
   sendJSON(ws, { type: 'guided_start', resuming: true });
@@ -727,15 +777,20 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
     content: '[RESUME] The student has returned to continue this session. Pick up exactly where you left off. Briefly acknowledge the resumption (1 sentence) then continue guiding.',
   });
 
-  await runGuidedLoop(session, messages, systemPrompt, savedSolverResult);
+  await runGuidedLoop(session, messages, systemPrompt, cleanSolverResult, batchState);
 }
 
-async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult) {
+async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult, restoredBatchState) {
   const { ws } = session;
   let sessionPlan = null;
   let emptyEndTurnCount = 0;
   let systemPrompt = initialSystemPrompt;
   let solverResult = initialSolverResult;
+
+  // Restore batch state from persisted data or start fresh
+  let solverResultsMap = restoredBatchState?.solverResultsMap || {};
+  let activePart = restoredBatchState?.activePart || null;
+  let selectedParts = restoredBatchState?.selectedParts || [];
 
   let continueLoop = true;
   while (continueLoop) {
@@ -840,6 +895,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         verify_result: 'Verifying result',
         lesson_complete: 'Wrapping up lesson',
         run_solver: 'Analyzing sub-problem...',
+        run_solver_batch: 'Analyzing problems...',
+        switch_part: 'Switching to next part...',
       };
 
       for (const block of response.content) {
@@ -1091,7 +1148,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           // Handle send_options — send choices and wait for response
           const { prompt, options } = block.input;
 
-          sendJSON(ws, { type: 'guided_options', prompt, options: block.input.options || [], mode: block.input.mode || 'mc', input_placeholder: block.input.input_placeholder });
+          sendJSON(ws, { type: 'guided_options', prompt, options: block.input.options || [], mode: block.input.mode || 'mc', input_placeholder: block.input.input_placeholder, multiSelect: block.input.multiSelect || false });
 
           // TTS for the prompt
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
@@ -1135,16 +1192,41 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               student_response: studentResponse,
               timed_out: false,
               selected_option_id: studentResponse?.optionId || null,
+              selected_option_ids: studentResponse?.optionIds || null,
+              selected_labels: studentResponse?.labels || null,
               freeform_text: studentResponse?.text || null,
             };
           }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
         } else if (block.name === 'lesson_complete') {
-          sendJSON(ws, { type: 'lesson_complete' });
-          session.followUpSent = true;
-          lessonDone = true;
-          result = { success: true, message: 'Lesson marked complete. Waiting for follow-up questions.' };
+          // Check if there are remaining batch parts to work through
+          if (selectedParts.length > 1 && activePart) {
+            solverResultsMap[activePart]._completed = true;
+            const remainingParts = selectedParts.filter((p) => !solverResultsMap[p]?._completed);
+            if (remainingParts.length > 0) {
+              const nextPart = remainingParts[0];
+              result = {
+                success: true,
+                all_parts_done: false,
+                completed_part: activePart,
+                next_part: nextPart,
+                remaining_parts: remainingParts,
+                message: `Part ${activePart} complete! ${remainingParts.length} part(s) remaining: ${remainingParts.join(', ')}. Call switch_part with part_label "${nextPart}" to continue to the next part. Do NOT enter follow-up mode yet.`,
+              };
+            } else {
+              // All parts done
+              sendJSON(ws, { type: 'lesson_complete' });
+              session.followUpSent = true;
+              lessonDone = true;
+              result = { success: true, all_parts_done: true, message: 'All parts complete! Lesson marked complete. Waiting for follow-up questions.' };
+            }
+          } else {
+            sendJSON(ws, { type: 'lesson_complete' });
+            session.followUpSent = true;
+            lessonDone = true;
+            result = { success: true, message: 'Lesson marked complete. Waiting for follow-up questions.' };
+          }
         } else if (block.name === 'run_solver') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
           try {
@@ -1174,6 +1256,60 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           } catch (err) {
             console.error('[GuidedAgent] Solver error:', err.message);
             result = { success: false, message: 'Solver failed. Proceed without a north star.' };
+          }
+        } else if (block.name === 'run_solver_batch') {
+          const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+          try {
+            const subproblems = block.input.subproblems.map((sp) => ({
+              part_label: sp.part_label,
+              text: sp.subproblem_text,
+            }));
+            const batchResult = await solveProblems(
+              subproblems,
+              statusCb,
+              session.imageBase64,
+              session.imageMimeType
+            );
+            if (batchResult.success) {
+              solverResultsMap = batchResult.solutions;
+              selectedParts = subproblems.map((sp) => sp.part_label);
+              activePart = selectedParts[0];
+              // Set active solver result to first part
+              solverResult = solverResultsMap[activePart];
+              systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
+              sessionPlan = null; // Reset classification for new part
+
+              const partSummaries = Object.entries(solverResultsMap)
+                .map(([label, sr]) => `  Part ${label}: ${sr.approach} (${sr.confidence})`)
+                .join('\n');
+              result = {
+                success: true,
+                active_part: activePart,
+                selected_parts: selectedParts,
+                message: `Batch solver completed. ${selectedParts.length} parts solved:\n${partSummaries}\n\nNow active on Part ${activePart}. Guide through this part first. When done, call switch_part to move to the next part.`,
+              };
+            } else {
+              result = { success: false, message: 'Batch solver could not find solutions. Proceed without a north star.' };
+            }
+          } catch (err) {
+            console.error('[GuidedAgent] Batch solver error:', err.message);
+            result = { success: false, message: 'Batch solver failed. Proceed without a north star.' };
+          }
+        } else if (block.name === 'switch_part') {
+          const targetLabel = block.input.part_label;
+          if (!solverResultsMap[targetLabel]) {
+            result = { success: false, message: `No solver result for part "${targetLabel}". Available parts: ${Object.keys(solverResultsMap).join(', ')}` };
+          } else {
+            activePart = targetLabel;
+            solverResult = solverResultsMap[targetLabel];
+            systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
+            sessionPlan = null; // Reset classification for new part
+            result = {
+              success: true,
+              active_part: activePart,
+              remaining_parts: selectedParts.filter((p) => p !== activePart && !solverResultsMap[p]?._completed),
+              message: `Switched to Part ${targetLabel}. Approach: ${solverResult.approach}. Key insight: ${solverResult.keyInsight}. Begin guiding through this part from STAGE 0.`,
+            };
           }
         } else if (block.name === 'run_algorithm') {
           sendJSON(ws, { type: 'guided_transition' });
@@ -1271,7 +1407,12 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
       // Fire-and-forget agent state save after each round-trip
       if (session.conversationId) {
-        saveAgentState(session.conversationId, messages, solverResult);
+        // Bundle batch state into solver result for persistence
+        const persistedSolverResult = solverResult ? { ...solverResult } : null;
+        if (persistedSolverResult && Object.keys(solverResultsMap).length > 0) {
+          persistedSolverResult._batchState = { solverResultsMap, activePart, selectedParts };
+        }
+        saveAgentState(session.conversationId, messages, persistedSolverResult);
       }
     }
 

@@ -58,7 +58,125 @@ const SUBMIT_SOLUTION_TOOL = {
   },
 };
 
+const SUBMIT_SOLUTIONS_TOOL = {
+  name: 'submit_solutions',
+  description: 'Submit your complete solution analysis for ALL sub-problems in a single call.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      solutions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            part_label: {
+              type: 'string',
+              description: 'The label of this part (e.g., "a", "b", "Part 1").',
+            },
+            solution: {
+              type: 'string',
+              description: 'Complete solution with explanation of the approach and key steps.',
+            },
+            approach: {
+              type: 'string',
+              description: 'Short name for the approach.',
+            },
+            complexity: {
+              type: 'string',
+              description: 'Time and space complexity.',
+            },
+            confidence: {
+              type: 'string',
+              enum: ['high', 'medium', 'low'],
+              description: 'Confidence in the solution correctness.',
+            },
+            paradigmShift: {
+              type: 'boolean',
+              description: 'True if the obvious approach won\'t achieve optimal complexity.',
+            },
+            obviousApproach: {
+              type: 'string',
+              description: 'What approach most students would try first.',
+            },
+            keyInsight: {
+              type: 'string',
+              description: 'The single most important insight needed to solve this part.',
+            },
+            selfCheckPassed: {
+              type: 'boolean',
+              description: 'Whether you verified your solution against sample cases or logical checks.',
+            },
+          },
+          required: ['part_label', 'solution', 'approach', 'complexity', 'confidence', 'paradigmShift', 'obviousApproach', 'keyInsight', 'selfCheckPassed'],
+        },
+        description: 'Array of solutions, one per sub-problem.',
+      },
+    },
+    required: ['solutions'],
+  },
+};
+
 const SOLVER_TIMEOUT_MS = 300_000;
+
+/**
+ * Pre-solve multiple sub-problems in a single API call.
+ * Returns { success: true, solutions: { [part_label]: solverResult } } or { success: false }.
+ */
+export async function solveProblems(subproblems, statusCallback, imageBase64, imageMimeType) {
+  if (statusCallback) statusCallback('Analyzing problems...');
+
+  try {
+    const userContent = [];
+    if (imageBase64 && imageMimeType) {
+      userContent.push({
+        type: 'image',
+        source: { type: 'base64', media_type: imageMimeType, data: imageBase64 },
+      });
+    }
+
+    const partsText = subproblems
+      .map((sp) => `[Part ${sp.part_label}]\n${sp.text}`)
+      .join('\n\n');
+    const textPart = `Solve ALL of the following sub-problems completely. They share context (same graph, variables, etc.). Call submit_solutions with one solution per part.\n\n${partsText}`;
+    userContent.push({ type: 'text', text: textPart });
+
+    const responsePromise = anthropic.messages.create({
+      model: 'claude-opus-4-6',
+      max_tokens: 16000,
+      thinking: { type: 'adaptive' },
+      system: SOLVER_SYSTEM_PROMPT,
+      tools: [SUBMIT_SOLUTIONS_TOOL],
+      messages: [{ role: 'user', content: userContent }],
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Solver timeout')), SOLVER_TIMEOUT_MS)
+    );
+
+    if (statusCallback) statusCallback('Deep analysis (batch)...');
+
+    const response = await Promise.race([responsePromise, timeoutPromise]);
+
+    const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'submit_solutions');
+    if (!toolUse) {
+      console.warn('[Solver] No submit_solutions tool call in response');
+      return { success: false };
+    }
+
+    const solutionsArray = toolUse.input.solutions;
+    const solutions = {};
+    for (const sol of solutionsArray) {
+      const { part_label, ...rest } = sol;
+      solutions[part_label] = { success: true, ...rest };
+      console.log(`[Solver] Part ${part_label}: approach="${rest.approach}", confidence=${rest.confidence}`);
+    }
+
+    return { success: true, solutions };
+  } catch (err) {
+    console.error('[Solver] Batch failed:', err.message);
+    return { success: false };
+  }
+}
 
 /**
  * Pre-solve a problem using extended thinking.

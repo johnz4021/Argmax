@@ -148,7 +148,7 @@ wss.on('connection', (ws, req) => {
 
         case 'guided_response': {
           if (!session.active) return;
-          session.guidedResponse = { optionId: msg.optionId, text: msg.text, timestamp: Date.now() };
+          session.guidedResponse = { optionId: msg.optionId, optionIds: msg.optionIds, labels: msg.labels, text: msg.text, timestamp: Date.now() };
           if (session.guidedResponseResolver) {
             session.guidedResponseResolver();
             session.guidedResponseResolver = null;

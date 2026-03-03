@@ -121,17 +121,24 @@ export default function App() {
 
   const handleGuidedResponse = useCallback(
     (response) => {
-      const displayText = response.text || response.label || String(response);
       if (state.guidedOptions?.prompt) {
         processMessage({ type: 'add_guided_question', text: state.guidedOptions.prompt });
       }
-      processMessage({ type: 'add_guided_answer', text: displayText });
-      if (typeof response === 'object' && response.text) {
-        send({ type: 'guided_response', text: response.text });
-      } else if (typeof response === 'object' && response.optionId) {
-        send({ type: 'guided_response', optionId: response.optionId });
+      if (typeof response === 'object' && response.optionIds) {
+        // Multi-select response
+        const displayText = response.labels.join(', ');
+        processMessage({ type: 'add_guided_answer', text: displayText });
+        send({ type: 'guided_response', optionIds: response.optionIds, labels: response.labels });
       } else {
-        send({ type: 'guided_response', optionId: response });
+        const displayText = response.text || response.label || String(response);
+        processMessage({ type: 'add_guided_answer', text: displayText });
+        if (typeof response === 'object' && response.text) {
+          send({ type: 'guided_response', text: response.text });
+        } else if (typeof response === 'object' && response.optionId) {
+          send({ type: 'guided_response', optionId: response.optionId });
+        } else {
+          send({ type: 'guided_response', optionId: response });
+        }
       }
       processMessage({ type: 'clear_guided_options' });
     },

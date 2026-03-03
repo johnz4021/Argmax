@@ -105,6 +105,7 @@ export default function Controls({ status, onInterrupt, onPause, onResume, onRes
           prompt={guidedOptions.prompt}
           mode={guidedOptions.mode}
           inputPlaceholder={guidedOptions.input_placeholder}
+          multiSelect={guidedOptions.multiSelect}
           onSelect={onGuidedResponse}
         />
       )}

@@ -190,7 +190,7 @@ function reducer(state, action) {
       return { ...state, guidedPhase: action.phase };
 
     case 'GUIDED_OPTIONS':
-      return { ...state, agentStatus: null, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder } };
+      return { ...state, agentStatus: null, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder, multiSelect: action.multiSelect || false } };
 
     case 'CLEAR_GUIDED_OPTIONS':
       return { ...state, guidedOptions: null };
@@ -336,7 +336,7 @@ export function useTutorState() {
         dispatch({ type: 'GUIDED_PHASE', phase: msg.phase });
         break;
       case 'guided_options':
-        dispatch({ type: 'GUIDED_OPTIONS', prompt: msg.prompt, options: msg.options, mode: msg.mode, input_placeholder: msg.input_placeholder });
+        dispatch({ type: 'GUIDED_OPTIONS', prompt: msg.prompt, options: msg.options, mode: msg.mode, input_placeholder: msg.input_placeholder, multiSelect: msg.multiSelect });
         break;
       case 'clear_guided_options':
         dispatch({ type: 'CLEAR_GUIDED_OPTIONS' });

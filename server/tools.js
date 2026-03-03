@@ -422,6 +422,10 @@ export const tools = [
           enum: ['open_ended', 'mc'],
           description: 'open_ended = text input for prediction, mc = multiple choice buttons (default: mc)',
         },
+        multiSelect: {
+          type: 'boolean',
+          description: 'Allow student to select multiple options. Default false.',
+        },
         input_placeholder: {
           type: 'string',
           description: 'Placeholder text for the input field (open_ended mode)',

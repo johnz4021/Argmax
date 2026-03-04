@@ -42,7 +42,10 @@ export default function AuthModal() {
   return (
     <div className="fixed inset-0 bg-surface-0 flex items-center justify-center z-50">
       <div className="w-full max-w-sm mx-4 bg-surface-1 border border-border rounded-xl p-8">
-        <div className="text-center mb-2"><Logo size="lg" /></div>
+        <div className="text-center mb-2">
+          <Logo size="lg" />
+          <span className="ml-2 text-xs font-medium text-accent/70 bg-accent-muted px-2 py-0.5 rounded-full align-top">beta</span>
+        </div>
         <p className="text-sm text-text-tertiary text-center mb-6 font-body">
           {isSignUp ? 'Create an account' : 'Sign in to continue'}
         </p>

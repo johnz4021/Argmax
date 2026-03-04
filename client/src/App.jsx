@@ -240,6 +240,7 @@ export default function App() {
       <header className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-surface-1">
         <div className="flex items-center gap-3">
           <Logo size="sm" />
+          <span className="text-[10px] font-medium text-accent/70 bg-accent-muted px-1.5 py-0.5 rounded-full">beta</span>
           {state.algorithm && (
             <span className="text-sm text-text-secondary font-body">
               {state.algorithm.charAt(0).toUpperCase() + state.algorithm.slice(1)}

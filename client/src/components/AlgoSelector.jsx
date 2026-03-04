@@ -52,14 +52,7 @@ const ALGORITHM_GROUPS = [
   },
 ];
 
-const DEMO_ALGOS = new Set(['dijkstra', 'knapsack', 'maxflow']);
-
-const VISIBLE_GROUPS = ALGORITHM_GROUPS
-  .map((group) => ({
-    ...group,
-    algorithms: group.algorithms.filter((a) => DEMO_ALGOS.has(a.id)),
-  }))
-  .filter((group) => group.algorithms.length > 0);
+const VISIBLE_GROUPS = ALGORITHM_GROUPS;
 
 export default function AlgoSelector({ onSelect, disabled }) {
   return (

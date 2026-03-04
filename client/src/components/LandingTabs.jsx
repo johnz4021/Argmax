@@ -17,7 +17,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
 
   const tabs = [
     { id: 'tutorials', label: 'Tutorials' },
-    { id: 'solver', label: 'Problem Solver' },
+    { id: 'solver', label: 'Work Together' },
     { id: 'history', label: 'History' },
   ];
 

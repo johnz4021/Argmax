@@ -42,8 +42,8 @@ export default function ProblemSolver({ onSelect, disabled }) {
   return (
     <div className="flex flex-col items-center h-full overflow-auto px-4 pt-16">
       <div className="text-center mb-10">
-        <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">Problem Solver</h1>
-        <p className="text-text-secondary font-body">Paste a problem or upload a screenshot and I'll guide you through it</p>
+        <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">Work Through It Together</h1>
+        <p className="text-text-secondary font-body">Paste a problem or upload a screenshot and let's figure it out step by step</p>
       </div>
 
       {/* Claude-style input card */}

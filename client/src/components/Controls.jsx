@@ -33,10 +33,10 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!question.trim()) return;
-    if (mode === 'guided' && guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
-      // Open-ended guided question — route through guided response handler
+    if (guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
+      // Open-ended guided question (works in both guided and lesson mode)
       onGuidedResponse({ text: question.trim() });
-    } else if (mode === 'guided' && onGuidedMessage) {
+    } else if (isGuided && onGuidedMessage) {
       onGuidedMessage(question.trim());
     } else {
       onInterrupt(question.trim());
@@ -89,15 +89,19 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
 
   const showInput = status === 'teaching' || status === 'paused' || status === 'complete';
   const isGuided = mode === 'guided';
+  // guidedOptions can appear in both guided AND direct (lesson) mode via send_options
+  const hasGuidedOptions = !!guidedOptions;
   // Disable sending when the model is thinking/running tools (not waiting for input)
-  const agentBusy = isGuided && !!agentStatus;
-  const placeholder = isGuided
-    ? (guidedOptions?.mode === 'open_ended' && guidedOptions?.input_placeholder)
+  const agentBusy = (isGuided || hasGuidedOptions) && !!agentStatus;
+  const placeholder = hasGuidedOptions
+    ? (guidedOptions.mode === 'open_ended' && guidedOptions.input_placeholder)
       ? guidedOptions.input_placeholder
-      : 'Type your thoughts...'
-    : status === 'complete'
-      ? 'Any questions about the lesson?'
-      : 'Ask a question...';
+      : 'Type your answer...'
+    : isGuided
+      ? 'Type your thoughts...'
+      : status === 'complete'
+        ? 'Any questions about the lesson?'
+        : 'Ask a question...';
 
   return (
     <div className="border-t border-border px-4 py-3 space-y-3 font-body">
@@ -112,7 +116,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
           disabled={agentBusy}
         />
       )}
-      {isGuided && (guidedPrompt || (guidedOptions && guidedOptions.mode === 'open_ended')) && !(guidedOptions && guidedOptions.mode !== 'open_ended') && (
+      {(guidedPrompt || (guidedOptions && guidedOptions.mode === 'open_ended')) && !(guidedOptions && guidedOptions.mode !== 'open_ended') && (
         <div className="text-sm text-text-secondary italic px-1">
           <MathText>{guidedOptions?.prompt || guidedPrompt}</MathText>
         </div>

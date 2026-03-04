@@ -160,8 +160,9 @@ export default function App() {
 
   const handlePause = useCallback(() => {
     send({ type: 'pause' });
-    audioPlayer.flush(); // Immediately stop audio on client
-  }, [send, audioPlayer]);
+    // Don't flush here — the server will send audio_flush once TTS is aborted.
+    // Double-flushing can race and destroy the AudioContext needed for resumed playback.
+  }, [send]);
 
   const handleResume = useCallback(() => {
     send({ type: 'resume' });

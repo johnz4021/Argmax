@@ -100,7 +100,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
       : 'Ask a question...';
 
   return (
-    <div className="border-t border-gray-800 px-4 py-3 space-y-3">
+    <div className="border-t border-border px-4 py-3 space-y-3 font-body">
       {guidedOptions && guidedOptions.mode !== 'open_ended' && (
         <GuidedOptions
           options={guidedOptions.options}
@@ -113,68 +113,76 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
         />
       )}
       {isGuided && (guidedPrompt || (guidedOptions && guidedOptions.mode === 'open_ended')) && !(guidedOptions && guidedOptions.mode !== 'open_ended') && (
-        <div className="text-sm text-gray-400 italic px-1">
+        <div className="text-sm text-text-secondary italic px-1">
           <MathText>{guidedOptions?.prompt || guidedPrompt}</MathText>
         </div>
       )}
       {showInput && (
-        <form onSubmit={handleSubmit} className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            rows={1}
-            value={question}
-            onChange={(e) => {
-              setQuestion(e.target.value);
-              e.target.style.height = 'auto';
-              e.target.style.height = e.target.scrollHeight + 'px';
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
-              }
-            }}
-            disabled={agentBusy}
-            placeholder={agentBusy ? 'Waiting for tutor...' : placeholder}
-            className={`flex-1 bg-gray-800 border rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 resize-none max-h-32 overflow-y-auto ${
-              agentBusy ? 'opacity-50 cursor-not-allowed' : ''
-            } ${
-              isListening ? 'border-red-500' : 'border-gray-700'
-            }`}
-          />
-          {isSupported && (
-            <button
-              type="button"
-              onClick={toggleMic}
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                isListening
-                  ? 'bg-red-600 hover:bg-red-500 text-white'
-                  : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+        <div className="bg-surface-2 border border-border rounded-xl overflow-hidden focus-within:border-accent transition-colors">
+          <form onSubmit={handleSubmit} className="flex items-end gap-2 px-3 py-2">
+            <textarea
+              ref={inputRef}
+              rows={1}
+              value={question}
+              onChange={(e) => {
+                setQuestion(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+              disabled={agentBusy}
+              placeholder={agentBusy ? 'Waiting for tutor...' : placeholder}
+              className={`flex-1 bg-transparent text-sm text-text-primary placeholder-text-tertiary focus:outline-none resize-none max-h-32 overflow-y-auto ${
+                agentBusy ? 'opacity-50 cursor-not-allowed' : ''
               }`}
-              title={isListening ? 'Stop listening' : 'Speak your question'}
+            />
+            {isSupported && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                className={`p-1.5 rounded-lg text-sm transition-colors shrink-0 ${
+                  isListening
+                    ? 'text-red-400 hover:text-red-300'
+                    : 'text-text-tertiary hover:text-text-secondary'
+                }`}
+                title={isListening ? 'Stop listening' : 'Speak your question'}
+              >
+                {isListening ? (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 bg-red-400 rounded-full animate-pulse" />
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                      <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                      <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+                    </svg>
+                  </span>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                    <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+                  </svg>
+                )}
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={agentBusy}
+              className={`p-1.5 rounded-lg text-sm transition-colors shrink-0 ${
+                agentBusy
+                  ? 'text-text-tertiary cursor-not-allowed'
+                  : 'text-accent hover:text-accent-hover'
+              }`}
             >
-              {isListening ? (
-                <span className="flex items-center gap-1">
-                  <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                  Mic
-                </span>
-              ) : (
-                'Mic'
-              )}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
+              </svg>
             </button>
-          )}
-          <button
-            type="submit"
-            disabled={agentBusy}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              agentBusy
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-500 text-white'
-            }`}
-          >
-            {isGuided ? 'Send' : 'Ask'}
-          </button>
-        </form>
+          </form>
+        </div>
       )}
 
       {status === 'teaching' && (
@@ -184,13 +192,13 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
             disabled={pausePending}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               pausePending
-                ? 'bg-yellow-800 text-yellow-300 cursor-not-allowed'
-                : 'bg-yellow-600 hover:bg-yellow-500 text-white'
+                ? 'bg-accent-muted text-accent cursor-not-allowed'
+                : 'bg-accent-muted text-accent hover:bg-accent/20'
             }`}
           >
             {pausePending ? (
               <span className="flex items-center gap-2">
-                <span className="w-2 h-2 bg-yellow-300 rounded-full animate-pulse" />
+                <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
                 Pausing...
               </span>
             ) : (
@@ -203,31 +211,31 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
       {status === 'paused' && (
         <button
           onClick={onResume}
-          className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          className="bg-accent hover:bg-accent-hover text-surface-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
         >
           Resume
         </button>
       )}
 
       {status === 'interrupted' && (
-        <p className="text-sm text-yellow-400 animate-pulse">
+        <p className="text-sm text-accent animate-pulse">
           Waiting for answer...
         </p>
       )}
 
       {explanationMode && (
-        <p className="text-sm text-purple-400 flex items-center gap-2">
-          <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+        <p className="text-sm text-text-secondary flex items-center gap-2">
+          <span className="w-2 h-2 bg-accent rounded-full animate-pulse" />
           Showing explanation...
         </p>
       )}
 
       {status === 'complete' && (
         <div className="flex items-center gap-3">
-          <p className="text-sm text-green-400">Lesson complete! Ask any follow-up questions below.</p>
+          <p className="text-sm text-green-400">Lesson complete!</p>
           <button
             onClick={onRestart}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+            className="bg-surface-2 hover:bg-surface-3 border border-border text-text-secondary hover:text-text-primary px-3 py-1.5 rounded-lg text-sm transition-colors"
           >
             New Problem
           </button>
@@ -239,7 +247,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
           <p className="text-sm text-red-400">An error occurred.</p>
           <button
             onClick={onRestart}
-            className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-sm transition-colors"
+            className="bg-surface-2 hover:bg-surface-3 border border-border text-text-secondary px-3 py-1.5 rounded-lg text-sm transition-colors"
           >
             Try again
           </button>
@@ -249,7 +257,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
       {(status === 'teaching' || status === 'paused' || status === 'interrupted') && (
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <label className="text-xs text-gray-500">Speed:</label>
+            <label className="text-xs text-text-tertiary">Speed:</label>
             <input
               type="range"
               min="0.5"
@@ -257,15 +265,15 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
               step="0.25"
               defaultValue="1"
               onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-              className="w-24 accent-blue-500"
+              className="w-24 accent-accent"
             />
           </div>
           <button
             onClick={onTtsMuteToggle}
             className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
               ttsMuted
-                ? 'bg-red-900/50 text-red-400 hover:bg-red-900/70'
-                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50'
+                : 'bg-surface-2 text-text-tertiary hover:text-text-secondary'
             }`}
             title={ttsMuted ? 'Unmute voice' : 'Mute voice'}
           >

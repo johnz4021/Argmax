@@ -22,8 +22,8 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
   ];
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex justify-center gap-1 pt-6 pb-2">
+    <div className="flex flex-col h-full bg-surface-0">
+      <div className="flex justify-center gap-2 pt-6 pb-2 border-b border-border">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -33,10 +33,10 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
                 onClearHistory?.();
               }
             }}
-            className={`px-5 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
+            className={`px-5 py-2 text-sm font-medium font-body rounded-full transition-colors ${
               activeTab === tab.id
-                ? 'border-blue-500 text-blue-400'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
+                ? 'bg-accent-muted text-accent'
+                : 'text-text-tertiary hover:text-text-secondary'
             }`}
           >
             {tab.label}

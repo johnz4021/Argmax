@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import MathText from './MathText';
 
-export default function Transcript({ segments, agentStatus }) {
+export default function Transcript({ segments, agentStatus, centered }) {
   const scrollContainerRef = useRef(null);
 
   useEffect(() => {
@@ -10,14 +10,17 @@ export default function Transcript({ segments, agentStatus }) {
   }, [segments, agentStatus]);
 
   return (
-    <div className="flex flex-col h-full">
-      <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide px-4 py-3 border-b border-gray-800">
+    <div className="flex flex-col h-full font-body">
+      <h2 className="text-xs font-medium text-text-tertiary uppercase tracking-wider px-4 py-3 border-b border-border">
         Transcript
       </h2>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+      <div
+        ref={scrollContainerRef}
+        className={`flex-1 overflow-y-auto px-4 py-3 space-y-3 ${centered ? 'max-w-2xl mx-auto w-full' : ''}`}
+      >
         {segments.length === 0 && (
-          <p className="text-gray-500 text-sm italic">
+          <p className="text-text-tertiary text-sm italic">
             Start a lesson to see the narration here...
           </p>
         )}
@@ -27,38 +30,38 @@ export default function Transcript({ segments, agentStatus }) {
             key={seg.id}
             className={`text-sm leading-relaxed rounded-lg px-3 py-2 ${
               seg.type === 'question'
-                ? 'bg-blue-900/30 border border-blue-800 text-blue-200'
+                ? 'border-l-2 border-accent bg-accent-muted text-text-primary'
                 : seg.type === 'answer'
-                ? 'bg-purple-900/30 border border-purple-800 text-purple-200'
+                ? 'bg-surface-2 text-text-primary'
                 : seg.type === 'guided_question'
-                ? 'bg-gray-800/50 border border-gray-700 text-gray-300'
+                ? 'bg-surface-2 border border-border text-text-secondary'
                 : seg.type === 'guided_answer'
-                ? 'bg-green-900/30 border border-green-800 text-green-200'
+                ? 'border-l-2 border-accent text-text-primary'
                 : seg.type === 'student_message'
-                ? 'bg-emerald-900/30 border border-emerald-800 text-emerald-200'
+                ? 'border-l-2 border-accent bg-accent-muted text-text-primary'
                 : seg.type === 'verification'
                 ? seg.matches
-                  ? 'bg-green-900/40 border border-green-700 text-green-200'
-                  : 'bg-red-900/40 border border-red-700 text-red-200'
+                  ? 'bg-green-900/20 border border-green-800/50 text-green-300'
+                  : 'bg-red-900/20 border border-red-800/50 text-red-300'
                 : seg.active
-                ? 'bg-gray-800 text-gray-100'
-                : 'text-gray-300'
+                ? 'bg-surface-2 text-text-primary'
+                : 'text-text-secondary'
             }`}
           >
             {seg.type === 'question' && (
-              <span className="text-xs text-blue-400 font-medium block mb-1">You asked:</span>
+              <span className="text-xs text-accent font-medium block mb-1">You asked:</span>
             )}
             {seg.type === 'answer' && (
-              <span className="text-xs text-purple-400 font-medium block mb-1">Argmax:</span>
+              <span className="text-xs text-text-tertiary font-medium block mb-1">Argmax:</span>
             )}
             {seg.type === 'guided_question' && (
-              <span className="text-xs text-gray-400 font-medium block mb-1">Argmax asked:</span>
+              <span className="text-xs text-text-tertiary font-medium block mb-1">Argmax asked:</span>
             )}
             {seg.type === 'guided_answer' && (
-              <span className="text-xs text-green-400 font-medium block mb-1">Your answer:</span>
+              <span className="text-xs text-accent font-medium block mb-1">Your answer:</span>
             )}
             {seg.type === 'student_message' && (
-              <span className="text-xs text-emerald-400 font-medium block mb-1">You:</span>
+              <span className="text-xs text-accent font-medium block mb-1">You:</span>
             )}
             {seg.type === 'verification' && (
               <span className={`text-xs font-medium block mb-1 ${seg.matches ? 'text-green-400' : 'text-red-400'}`}>
@@ -67,19 +70,26 @@ export default function Transcript({ segments, agentStatus }) {
             )}
             <MathText>{seg.narration}</MathText>
             {seg.active && (
-              <span className="inline-block w-2 h-4 bg-blue-400 ml-1 animate-pulse" />
+              <span className="inline-block w-2 h-4 bg-accent ml-1 animate-pulse" />
             )}
           </div>
         ))}
 
         {agentStatus && (
-          <div className="flex items-center gap-2 px-1 py-1 text-xs text-gray-400">
-            <span className="flex gap-0.5">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]" />
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]" />
-            </span>
-            {agentStatus.status === 'tool' ? `${agentStatus.tool}...` : 'Thinking...'}
+          <div className="px-1 py-1">
+            <div className="flex items-center gap-2 text-xs text-text-tertiary">
+              <span className="flex gap-0.5">
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:0ms]" />
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:150ms]" />
+                <span className="w-1.5 h-1.5 bg-accent rounded-full animate-bounce [animation-delay:300ms]" />
+              </span>
+              {agentStatus.status === 'tool' ? `${agentStatus.tool}...` : 'Thinking...'}
+            </div>
+            {agentStatus.status === 'tool' && /batch/i.test(agentStatus.tool) && (
+              <p className="text-xs text-text-tertiary mt-1.5 ml-5">
+                Hang tight — deep analysis can take 3–5 minutes.
+              </p>
+            )}
           </div>
         )}
 

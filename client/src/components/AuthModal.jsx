@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
+import Logo from './Logo';
 
 export default function AuthModal() {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -39,27 +40,27 @@ export default function AuthModal() {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-950 flex items-center justify-center z-50">
-      <div className="w-full max-w-sm mx-4 bg-gray-900 border border-gray-800 rounded-xl p-8">
-        <h1 className="text-2xl font-bold text-gray-100 text-center mb-2">Argmax</h1>
-        <p className="text-sm text-gray-500 text-center mb-6">
+    <div className="fixed inset-0 bg-surface-0 flex items-center justify-center z-50">
+      <div className="w-full max-w-sm mx-4 bg-surface-1 border border-border rounded-xl p-8">
+        <div className="text-center mb-2"><Logo size="lg" /></div>
+        <p className="text-sm text-text-tertiary text-center mb-6 font-body">
           {isSignUp ? 'Create an account' : 'Sign in to continue'}
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Email</label>
+            <label className="block text-xs text-text-secondary mb-1 font-body">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder={isSignUp ? 'you@university.edu' : 'you@example.com'}
               required
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded-lg text-sm text-text-primary font-body placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-400 mb-1">Password</label>
+            <label className="block text-xs text-text-secondary mb-1 font-body">Password</label>
             <input
               type="password"
               value={password}
@@ -67,27 +68,27 @@ export default function AuthModal() {
               placeholder="••••••••"
               required
               minLength={6}
-              className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 bg-surface-2 border border-border rounded-lg text-sm text-text-primary font-body placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors"
             />
           </div>
 
           {error && (
-            <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg">{error}</p>
+            <p className="text-sm text-red-400 bg-red-400/10 px-3 py-2 rounded-lg font-body">{error}</p>
           )}
           {message && (
-            <p className="text-sm text-green-400 bg-green-400/10 px-3 py-2 rounded-lg">{message}</p>
+            <p className="text-sm text-green-400 bg-green-400/10 px-3 py-2 rounded-lg font-body">{message}</p>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+            className="w-full py-2 bg-accent hover:bg-accent-hover disabled:opacity-50 text-surface-0 text-sm font-medium font-body rounded-lg transition-colors"
           >
             {loading ? 'Loading...' : isSignUp ? 'Sign Up' : 'Sign In'}
           </button>
         </form>
 
-        <p className="text-xs text-gray-500 text-center mt-4">
+        <p className="text-xs text-text-tertiary text-center mt-4 font-body">
           {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
           <button
             onClick={() => {
@@ -95,13 +96,13 @@ export default function AuthModal() {
               setError(null);
               setMessage(null);
             }}
-            className="text-blue-400 hover:text-blue-300"
+            className="text-accent hover:text-accent-hover"
           >
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </p>
         {isSignUp && (
-          <p className="text-xs text-gray-600 text-center mt-2">
+          <p className="text-xs text-text-tertiary text-center mt-2 font-body">
             A .edu email is required for signup.
           </p>
         )}

@@ -35,9 +35,9 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 font-body">
       {prompt && (
-        <p className="text-sm text-gray-300"><MathText>{prompt}</MathText></p>
+        <p className="text-sm text-text-secondary"><MathText>{prompt}</MathText></p>
       )}
       {mode === 'open_ended' ? (
         <form onSubmit={handleSubmitText} className="flex gap-2">
@@ -47,13 +47,13 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
             onChange={(e) => setText(e.target.value)}
             disabled={disabled}
             placeholder={disabled ? 'Waiting for tutor...' : (inputPlaceholder || 'Type your answer...')}
-            className={`flex-1 bg-gray-800 border border-blue-500 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+            className={`flex-1 bg-surface-2 border border-accent/50 rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             autoFocus
           />
           <button
             type="submit"
             disabled={disabled}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${disabled ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${disabled ? 'bg-surface-3 text-text-tertiary cursor-not-allowed' : 'bg-accent hover:bg-accent-hover text-surface-0'}`}
           >
             Submit
           </button>
@@ -68,10 +68,10 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
                 disabled={disabled}
                 className={`border px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   disabled
-                    ? 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
+                    ? 'border-border text-text-tertiary cursor-not-allowed opacity-50'
                     : selectedIds.has(option.id)
-                      ? 'border-blue-400 bg-blue-500/30 text-blue-300'
-                      : 'border-blue-500 text-blue-400 hover:bg-blue-500/20'
+                      ? 'border-accent bg-accent-muted text-accent'
+                      : 'border-accent/50 text-accent hover:bg-accent-muted'
                 }`}
               >
                 <MathText>{option.label}</MathText>
@@ -83,8 +83,8 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
             disabled={disabled || selectedIds.size === 0}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               !disabled && selectedIds.size > 0
-                ? 'bg-blue-600 hover:bg-blue-500 text-white'
-                : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                ? 'bg-accent hover:bg-accent-hover text-surface-0'
+                : 'bg-surface-3 text-text-tertiary cursor-not-allowed'
             }`}
           >
             Confirm ({selectedIds.size} selected)
@@ -99,8 +99,8 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
               disabled={disabled}
               className={`border px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 disabled
-                  ? 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
-                  : 'border-blue-500 text-blue-400 hover:bg-blue-500/20'
+                  ? 'border-border text-text-tertiary cursor-not-allowed opacity-50'
+                  : 'border-accent/50 text-accent hover:bg-accent-muted'
               }`}
             >
               <MathText>{option.label}</MathText>

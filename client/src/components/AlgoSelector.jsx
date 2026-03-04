@@ -63,28 +63,30 @@ const VISIBLE_GROUPS = ALGORITHM_GROUPS
 
 export default function AlgoSelector({ onSelect, disabled }) {
   return (
-    <div className="flex flex-col items-center h-full gap-6 p-8 overflow-auto">
+    <div className="flex flex-col items-center h-full gap-8 p-8 overflow-auto">
       <div className="text-center">
-        <h1 className="text-3xl font-bold text-gray-100 mb-2">Argmax</h1>
-        <p className="text-gray-400">Choose an algorithm to learn</p>
+        <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">
+          What would you like to learn?
+        </h1>
+        <p className="text-text-secondary font-body">Choose an algorithm to get started</p>
       </div>
 
       <div className="w-full max-w-lg space-y-6">
         {VISIBLE_GROUPS.map((group) => (
           <div key={group.category}>
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <span className="inline-block text-xs font-medium text-text-tertiary uppercase tracking-wider mb-3 px-2 py-0.5 rounded-full bg-surface-2 border border-border">
               {group.category}
-            </h2>
+            </span>
             <div className="grid gap-2">
               {group.algorithms.map((algo) => (
                 <button
                   key={algo.id}
                   onClick={() => onSelect(algo.id)}
                   disabled={disabled}
-                  className="bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-blue-500 rounded-xl p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-surface-2 hover:bg-surface-3 border border-border hover:border-accent/40 rounded-xl p-4 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
                 >
-                  <div className="font-medium text-gray-100">{algo.name}</div>
-                  <div className="text-sm text-gray-400 mt-1">{algo.description}</div>
+                  <div className="font-display font-medium text-text-primary group-hover:text-accent transition-colors">{algo.name}</div>
+                  <div className="text-sm text-text-secondary font-body mt-1">{algo.description}</div>
                 </button>
               ))}
             </div>

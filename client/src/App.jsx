@@ -6,6 +6,7 @@ import Controls from './components/Controls';
 import LandingTabs from './components/LandingTabs';
 import AuthModal from './components/AuthModal';
 import ContextPanelHost from './components/context/ContextPanelHost';
+import Logo from './components/Logo';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
@@ -217,8 +218,8 @@ export default function App() {
   if (supabase) {
     if (authLoading) {
       return (
-        <div className="h-screen flex items-center justify-center bg-gray-950">
-          <div className="text-gray-400 text-sm">Loading...</div>
+        <div className="h-screen flex items-center justify-center bg-surface-0">
+          <div className="text-text-tertiary text-sm font-body">Loading...</div>
         </div>
       );
     }
@@ -233,13 +234,13 @@ export default function App() {
 
   return (
     <>
-    <div className="h-screen flex flex-col bg-gray-950">
+    <div className="h-screen flex flex-col bg-surface-0 font-body">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900/50">
+      <header className="flex items-center justify-between px-5 py-2.5 border-b border-border bg-surface-1">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-gray-100">Argmax</h1>
+          <Logo size="sm" />
           {state.algorithm && (
-            <span className="text-sm text-gray-400">
+            <span className="text-sm text-text-secondary font-body">
               {state.algorithm.charAt(0).toUpperCase() + state.algorithm.slice(1)}
             </span>
           )}
@@ -247,10 +248,11 @@ export default function App() {
         <div className="flex items-center gap-3">
           {user && (
             <>
-              <span className="text-xs text-gray-400">{user.email}</span>
+              <span className="text-xs text-text-tertiary">{user.email}</span>
+              <span className="text-text-tertiary">·</span>
               <button
                 onClick={signOut}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
               >
                 Sign Out
               </button>
@@ -258,10 +260,8 @@ export default function App() {
           )}
           <div
             className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`}
+            title={connected ? 'Connected' : 'Disconnected'}
           />
-          <span className="text-xs text-gray-500">
-            {connected ? 'Connected' : 'Disconnected'}
-          </span>
         </div>
       </header>
 
@@ -281,34 +281,36 @@ export default function App() {
             />
           </div>
         ) : contextOnly ? (
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <ContextPanelHost panels={state.contextPanels} expanded />
-            <div className="flex-1 overflow-hidden">
-              <Transcript segments={state.segments} agentStatus={state.agentStatus} />
+          <div className="flex-1 flex flex-col items-center overflow-hidden">
+            <div className="w-full max-w-2xl flex flex-col flex-1 overflow-hidden">
+              <ContextPanelHost panels={state.contextPanels} expanded />
+              <div className="flex-1 overflow-hidden">
+                <Transcript segments={state.segments} agentStatus={state.agentStatus} centered />
+              </div>
+              <Controls
+                status={state.status}
+                agentStatus={state.agentStatus}
+                onInterrupt={handleInterrupt}
+                onPause={handlePause}
+                onResume={handleResume}
+                onRestart={handleRestart}
+                onSpeedChange={handleSpeedChange}
+                onTtsMuteToggle={handleTtsMuteToggle}
+                ttsMuted={ttsMuted}
+                explanationMode={state.explanationMode}
+                guidedOptions={state.guidedOptions}
+                onGuidedResponse={handleGuidedResponse}
+                mode={state.mode}
+                onGuidedMessage={handleGuidedMessage}
+                guidedPrompt={state.guidedPrompt}
+                registerInsertRef={registerInsertRef}
+              />
             </div>
-            <Controls
-              status={state.status}
-              agentStatus={state.agentStatus}
-              onInterrupt={handleInterrupt}
-              onPause={handlePause}
-              onResume={handleResume}
-              onRestart={handleRestart}
-              onSpeedChange={handleSpeedChange}
-              onTtsMuteToggle={handleTtsMuteToggle}
-              ttsMuted={ttsMuted}
-              explanationMode={state.explanationMode}
-              guidedOptions={state.guidedOptions}
-              onGuidedResponse={handleGuidedResponse}
-              mode={state.mode}
-              onGuidedMessage={handleGuidedMessage}
-              guidedPrompt={state.guidedPrompt}
-              registerInsertRef={registerInsertRef}
-            />
           </div>
         ) : (
           <>
             {/* Visualization panel - 60% */}
-            <div className="w-2/3 h-full overflow-hidden border-r border-gray-800">
+            <div className="w-2/3 h-full overflow-hidden border-r border-border">
               {useVizLayout ? (
                 <VizLayout
                   panels={state.vizPanels}
@@ -332,7 +334,7 @@ export default function App() {
             </div>
 
             {/* Transcript panel */}
-            <div className="w-1/3 flex flex-col overflow-hidden">
+            <div className="w-1/3 flex flex-col overflow-hidden bg-surface-1">
               <ContextPanelHost panels={state.contextPanels} />
               <div className="flex-1 overflow-hidden">
                 <Transcript segments={state.segments} agentStatus={state.agentStatus} />

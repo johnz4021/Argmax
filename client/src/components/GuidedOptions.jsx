@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import MathText from './MathText';
 
-export default function GuidedOptions({ options, prompt, mode, inputPlaceholder, multiSelect, onSelect }) {
+export default function GuidedOptions({ options, prompt, mode, inputPlaceholder, multiSelect, onSelect, disabled }) {
   const [text, setText] = useState('');
   const [selectedIds, setSelectedIds] = useState(new Set());
 
@@ -45,13 +45,15 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={inputPlaceholder || 'Type your answer...'}
-            className="flex-1 bg-gray-800 border border-blue-500 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-400"
+            disabled={disabled}
+            placeholder={disabled ? 'Waiting for tutor...' : (inputPlaceholder || 'Type your answer...')}
+            className={`flex-1 bg-gray-800 border border-blue-500 rounded-lg px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-400 ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
             autoFocus
           />
           <button
             type="submit"
-            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            disabled={disabled}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${disabled ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}
           >
             Submit
           </button>
@@ -63,10 +65,13 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
               <button
                 key={option.id}
                 onClick={() => handleToggle(option)}
+                disabled={disabled}
                 className={`border px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  selectedIds.has(option.id)
-                    ? 'border-blue-400 bg-blue-500/30 text-blue-300'
-                    : 'border-blue-500 text-blue-400 hover:bg-blue-500/20'
+                  disabled
+                    ? 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
+                    : selectedIds.has(option.id)
+                      ? 'border-blue-400 bg-blue-500/30 text-blue-300'
+                      : 'border-blue-500 text-blue-400 hover:bg-blue-500/20'
                 }`}
               >
                 <MathText>{option.label}</MathText>
@@ -75,9 +80,9 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
           </div>
           <button
             onClick={handleConfirm}
-            disabled={selectedIds.size === 0}
+            disabled={disabled || selectedIds.size === 0}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              selectedIds.size > 0
+              !disabled && selectedIds.size > 0
                 ? 'bg-blue-600 hover:bg-blue-500 text-white'
                 : 'bg-gray-700 text-gray-500 cursor-not-allowed'
             }`}
@@ -91,7 +96,12 @@ export default function GuidedOptions({ options, prompt, mode, inputPlaceholder,
             <button
               key={option.id}
               onClick={() => onSelect({ optionId: option.id, label: option.label })}
-              className="border border-blue-500 text-blue-400 hover:bg-blue-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              disabled={disabled}
+              className={`border px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                disabled
+                  ? 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
+                  : 'border-blue-500 text-blue-400 hover:bg-blue-500/20'
+              }`}
             >
               <MathText>{option.label}</MathText>
             </button>

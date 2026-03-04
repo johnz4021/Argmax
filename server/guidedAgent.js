@@ -1100,22 +1100,37 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           // Send as interrupt_response to reuse existing purple "Argmax:" segment
           sendJSON(ws, { type: 'interrupt_response', answer: text, explanation_mode: 'none' });
 
-          // TTS for the reply
-          const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
-          const sendJsonFn = (obj) => sendJSON(ws, obj);
-          await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn);
-
+          // Set up resolver BEFORE TTS so early responses are captured
+          let responsePromise, timeoutPromise;
           if (wait_for_response !== false) {
-            // Activate input field and wait for student response
             sendJSON(ws, { type: 'guided_prompt', prompt: text });
-
-            const responsePromise = new Promise((resolve) => {
+            responsePromise = new Promise((resolve) => {
+              if (session.guidedResponse) { resolve(); return; }
               session.guidedResponseResolver = resolve;
             });
-            const timeoutPromise = new Promise((resolve) => {
+            timeoutPromise = new Promise((resolve) => {
               setTimeout(() => resolve('__timeout__'), 600000);
             });
+          }
 
+          // TTS for the reply (abortable on pause) — student can respond during this
+          const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+          const sendJsonFn = (obj) => sendJSON(ws, obj);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+          // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            session.pauseFlag = false;
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (!session.interruptFlag) {
+              sendJSON(ws, { type: 'resumed' });
+            }
+          }
+
+          if (wait_for_response !== false) {
             const raceResult = await Promise.race([responsePromise, timeoutPromise]);
 
             session.guidedResponseResolver = null;
@@ -1150,22 +1165,36 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
           sendJSON(ws, { type: 'guided_options', prompt, options: block.input.options || [], mode: block.input.mode || 'mc', input_placeholder: block.input.input_placeholder, multiSelect: block.input.multiSelect || false });
 
-          // TTS for the prompt
-          const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
-          const sendJsonFn = (obj) => sendJSON(ws, obj);
-          await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn);
-
-          // Also send a guided_prompt so the student can type in the input field
-          sendJSON(ws, { type: 'guided_prompt', prompt });
-
-          // Wait for student response with 2-minute timeout
+          // Set up resolver BEFORE TTS so early responses are captured
           const responsePromise = new Promise((resolve) => {
+            if (session.guidedResponse) { resolve(); return; }
             session.guidedResponseResolver = resolve;
           });
           const timeoutPromise = new Promise((resolve) => {
             setTimeout(() => resolve('__timeout__'), 600000);
           });
 
+          // TTS for the prompt (abortable on pause) — student can respond during this
+          const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+          const sendJsonFn = (obj) => sendJSON(ws, obj);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+          // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            session.pauseFlag = false;
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (!session.interruptFlag) {
+              sendJSON(ws, { type: 'resumed' });
+            }
+          }
+
+          // Also send a guided_prompt so the student can type in the input field
+          sendJSON(ws, { type: 'guided_prompt', prompt });
+
+          // Now wait for student response (may already be resolved if they clicked during TTS)
           const raceResult = await Promise.race([responsePromise, timeoutPromise]);
 
           session.guidedResponseResolver = null;
@@ -1342,19 +1371,6 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             if (studentText) {
               saveMessage(session.conversationId, 'student', 'guided_answer', String(studentText));
             }
-          }
-        }
-
-        // Check for pause after emit_segment or conversational_reply
-        if ((block.name === 'emit_segment' || block.name === 'conversational_reply') && session.pauseFlag) {
-          session.pauseFlag = false;
-          sendJSON(ws, { type: 'paused' });
-          await new Promise((resolve) => {
-            session.pauseResolver = resolve;
-          });
-          session.pauseResolver = null;
-          if (!session.interruptFlag) {
-            sendJSON(ws, { type: 'resumed' });
           }
         }
 

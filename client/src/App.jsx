@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import VizLayout from './components/VizLayout';
 import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
@@ -18,6 +18,7 @@ export default function App() {
   const { session, user, loading: authLoading, signOut } = useAuth();
   const { state, processMessage, interrupt, reset, dispatchContext } = useTutorState();
   const audioPlayer = useAudioPlayer();
+  const [ttsMuted, setTtsMuted] = useState(false);
   const insertRefHolder = useRef(null);
 
   const contextPanelsRef = useRef(state.contextPanels);
@@ -85,8 +86,11 @@ export default function App() {
           viz_actions: [],
         });
       }
+      if (msg.type === 'audio_flush') {
+        audioPlayer.flush();
+      }
     },
-    [processMessage, dispatchContext]
+    [processMessage, dispatchContext, audioPlayer]
   );
 
   const onBinary = useCallback(
@@ -155,7 +159,8 @@ export default function App() {
 
   const handlePause = useCallback(() => {
     send({ type: 'pause' });
-  }, [send]);
+    audioPlayer.flush(); // Immediately stop audio on client
+  }, [send, audioPlayer]);
 
   const handleResume = useCallback(() => {
     send({ type: 'resume' });
@@ -183,6 +188,15 @@ export default function App() {
     },
     [send]
   );
+
+  const handleTtsMuteToggle = useCallback(() => {
+    setTtsMuted((prev) => {
+      const next = !prev;
+      send({ type: 'set_tts_muted', muted: next });
+      if (next) audioPlayer.flush(); // Immediately stop any playing audio
+      return next;
+    });
+  }, [send, audioPlayer]);
 
   const handleElementClick = useCallback((refText) => {
     const inputEl = insertRefHolder.current?.current;
@@ -218,6 +232,7 @@ export default function App() {
   const contextOnly = !state.graph && (!state.vizPanels || state.vizPanels.length === 0) && state.contextPanels.length > 0;
 
   return (
+    <>
     <div className="h-screen flex flex-col bg-gray-950">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-900/50">
@@ -273,11 +288,14 @@ export default function App() {
             </div>
             <Controls
               status={state.status}
+              agentStatus={state.agentStatus}
               onInterrupt={handleInterrupt}
               onPause={handlePause}
               onResume={handleResume}
               onRestart={handleRestart}
               onSpeedChange={handleSpeedChange}
+              onTtsMuteToggle={handleTtsMuteToggle}
+              ttsMuted={ttsMuted}
               explanationMode={state.explanationMode}
               guidedOptions={state.guidedOptions}
               onGuidedResponse={handleGuidedResponse}
@@ -321,11 +339,14 @@ export default function App() {
               </div>
               <Controls
                 status={state.status}
+                agentStatus={state.agentStatus}
                 onInterrupt={handleInterrupt}
                 onPause={handlePause}
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
+              onTtsMuteToggle={handleTtsMuteToggle}
+              ttsMuted={ttsMuted}
                 explanationMode={state.explanationMode}
                 guidedOptions={state.guidedOptions}
                 onGuidedResponse={handleGuidedResponse}
@@ -339,5 +360,7 @@ export default function App() {
         )}
       </div>
     </div>
+    <div className="h-px" />
+    </>
   );
 }

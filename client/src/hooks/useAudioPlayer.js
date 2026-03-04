@@ -42,6 +42,23 @@ export function useAudioPlayer() {
     playChunk(ctx, arrayBuffer, nextStartTimeRef);
   }, []);
 
+  // Flush all queued and playing audio without destroying the context
+  const flush = useCallback(async () => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    // Suspend stops all scheduled sources immediately
+    await ctx.suspend();
+    // Close the old context and create a fresh one
+    ctx.close();
+    ctxRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
+    if (ctxRef.current.state === 'suspended') {
+      await ctxRef.current.resume();
+    }
+    nextStartTimeRef.current = 0;
+    bufferQueueRef.current = [];
+    readyRef.current = true;
+  }, []);
+
   const stop = useCallback(() => {
     if (ctxRef.current) {
       ctxRef.current.close();
@@ -52,7 +69,7 @@ export function useAudioPlayer() {
     }
   }, []);
 
-  return { init, enqueuePCM, stop };
+  return { init, enqueuePCM, flush, stop };
 }
 
 function playChunk(ctx, arrayBuffer, nextStartTimeRef) {

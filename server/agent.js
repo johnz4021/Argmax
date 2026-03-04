@@ -445,20 +445,6 @@ export async function startAgentSession(session, algorithm, graph, source) {
           content: JSON.stringify(result),
         });
 
-        // Check for pause after emit_segment
-        if (block.name === 'emit_segment' && session.pauseFlag) {
-          session.pauseFlag = false;
-          sendJSON(ws, { type: 'paused' });
-          await new Promise((resolve) => {
-            session.pauseResolver = resolve;
-          });
-          session.pauseResolver = null;
-          // If no interrupt was submitted during pause, send resumed
-          if (!session.interruptFlag) {
-            sendJSON(ws, { type: 'resumed' });
-          }
-        }
-
         // Check for interrupt after emit_segment
         if (block.name === 'emit_segment' && session.interruptFlag) {
           const interrupt = session.interruptFlag;
@@ -911,7 +897,24 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // TTS or simulated delay (synthesizeAndStream waits for playback to finish)
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+      if (ttsResult?.aborted || session.pauseFlag) {
+        // Pause was pressed during or after TTS — send flush to stop client audio, then pause immediately
+        sendJSON(ws, { type: 'audio_flush' });
+        sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+        session.pauseFlag = false;
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+        return {
+          success: true,
+          message: 'Segment interrupted by pause. Resumed.',
+        };
+      }
 
       // Small buffer between segments for natural pacing
       const gapMs = 300 / session.speedMultiplier;
@@ -938,14 +941,15 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn);
+      await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
 
       // If rewind mode, also narrate each replayed step
       if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
         for (const stepNarration of input.rewind.narration_per_step) {
+          if (session.pauseFlag) break;
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
-          await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn);
+          await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
         }
       }
 
@@ -967,19 +971,33 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       sendJSON(ws, { type: 'guided_options', prompt, options: input.options || [], mode: input.mode || 'mc', input_placeholder: input.input_placeholder });
 
-      // TTS the prompt
-      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
-      const sendJsonFn = (obj) => sendJSON(ws, obj);
-      await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn);
-
-      // Wait for learner response with 2-minute timeout
+      // Set up resolver BEFORE TTS so early responses are captured
       const responsePromise = new Promise((resolve) => {
+        if (session.guidedResponse) { resolve(); return; }
         session.guidedResponseResolver = resolve;
       });
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => resolve('__timeout__'), 600000);
       });
 
+      // TTS the prompt (abortable on pause) — learner can respond during this
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+        session.pauseFlag = false;
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+      }
+
+      // Now wait for learner response (may already be resolved if they clicked during TTS)
       const raceResult = await Promise.race([responsePromise, timeoutPromise]);
 
       session.guidedResponseResolver = null;

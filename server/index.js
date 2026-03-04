@@ -79,6 +79,7 @@ wss.on('connection', (ws, req) => {
     active: false,
     mode: 'direct',
     speedMultiplier: 1,
+    ttsMuted: false,
     guidedResponse: null,
     guidedResponseResolver: null,
     guidedMessageQueue: [],
@@ -211,6 +212,12 @@ wss.on('connection', (ws, req) => {
 
         case 'set_speed': {
           session.speedMultiplier = msg.multiplier || 1;
+          break;
+        }
+
+        case 'set_tts_muted': {
+          session.ttsMuted = !!msg.muted;
+          console.log(`[WS] TTS muted: ${session.ttsMuted}`);
           break;
         }
 

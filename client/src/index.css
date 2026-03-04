@@ -8,13 +8,7 @@ html, body {
 #root {
   height: 100%;
   overflow-y: auto;
-  overscroll-behavior: contain;
-}
-
-#root::after {
-  content: '';
-  display: block;
-  height: 1px;
+  overscroll-behavior-y: contain;
 }
 
 /* Prevent Tailwind's preflight from breaking KaTeX rendering */

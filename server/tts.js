@@ -209,13 +209,26 @@ export function normalizeTTSText(text) {
  * `sendJsonFn(obj)` is called to send JSON messages (audio_start/audio_end).
  * Falls back to simulated delay if no ElevenLabs key.
  */
-export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 1, sendJsonFn = null) {
+export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 1, sendJsonFn = null, shouldAbort = null, muted = false) {
+  if (muted) {
+    // Skip TTS entirely — no audio, no delay
+    return { aborted: false };
+  }
+
   if (!ELEVENLABS_API_KEY) {
     console.log('[TTS] No ElevenLabs API key configured, using simulated delay');
     const wordCount = normalizeTTSText(text).split(/\s+/).length;
     const delayMs = (wordCount * 200) / speedMultiplier;
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
-    return;
+    // Check abort during simulated delay (poll every 100ms)
+    const start = Date.now();
+    while (Date.now() - start < delayMs) {
+      if (shouldAbort && shouldAbort()) {
+        console.log('[TTS] Simulated delay aborted by pause');
+        return { aborted: true };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return { aborted: false };
   }
 
   console.log('[TTS] API key length:', ELEVENLABS_API_KEY.length, '| Voice ID:', VOICE_ID);
@@ -228,15 +241,30 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
     let receivedAudio = false;
     let totalAudioBytes = 0;
     let timeoutId = null;
+    let aborted = false;
+    let abortCheckInterval = null;
 
     const elWs = new WebSocket(wsUrl);
+
+    // Poll for abort signal
+    if (shouldAbort) {
+      abortCheckInterval = setInterval(() => {
+        if (shouldAbort()) {
+          aborted = true;
+          console.log('[TTS] Abort signal received, closing ElevenLabs WS');
+          clearInterval(abortCheckInterval);
+          abortCheckInterval = null;
+          try { elWs.close(); } catch (_) {}
+        }
+      }, 50);
+    }
 
     // Timeout: if no audio within 10s, warn and resolve
     timeoutId = setTimeout(() => {
       if (!receivedAudio) {
         console.warn('[TTS] No audio received within 10s, resolving (voice ID:', VOICE_ID, ')');
         try { elWs.close(); } catch (_) {}
-        resolve();
+        resolve({ aborted: false });
       }
     }, 10000);
 
@@ -260,6 +288,7 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
     });
 
     elWs.on('message', (data) => {
+      if (aborted) return; // Stop forwarding audio after abort
       try {
         const raw = data.toString();
         const msg = JSON.parse(raw);
@@ -289,6 +318,20 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
 
     elWs.on('close', (code, reason) => {
       clearTimeout(timeoutId);
+      if (abortCheckInterval) {
+        clearInterval(abortCheckInterval);
+        abortCheckInterval = null;
+      }
+
+      if (aborted) {
+        console.log('[TTS] ElevenLabs WS closed after abort');
+        if (sendJsonFn && receivedAudio) {
+          sendJsonFn({ type: 'audio_end' });
+        }
+        resolve({ aborted: true });
+        return;
+      }
+
       // PCM 24000 Hz, 16-bit mono = 2 bytes per sample
       const audioDurationMs = (totalAudioBytes / (24000 * 2)) * 1000;
       const elapsedMs = Date.now() - streamStartTime;
@@ -299,14 +342,18 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
         sendJsonFn({ type: 'audio_end' });
       }
       // Wait for client to finish playing queued audio
-      setTimeout(() => resolve(audioDurationMs), remainingMs);
+      setTimeout(() => resolve({ aborted: false, audioDurationMs }), remainingMs);
     });
 
     elWs.on('error', (err) => {
       clearTimeout(timeoutId);
+      if (abortCheckInterval) {
+        clearInterval(abortCheckInterval);
+        abortCheckInterval = null;
+      }
       console.error('[TTS] ElevenLabs WS error:', err.message);
       try { elWs.close(); } catch (_) {}
-      resolve();
+      resolve({ aborted: false });
     });
   });
 }

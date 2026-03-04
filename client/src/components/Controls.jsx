@@ -42,6 +42,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
       onInterrupt(question.trim());
     }
     setQuestion('');
+    if (isListening) stop();
     clearTranscript();
     // Reset textarea height after clearing
     if (inputRef.current) {

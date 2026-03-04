@@ -3,14 +3,21 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { parse as parseUrl } from 'url';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
 import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
 import { verifyJWT } from './supabase.js';
 import { createConversation, listConversations, loadConversationMessages, loadAgentState } from './db.js';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 const app = express();
 const server = createServer(app);
+
+// Serve static client build
+app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
 
 const authEnabled = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
 
@@ -286,6 +293,11 @@ wss.on('connection', (ws, req) => {
     }
     sessions.delete(sessionId);
   });
+});
+
+// SPA fallback — serve index.html for all non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'client', 'dist', 'index.html'));
 });
 
 server.listen(PORT, () => {

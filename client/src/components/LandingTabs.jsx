@@ -3,6 +3,7 @@ import AlgoSelector from './AlgoSelector';
 import ProblemSolver from './ProblemSolver';
 import ConversationHistory from './ConversationHistory';
 import ConversationTranscript from './ConversationTranscript';
+import HelpCenter from './HelpCenter';
 import { posthog, POSTHOG_KEY } from '../lib/posthog';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
@@ -26,6 +27,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
     { id: 'tutorials', label: 'Tutorials' },
     { id: 'solver', label: 'Work Together' },
     { id: 'history', label: 'History' },
+    { id: 'help', label: 'Help Center' },
   ];
 
   return (
@@ -56,6 +58,8 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
           <AlgoSelector onSelect={onSelect} disabled={disabled} />
         ) : activeTab === 'solver' ? (
           <ProblemSolver onSelect={onSelect} disabled={disabled} />
+        ) : activeTab === 'help' ? (
+          <HelpCenter />
         ) : viewingHistory && loadedConversation ? (
           <ConversationTranscript
             messages={loadedConversation}

@@ -86,6 +86,23 @@ function latexToSpeech(latex) {
     [/\\iff/g, ' if and only if '],
     [/\\star/g, ' star '],
     [/\\ast/g, ' star '],
+    [/\\mathbb\{N\}/g, 'the natural numbers'],
+    [/\\mathbb\{R\}/g, 'the reals'],
+    [/\\mathbb\{Z\}/g, 'the integers'],
+    [/\\mathbb\{Q\}/g, 'the rationals'],
+    [/\\mathbb\{C\}/g, 'the complex numbers'],
+    [/\\mathbb\{(\w)\}/g, '$1'],
+    [/\\mathcal\{O\}/g, 'big O'],
+    [/\\bmod/g, ' mod '],
+    [/\\pmod/g, ' mod '],
+    [/\\mid/g, ' divides '],
+    [/\\to/g, ' to '],
+    [/\\implies/g, ' implies '],
+    [/\\not/g, 'not '],
+    [/\\ldots/g, ', and so on,'],
+    [/\\cdots/g, ', and so on,'],
+    [/\\prime/g, ' prime'],
+    [/\\circ/g, ' composed with '],
   ];
   for (const [pat, rep] of symbols) {
     t = t.replace(pat, rep);
@@ -99,6 +116,10 @@ function latexToSpeech(latex) {
     if (c === '3') return ' cubed';
     return ` to the power of ${c}`;
   });
+
+  // Special case: n_0 / n_{0} → "n naught"
+  t = t.replace(/n_\{0\}/g, 'n naught');
+  t = t.replace(/n_0/g, 'n naught');
 
   // Subscripts: x_{uv} → "x sub u v", x_i → "x sub i"
   t = t.replace(/_\{([^}]*)\}/g, ' sub $1');
@@ -119,6 +140,10 @@ export function normalizeTTSText(text) {
   t = t.replace(/\$\$([^$]+)\$\$/g, (_, inner) => latexToSpeech(inner));
   t = t.replace(/\$([^$]+)\$/g, (_, inner) => latexToSpeech(inner));
 
+  // Single-letter function calls: f(n) → "f of n", T(n) → "T of n"
+  // Negative lookbehind prevents matching multi-letter words like min(...), log(...)
+  t = t.replace(/(?<![a-zA-Z])([a-zA-Z])\(([^)]+)\)/g, '$1 of $2');
+
   // Big-O notation: O(n log n) → "O of n log n"
   t = t.replace(/O\(([^)]+)\)/g, 'O of $1');
 
@@ -137,6 +162,9 @@ export function normalizeTTSText(text) {
     if (exp === '3') return `${base} cubed`;
     return `${base} to the power of ${exp}`;
   });
+
+  // Special case: n₀ → "n naught" (common in proofs)
+  t = t.replace(/n₀/g, 'n naught');
 
   // Unicode subscript digits/letters (e.g. x₀, Mf with subscript f)
   t = t.replace(/[₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₕₖₗₘₙₚₛₜ]+/g, (match) => {
@@ -162,6 +190,35 @@ export function normalizeTTSText(text) {
   t = t.replace(/π/g, 'pi');
   t = t.replace(/Π/g, 'pi');
   t = t.replace(/τ/g, 'tau');
+
+  // Quantifiers & logic (Unicode)
+  t = t.replace(/∀/g, 'for all');
+  t = t.replace(/∃/g, 'there exists');
+  t = t.replace(/∈/g, ' in ');
+  t = t.replace(/∉/g, ' not in ');
+  t = t.replace(/∧/g, ' and ');
+  t = t.replace(/∨/g, ' or ');
+  t = t.replace(/¬/g, 'not ');
+
+  // Set operations (Unicode)
+  t = t.replace(/∩/g, ' intersect ');
+  t = t.replace(/∪/g, ' union ');
+  t = t.replace(/⊂/g, ' subset of ');
+  t = t.replace(/⊆/g, ' subset of ');
+  t = t.replace(/∅/g, 'empty set');
+
+  // Double arrows (Unicode)
+  t = t.replace(/⇔/g, ' if and only if ');
+  t = t.replace(/⇒/g, ' implies ');
+  t = t.replace(/⇐/g, ' is implied by ');
+
+  // Multiplication / misc (Unicode)
+  t = t.replace(/⋅/g, ' times ');
+  t = t.replace(/·/g, ' times ');
+  t = t.replace(/≈/g, ' approximately ');
+  t = t.replace(/±/g, ' plus or minus ');
+  t = t.replace(/×/g, ' times ');
+  t = t.replace(/÷/g, ' divided by ');
 
   // Congruence / equivalence
   t = t.replace(/≡/g, ' is congruent to ');

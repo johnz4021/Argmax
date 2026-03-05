@@ -49,7 +49,66 @@ const VISIBLE_GROUPS = [
   },
 ];
 
+import { useState } from 'react';
+
+function RequestAlgoModal({ onClose }) {
+  const [value, setValue] = useState('');
+  const [sent, setSent] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!value.trim()) return;
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: '', email: '', message: `[Algorithm Request] ${value.trim()}`, category: 'algorithm_request' }),
+      });
+    } catch { /* best-effort */ }
+    setSent(true);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div className="bg-surface-1 border border-border rounded-xl shadow-xl max-w-sm w-full mx-4 p-6 font-body" onClick={(e) => e.stopPropagation()}>
+        {sent ? (
+          <div className="text-center py-4">
+            <div className="text-green-400 text-sm font-medium mb-1">Request submitted!</div>
+            <p className="text-xs text-text-tertiary mb-4">Thanks — we'll look into adding it.</p>
+            <button onClick={onClose} className="text-xs text-accent hover:text-accent-hover transition-colors">Close</button>
+          </div>
+        ) : (
+          <>
+            <h3 className="text-base font-display font-semibold text-text-primary mb-1">Request an algorithm</h3>
+            <p className="text-xs text-text-tertiary mb-4">Don't see what you're looking for? Let us know.</p>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <input
+                type="text"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="e.g. Topological Sort, A* Search..."
+                autoFocus
+                className="w-full bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-text-primary placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors"
+              />
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-text-secondary bg-surface-2 hover:bg-surface-3 border border-border rounded-lg transition-colors">
+                  Cancel
+                </button>
+                <button type="submit" disabled={!value.trim()} className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${value.trim() ? 'bg-accent hover:bg-accent-hover text-surface-0' : 'bg-surface-3 text-text-tertiary cursor-not-allowed'}`}>
+                  Submit
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AlgoSelector({ onSelect, disabled }) {
+  const [showRequest, setShowRequest] = useState(false);
+
   return (
     <div className="flex flex-col items-center h-full gap-8 p-8 overflow-auto">
       <div className="text-center">
@@ -80,7 +139,14 @@ export default function AlgoSelector({ onSelect, disabled }) {
             </div>
           </div>
         ))}
+        <button
+          onClick={() => setShowRequest(true)}
+          className="text-sm text-text-tertiary hover:text-accent transition-colors font-medium mt-2"
+        >
+          Don't see your algorithm? Request one &rarr;
+        </button>
       </div>
+      {showRequest && <RequestAlgoModal onClose={() => setShowRequest(false)} />}
     </div>
   );
 }

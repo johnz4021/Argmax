@@ -9,7 +9,7 @@ import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
 import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
 import { verifyJWT } from './supabase.js';
-import { createConversation, listConversations, loadConversationMessages, loadAgentState } from './db.js';
+import { createConversation, listConversations, loadConversationMessages, loadAgentState, saveFeedback } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,7 +17,28 @@ const app = express();
 const server = createServer(app);
 
 // Serve static client build
+app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'client', 'dist')));
+
+// Feedback / help request endpoint
+app.post('/api/feedback', (req, res) => {
+  const { name, email, message, category } = req.body;
+  console.log(`[Feedback] From: ${name || 'anonymous'} <${email || 'no email'}>\n  ${message}`);
+
+  const detected = category
+    || (message && message.startsWith('[Algorithm Request]') ? 'algorithm_request' : 'help');
+  saveFeedback(detected, { name, email, message, meta: req.body.meta });
+
+  res.json({ ok: true });
+});
+
+// Session feedback endpoint
+app.post('/api/session-feedback', (req, res) => {
+  const { rating, message, mode, algorithm } = req.body;
+  console.log(`[SessionFeedback] rating=${rating} mode=${mode} algo=${algorithm}`);
+  saveFeedback('session_rating', { rating, message, meta: { mode, algorithm } });
+  res.json({ ok: true });
+});
 
 const authEnabled = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
 

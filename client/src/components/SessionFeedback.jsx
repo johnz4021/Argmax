@@ -11,6 +11,11 @@ export default function SessionFeedback({ mode, algorithm, onDismiss }) {
   const handleSubmit = () => {
     if (!rating) return;
     track('session_rated', { rating, feedback_text: feedbackText || null, mode, algorithm });
+    fetch('/api/session-feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating, message: feedbackText || null, mode, algorithm }),
+    }).catch(() => {});
     setSubmitted(true);
     setTimeout(() => onDismiss(), 1500);
   };

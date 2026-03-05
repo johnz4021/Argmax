@@ -105,6 +105,19 @@ export async function loadConversationMessages(conversationId) {
 /**
  * Load the agent state for a conversation (for resume).
  */
+/**
+ * Save feedback to the feedback table (fire-and-forget).
+ */
+export function saveFeedback(category, { name, email, message, rating, meta }) {
+  if (!supabase) return;
+  supabase
+    .from('feedback')
+    .insert({ category, name, email, message, rating, meta })
+    .then(({ error }) => {
+      if (error) console.error('[DB] saveFeedback error:', error.message);
+    });
+}
+
 export async function loadAgentState(conversationId) {
   if (!supabase) return null;
   const { data, error } = await supabase

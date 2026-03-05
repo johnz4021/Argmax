@@ -7,7 +7,7 @@ import { posthog, POSTHOG_KEY } from '../lib/posthog';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
-export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage }) {
+export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage, onResumeConversation }) {
   const [activeTab, setActiveTab] = useState('tutorials');
 
   const handleViewTranscript = (conversationId) => {
@@ -15,8 +15,11 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
   };
 
   const handleResume = (conversationId) => {
-    track('conversation_resumed', {});
-    send({ type: 'resume_conversation', conversationId });
+    if (onResumeConversation) {
+      onResumeConversation(conversationId);
+    } else {
+      send({ type: 'resume_conversation', conversationId });
+    }
   };
 
   const tabs = [

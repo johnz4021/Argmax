@@ -34,7 +34,7 @@ export function saveMessage(conversationId, role, type, content) {
 /**
  * Upsert agent state (messages array + solver result) for a conversation.
  */
-export function saveAgentState(conversationId, messagesJson, solverResultJson) {
+export function saveAgentState(conversationId, messagesJson, solverResultJson, vizStateJson = null) {
   if (!supabase || !conversationId) return;
   supabase
     .from('agent_states')
@@ -43,6 +43,7 @@ export function saveAgentState(conversationId, messagesJson, solverResultJson) {
         conversation_id: conversationId,
         messages_json: messagesJson,
         solver_result_json: solverResultJson || null,
+        viz_state_json: vizStateJson || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'conversation_id' }
@@ -109,7 +110,7 @@ export async function loadAgentState(conversationId) {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from('agent_states')
-    .select('messages_json, solver_result_json')
+    .select('messages_json, solver_result_json, viz_state_json')
     .eq('conversation_id', conversationId)
     .single();
 

@@ -172,8 +172,15 @@ function reducer(state, action) {
     case 'GUIDED_START':
       return { ...initialState, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
 
-    case 'GUIDED_RESUME':
-      return { ...state, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
+    case 'GUIDED_RESUME': {
+      const restored = (state.loadedConversation || []).map((m, i) => ({
+        id: m.id || `resumed_${i}`,
+        narration: m.content,
+        type: m.type,
+        active: false,
+      }));
+      return { ...state, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing', segments: restored, loadedConversation: null, viewingHistory: false };
+    }
 
     case 'LOAD_TRANSCRIPT':
       return {

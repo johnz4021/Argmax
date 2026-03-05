@@ -299,7 +299,7 @@ wss.on('connection', (ws, req) => {
           session.conversationId = msg.conversationId;
 
           try {
-            await resumeGuidedSession(session, agentState.messages_json, agentState.solver_result_json);
+            await resumeGuidedSession(session, agentState.messages_json, agentState.solver_result_json, agentState.viz_state_json);
           } catch (err) {
             if (err.message === '__end_session__') {
               console.log('[GuidedAgent] Resumed session ended by user');

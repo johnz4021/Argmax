@@ -151,6 +151,17 @@ export default function App() {
     [send, reset, audioPlayer]
   );
 
+  const handleResumeConversation = useCallback(
+    (conversationId) => {
+      audioPlayer.init(); // Must be from user gesture to unlock AudioContext
+      reset();
+      sessionStartRef.current = Date.now();
+      track('conversation_resumed', {});
+      send({ type: 'resume_conversation', conversationId });
+    },
+    [send, reset, audioPlayer]
+  );
+
   const handleGuidedResponse = useCallback(
     (response) => {
       track('question_answered', { answer_mode: state.guidedOptions?.mode });
@@ -339,6 +350,7 @@ export default function App() {
               viewingHistory={state.viewingHistory}
               onClearHistory={handleClearHistory}
               processMessage={processMessage}
+              onResumeConversation={handleResumeConversation}
             />
             {pendingFeedback && (
               <SessionFeedback

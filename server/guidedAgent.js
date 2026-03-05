@@ -744,8 +744,19 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   await runGuidedLoop(session, messages, GUIDED_SYSTEM_PROMPT, null);
 }
 
-export async function resumeGuidedSession(session, savedMessages, savedSolverResult) {
+export async function resumeGuidedSession(session, savedMessages, savedSolverResult, savedVizState) {
   const { ws } = session;
+
+  // Restore image data from the first user message (if present)
+  const firstUserMsg = savedMessages.find(m => m.role === 'user');
+  if (firstUserMsg) {
+    const content = Array.isArray(firstUserMsg.content) ? firstUserMsg.content : [];
+    const imageBlock = content.find(b => b.type === 'image');
+    if (imageBlock?.source?.data) {
+      session.imageBase64 = imageBlock.source.data;
+      session.imageMimeType = imageBlock.source.media_type || null;
+    }
+  }
 
   // Extract batch state if present (backward compat with old single-result format)
   const batchState = savedSolverResult?._batchState || null;
@@ -755,6 +766,11 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
   const systemPrompt = cleanSolverResult?.success
     ? GUIDED_SYSTEM_PROMPT + buildSolverContext(cleanSolverResult)
     : GUIDED_SYSTEM_PROMPT;
+
+  if (savedVizState?.currentGraph) {
+    session.currentGraph = savedVizState.currentGraph;
+    sendJSON(ws, { type: 'create_graph', graph: savedVizState.currentGraph });
+  }
 
   sendJSON(ws, { type: 'guided_start', resuming: true });
 
@@ -1424,7 +1440,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         if (persistedSolverResult && Object.keys(solverResultsMap).length > 0) {
           persistedSolverResult._batchState = { solverResultsMap, activePart, selectedParts };
         }
-        saveAgentState(session.conversationId, messages, persistedSolverResult);
+        const vizState = session.currentGraph ? { currentGraph: session.currentGraph } : null;
+        saveAgentState(session.conversationId, messages, persistedSolverResult, vizState);
       }
     }
 

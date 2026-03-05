@@ -49,7 +49,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
-const FREE_SESSION_LIMIT = 15;
+const FREE_SESSION_LIMIT = 20;
 
 const sessions = new Map();
 
@@ -128,6 +128,7 @@ wss.on('connection', (ws, req) => {
     followUpResolver: null,
     followUpSent: false,
     conversationId: null,
+    runGeneration: 0,
   };
   sessions.set(sessionId, session);
   console.log(`[WS] Client connected: ${sessionId}${user ? ` (${user.email})` : ''}`);
@@ -139,10 +140,15 @@ wss.on('connection', (ws, req) => {
 
       switch (msg.type) {
         case 'start_lesson': {
-          if (session.active) {
+          if (session.active && !session.endSessionFlag) {
             ws.send(JSON.stringify({ type: 'error', message: 'Lesson already in progress' }));
             return;
           }
+          // Force-release a dying session (endSessionFlag is set but solver/API call still pending)
+          session.active = false;
+          session.endSessionFlag = false;
+          session.runGeneration++;
+          const lessonGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);
             if (!gate.allowed) {
@@ -170,17 +176,24 @@ wss.on('connection', (ws, req) => {
               ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
             }
           }
-          session.active = false;
-          session.endSessionFlag = false;
-          ws.send(JSON.stringify({ type: 'session_ended' }));
+          // Only clean up if this run is still the current one (not superseded)
+          if (session.runGeneration === lessonGen) {
+            session.active = false;
+            session.endSessionFlag = false;
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+          }
           break;
         }
 
         case 'start_guided': {
-          if (session.active) {
+          if (session.active && !session.endSessionFlag) {
             ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
             return;
           }
+          session.active = false;
+          session.endSessionFlag = false;
+          session.runGeneration++;
+          const guidedGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);
             if (!gate.allowed) {
@@ -215,13 +228,15 @@ wss.on('connection', (ws, req) => {
               ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
             }
           }
-          session.active = false;
-          session.endSessionFlag = false;
-          session.mode = 'direct';
-          session.followUpResolver = null;
-          session.followUpSent = false;
-          session.conversationId = null;
-          ws.send(JSON.stringify({ type: 'session_ended' }));
+          if (session.runGeneration === guidedGen) {
+            session.active = false;
+            session.endSessionFlag = false;
+            session.mode = 'direct';
+            session.followUpResolver = null;
+            session.followUpSent = false;
+            session.conversationId = null;
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+          }
           break;
         }
 
@@ -344,10 +359,14 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'resume_conversation': {
-          if (session.active) {
+          if (session.active && !session.endSessionFlag) {
             ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
             return;
           }
+          session.active = false;
+          session.endSessionFlag = false;
+          session.runGeneration++;
+          const resumeGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);
             if (!gate.allowed) {
@@ -385,13 +404,15 @@ wss.on('connection', (ws, req) => {
               ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
             }
           }
-          session.active = false;
-          session.endSessionFlag = false;
-          session.mode = 'direct';
-          session.followUpResolver = null;
-          session.followUpSent = false;
-          session.conversationId = null;
-          ws.send(JSON.stringify({ type: 'session_ended' }));
+          if (session.runGeneration === resumeGen) {
+            session.active = false;
+            session.endSessionFlag = false;
+            session.mode = 'direct';
+            session.followUpResolver = null;
+            session.followUpSent = false;
+            session.conversationId = null;
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+          }
           break;
         }
 

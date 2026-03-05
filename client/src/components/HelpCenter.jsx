@@ -35,13 +35,13 @@ export default function HelpCenter() {
         Help Center
       </h2>
       <p className="text-sm text-text-secondary mb-8">
-        Have a question, issue, or idea? Reach out anytime — I'm always happy to help.
+        Have a question, issue, or idea? 
       </p>
 
       {/* Contact info */}
       <div className="bg-surface-1 border border-border rounded-xl p-5 mb-8 space-y-3">
         <h3 className="text-sm font-semibold text-text-primary">Contact me directly</h3>
-        <p className="text-xs text-text-tertiary">Available any time — don't hesitate to reach out.</p>
+        <p className="text-xs text-text-tertiary">Available any time, don't hesitate to reach out.</p>
         <div className="flex flex-col gap-2 mt-2">
           <a
             href="mailto:johnzz@uchicago.edu"

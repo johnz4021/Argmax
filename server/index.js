@@ -172,6 +172,7 @@ wss.on('connection', (ws, req) => {
           }
           session.active = false;
           session.endSessionFlag = false;
+          ws.send(JSON.stringify({ type: 'session_ended' }));
           break;
         }
 
@@ -220,6 +221,7 @@ wss.on('connection', (ws, req) => {
           session.followUpResolver = null;
           session.followUpSent = false;
           session.conversationId = null;
+          ws.send(JSON.stringify({ type: 'session_ended' }));
           break;
         }
 
@@ -229,6 +231,11 @@ wss.on('connection', (ws, req) => {
           if (session.guidedResponseResolver) {
             session.guidedResponseResolver();
             session.guidedResponseResolver = null;
+          }
+          // Auto-resume if paused so the response gets processed immediately
+          if (session.pauseResolver) {
+            session.pauseResolver();
+            session.pauseResolver = null;
           }
           break;
         }
@@ -384,6 +391,7 @@ wss.on('connection', (ws, req) => {
           session.followUpResolver = null;
           session.followUpSent = false;
           session.conversationId = null;
+          ws.send(JSON.stringify({ type: 'session_ended' }));
           break;
         }
 

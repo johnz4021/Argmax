@@ -135,6 +135,11 @@ export default function App() {
       if (msg.type === 'interest_registered') {
         track('would_pay_registered', {});
       }
+      if (msg.type === 'session_ended') {
+        // Server confirmed session is fully terminated — flush any lingering audio
+        audioPlayer.flush();
+        audioPlayer.stop();
+      }
     },
     [processMessage, dispatchContext, audioPlayer, reset]
   );
@@ -213,6 +218,9 @@ export default function App() {
         }
       }
       processMessage({ type: 'clear_guided_options' });
+      // Auto-resume if paused
+      send({ type: 'resume' });
+      processMessage({ type: 'resumed' });
     },
     [send, processMessage, state.guidedOptions]
   );
@@ -221,6 +229,9 @@ export default function App() {
     (text) => {
       processMessage({ type: 'add_student_message', text });
       send({ type: 'guided_message', text });
+      // Auto-resume if paused
+      send({ type: 'resume' });
+      processMessage({ type: 'resumed' });
     },
     [send, processMessage]
   );

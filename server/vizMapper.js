@@ -130,6 +130,18 @@ function mapGraphStep(algo, step, state) {
             key: k, value: d === Infinity ? '∞' : d, status: 'default',
           })),
         }));
+      } else if (algo === 'bellman_ford' && step.distances) {
+        c.push(ctxUpdate('distances', {
+          entries: Object.entries(step.distances).map(([k, d]) => ({
+            key: k, value: d === Infinity ? '∞' : d, status: 'default',
+          })),
+        }));
+        c.push(ctxUpdate('round_info', {
+          entries: [
+            { key: 'Round', value: '0 / ' + (Object.keys(step.distances).length - 1) },
+            { key: 'Status', value: 'Initialized' },
+          ],
+        }));
       } else if (algo === 'maxflow') {
         // Set initial edge labels
         if (step.edge_labels) {
@@ -204,6 +216,24 @@ function mapGraphStep(algo, step, state) {
       break;
     }
 
+    case 'begin_round': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      c.push(ctxUpdate('round_info', {
+        entries: [
+          { key: 'Round', value: `${step.round} / ${step.total_rounds}`, status: 'highlight' },
+          { key: 'Status', value: 'Relaxing all edges' },
+        ],
+      }));
+      if (step.distances) {
+        c.push(ctxUpdate('distances', {
+          entries: Object.entries(step.distances).map(([k, d]) => ({
+            key: k, value: d === Infinity ? '∞' : d, status: 'default',
+          })),
+        }));
+      }
+      break;
+    }
+
     case 'examine_edge': {
       v.push(viz('graph', 'highlight_edge', { from: step.from, to: step.to, className: 'examining' }));
       break;
@@ -221,6 +251,11 @@ function mapGraphStep(algo, step, state) {
           })),
         }));
       }
+      break;
+    }
+
+    case 'no_relax': {
+      v.push(viz('graph', 'highlight_edge', { from: step.from, to: step.to, className: 'examining' }));
       break;
     }
 
@@ -250,12 +285,19 @@ function mapGraphStep(algo, step, state) {
     }
 
     case 'result': {
-      if (algo === 'dijkstra' && step.paths) {
+      if ((algo === 'dijkstra' || algo === 'bellman_ford') && step.paths) {
         // Show shortest path tree
         for (const [target, path] of Object.entries(step.paths)) {
           if (path.length > 1) {
             v.push(viz('graph', 'show_path', { path }));
           }
+        }
+        if (algo === 'bellman_ford') {
+          c.push(ctxUpdate('round_info', {
+            entries: [
+              { key: 'Status', value: 'Complete', status: 'updated' },
+            ],
+          }));
         }
       }
       if (algo === 'maxflow') {
@@ -483,6 +525,14 @@ function mapArrayStep(algo, step, state) {
             { key: 'Right', value: step.array.length - 1 },
           ],
         }));
+      } else if (algo === 'gcd') {
+        const cs = step.conceptual_state || {};
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'a', value: cs.a ?? step.array?.[0] ?? '–' },
+            { key: 'b', value: cs.b ?? step.array?.[1] ?? '–' },
+          ],
+        }));
       } else {
         c.push(ctxUpdate('stats', {
           entries: [
@@ -632,6 +682,38 @@ function mapArrayStep(algo, step, state) {
 
     case 'new_min': {
       v.push(viz('array', 'highlight', { indices: [step.index], className: 'comparing' }));
+      break;
+    }
+
+    // ── GCD ────────────────────────────────────────────────────────────────
+    case 'compute_remainder': {
+      if (step.array) {
+        v.push(viz('array', 'set_data', { values: step.array }));
+        v.push(viz('array', 'highlight', { indices: step.highlight || [0, 1], className: 'comparing' }));
+      }
+      const cr = step.conceptual_state || {};
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'a', value: cr.a },
+          { key: 'b', value: cr.b },
+          { key: 'Remainder', value: cr.remainder },
+        ],
+      }));
+      break;
+    }
+
+    case 'shift_values': {
+      if (step.array) {
+        v.push(viz('array', 'set_data', { values: step.array }));
+        v.push(viz('array', 'highlight', { indices: step.highlight || [0, 1], className: 'active' }));
+      }
+      const sv = step.conceptual_state || {};
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'a', value: sv.a },
+          { key: 'b', value: sv.b },
+        ],
+      }));
       break;
     }
 

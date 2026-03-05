@@ -2,6 +2,7 @@ export { dijkstra, bfs, dfs, DEFAULT_GRAPH } from '../../algorithms.js';
 export { kruskal } from './kruskal.js';
 export { prim } from './prim.js';
 export { maxflow, DEFAULT_FLOW_NETWORK } from './maxflow.js';
+export { bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH } from './bellmanFord.js';
 
 export const DEFAULT_UNDIRECTED_GRAPH = {
   nodes: [

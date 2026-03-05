@@ -1,4 +1,4 @@
-import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK } from './graph/index.js';
+import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH } from './graph/index.js';
 import { quicksort, mergesort, insertionSort, selectionSort, bubbleSort } from './sorting/index.js';
 import { binarySearch } from './searching/index.js';
 import { knapsack, lcs, editDistance, coinChange } from './dp/index.js';
@@ -133,6 +133,13 @@ export const ALGORITHMS = {
     category: 'Graph Algorithms',
     defaultInput: { graph: DEFAULT_FLOW_NETWORK, source: 'S', sink: 'T' },
     capabilities: { supports_directed: true, supports_undirected: true, supports_weighted: true, supports_unweighted: false, max_nodes: 12, max_edges: 20 },
+  },
+  bellman_ford: {
+    run: (input) => bellmanFord(input.graph, input.source),
+    renderer: 'graph',
+    category: 'Graph Algorithms',
+    defaultInput: { graph: DEFAULT_BELLMAN_FORD_GRAPH, source: 'A' },
+    capabilities: { supports_directed: true, supports_undirected: true, supports_weighted: true, supports_negative_weights: true, max_nodes: 12, max_edges: 20 },
   },
   bst_insert: {
     run: (input) => bstInsert(input.values),

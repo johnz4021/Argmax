@@ -941,7 +941,19 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+        session.pauseFlag = false;
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+      }
 
       // If rewind mode, also narrate each replayed step
       if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
@@ -949,7 +961,18 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           if (session.pauseFlag) break;
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
-          await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+          if (rewindTts?.aborted || session.pauseFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            session.pauseFlag = false;
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (!session.interruptFlag) {
+              sendJSON(ws, { type: 'resumed' });
+            }
+          }
         }
       }
 

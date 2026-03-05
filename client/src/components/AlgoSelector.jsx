@@ -1,7 +1,14 @@
 const VISIBLE_GROUPS = [
   {
+    category: 'Algorithmic Foundations',
+    algorithms: [
+      { id: 'gcd', name: 'GCD (Euclid)', description: 'Find greatest common divisor using the Euclidean algorithm [1.2]' },
+    ],
+  },
+  {
     category: 'Divide and Conquer',
     algorithms: [
+      { id: 'binary_search', name: 'Binary Search', description: 'Efficiently find a target in a sorted array [2.3]' },
       { id: 'mergesort', name: 'Merge Sort', description: 'Divide and conquer with sorted merging [2.3]' },
     ],
   },
@@ -23,6 +30,7 @@ const VISIBLE_GROUPS = [
   {
     category: 'Dynamic Programming',
     algorithms: [
+      { id: 'bellman_ford', name: 'Bellman-Ford', description: 'Shortest paths with negative-weight edges [4.6]' },
       { id: 'knapsack', name: '0/1 Knapsack', description: 'Maximize value within a weight constraint [6.4]' },
       { id: 'edit_distance', name: 'Edit Distance', description: 'Minimum edits to transform one string to another [6.3]' },
     ],
@@ -31,6 +39,12 @@ const VISIBLE_GROUPS = [
     category: 'Network Flow',
     algorithms: [
       { id: 'maxflow', name: 'Ford-Fulkerson Max Flow', description: 'Find maximum flow and minimum cut in a network [7.2]' },
+    ],
+  },
+  {
+    category: 'Trees',
+    algorithms: [
+      { id: 'bst_insert', name: 'BST Insert', description: 'Insert values into a binary search tree' },
     ],
   },
 ];

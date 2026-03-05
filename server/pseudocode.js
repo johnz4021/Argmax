@@ -73,4 +73,14 @@ export const PSEUDOCODE = {
     '  else:',                             // 6
     '    reject (would form cycle)',       // 7
   ],
+
+  bellman_ford: [
+    'dist[source] ← 0',                   // 0
+    'for all other v: dist[v] ← ∞',       // 1
+    'for i = 1 to |V| - 1:',              // 2
+    '  for each edge (u, v, w):',         // 3
+    '    if dist[u] + w < dist[v]:',      // 4
+    '      dist[v] ← dist[u] + w',       // 5
+    'return dist',                         // 6
+  ],
 };

@@ -11,7 +11,10 @@ import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 
-const anthropic = new Anthropic({ maxRetries: 5 });
+const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
+function getClient(session) {
+  return session?.anthropicClient || defaultAnthropicClient;
+}
 
 const SYSTEM_PROMPT = `You are Argmax, an expert algorithm teacher. You teach algorithms step-by-step using visualizations.
 
@@ -432,7 +435,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
     try {
       const model = session._useOpus ? 'claude-opus-4-20250514' : 'claude-sonnet-4-20250514';
       session._useOpus = false;
-      response = await anthropic.messages.create({
+      response = await getClient(session).messages.create({
         model,
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
@@ -619,7 +622,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
     });
 
     try {
-      const response = await anthropic.messages.create({
+      const response = await getClient(session).messages.create({
         model: 'claude-opus-4-20250514',
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
@@ -658,7 +661,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
           }
         }
         // Next API call
-        qaResponse = await anthropic.messages.create({
+        qaResponse = await getClient(session).messages.create({
           model: 'claude-opus-4-20250514',
           max_tokens: 4096,
           system: SYSTEM_PROMPT,

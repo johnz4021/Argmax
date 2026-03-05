@@ -48,6 +48,10 @@ export function useSpeechToText() {
   }, []);
 
   const clearTranscript = useCallback(() => {
+    // Detach onresult so late-arriving speech events don't repopulate after clear
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = null;
+    }
     setTranscript('');
   }, []);
 

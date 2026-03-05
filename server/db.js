@@ -34,7 +34,7 @@ export function saveMessage(conversationId, role, type, content) {
 /**
  * Upsert agent state (messages array + solver result) for a conversation.
  */
-export function saveAgentState(conversationId, messagesJson, solverResultJson) {
+export function saveAgentState(conversationId, messagesJson, solverResultJson, vizStateJson = null) {
   if (!supabase || !conversationId) return;
   supabase
     .from('agent_states')
@@ -43,6 +43,7 @@ export function saveAgentState(conversationId, messagesJson, solverResultJson) {
         conversation_id: conversationId,
         messages_json: messagesJson,
         solver_result_json: solverResultJson || null,
+        viz_state_json: vizStateJson || null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'conversation_id' }
@@ -103,6 +104,19 @@ export async function loadConversationMessages(conversationId) {
 }
 
 /**
+ * Save feedback to the feedback table (fire-and-forget).
+ */
+export function saveFeedback(category, { name, email, message, rating, meta }) {
+  if (!supabase) return;
+  supabase
+    .from('feedback')
+    .insert({ category, name, email, message, rating, meta })
+    .then(({ error }) => {
+      if (error) console.error('[DB] saveFeedback error:', error.message);
+    });
+}
+
+/**
  * Load the agent state for a conversation (for resume).
  */
 /**
@@ -122,12 +136,69 @@ export async function loadAgentState(conversationId) {
   if (!supabase) return null;
   const { data, error } = await supabase
     .from('agent_states')
-    .select('messages_json, solver_result_json')
+    .select('messages_json, solver_result_json, viz_state_json')
     .eq('conversation_id', conversationId)
     .single();
 
   if (error) {
     console.error('[DB] loadAgentState error:', error.message);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Count total conversations for a user.
+ */
+export async function countConversations(userId) {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from('conversations')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[DB] countConversations error:', error.message);
+    return 0;
+  }
+  return count || 0;
+}
+
+/**
+ * Get user settings (API key, payment interest, etc.).
+ */
+export async function getUserSettings(userId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // not found
+    console.error('[DB] getUserSettings error:', error.message);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Upsert user settings.
+ */
+export async function saveUserSettings(userId, fields) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('user_settings')
+    .upsert(
+      { user_id: userId, ...fields, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] saveUserSettings error:', error.message);
     return null;
   }
   return data;

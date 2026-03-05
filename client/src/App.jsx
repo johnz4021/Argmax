@@ -6,6 +6,7 @@ import Controls from './components/Controls';
 import LandingTabs from './components/LandingTabs';
 import AuthModal from './components/AuthModal';
 import SessionFeedback from './components/SessionFeedback';
+import SessionGate from './components/SessionGate';
 import ContextPanelHost from './components/context/ContextPanelHost';
 import ResizableSplit from './components/ResizableSplit';
 import ExitConfirmModal from './components/ExitConfirmModal';
@@ -28,6 +29,8 @@ export default function App() {
   const [ttsMuted, setTtsMuted] = useState(false);
   const [pendingFeedback, setPendingFeedback] = useState(null);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const [gateStatus, setGateStatus] = useState(null);
+  const [apiKeyResult, setApiKeyResult] = useState(null);
   const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
 
@@ -112,8 +115,28 @@ export default function App() {
       if (msg.type === 'audio_flush') {
         audioPlayer.flush();
       }
+
+      // Session gate messages
+      if (msg.type === 'session_status') {
+        setGateStatus(msg);
+      }
+      if (msg.type === 'session_limit_reached') {
+        setGateStatus({ allowed: false, count: msg.count, limit: msg.limit });
+        reset();
+      }
+      if (msg.type === 'api_key_result') {
+        setApiKeyResult(msg);
+        if (msg.success) {
+          track('byok_key_submitted', { success: true });
+        } else {
+          track('byok_key_submitted', { success: false });
+        }
+      }
+      if (msg.type === 'interest_registered') {
+        track('would_pay_registered', {});
+      }
     },
-    [processMessage, dispatchContext, audioPlayer]
+    [processMessage, dispatchContext, audioPlayer, reset]
   );
 
   const onBinary = useCallback(
@@ -127,6 +150,11 @@ export default function App() {
   // Only connect WebSocket when auth is ready (or if Supabase isn't configured)
   const wsEnabled = !supabase || !!user;
   const { send, connected } = useWebSocket(onMessage, onBinary, wsEnabled);
+
+  // Check session gate status on connect
+  useEffect(() => {
+    if (connected && user) send({ type: 'check_session_status' });
+  }, [connected, user, send]);
 
   const handleSelectAlgorithm = useCallback(
     (algorithm, data) => {
@@ -147,6 +175,17 @@ export default function App() {
       } else {
         send({ type: 'start_lesson', algorithm, source: 'A' });
       }
+    },
+    [send, reset, audioPlayer]
+  );
+
+  const handleResumeConversation = useCallback(
+    (conversationId) => {
+      audioPlayer.init(); // Must be from user gesture to unlock AudioContext
+      reset();
+      sessionStartRef.current = Date.now();
+      track('conversation_resumed', {});
+      send({ type: 'resume_conversation', conversationId });
     },
     [send, reset, audioPlayer]
   );
@@ -189,9 +228,8 @@ export default function App() {
   const handlePause = useCallback(() => {
     track('pause_used', {});
     send({ type: 'pause' });
-    // Don't flush here — the server will send audio_flush once TTS is aborted.
-    // Double-flushing can race and destroy the AudioContext needed for resumed playback.
-  }, [send]);
+    audioPlayer.flush();
+  }, [send, audioPlayer]);
 
   const handleResume = useCallback(() => {
     send({ type: 'resume' });
@@ -330,16 +368,27 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         {showSelector ? (
           <div className="flex-1 relative">
-            <LandingTabs
-              onSelect={handleSelectAlgorithm}
-              disabled={!connected}
-              send={send}
-              conversations={state.conversations}
-              loadedConversation={state.loadedConversation}
-              viewingHistory={state.viewingHistory}
-              onClearHistory={handleClearHistory}
-              processMessage={processMessage}
-            />
+            {gateStatus && !gateStatus.allowed ? (
+              <SessionGate
+                count={gateStatus.count}
+                limit={gateStatus.limit}
+                send={send}
+                apiKeyResult={apiKeyResult}
+                onKeySuccess={() => setGateStatus((prev) => ({ ...prev, allowed: true, hasByok: true }))}
+              />
+            ) : (
+              <LandingTabs
+                onSelect={handleSelectAlgorithm}
+                disabled={!connected}
+                send={send}
+                conversations={state.conversations}
+                loadedConversation={state.loadedConversation}
+                viewingHistory={state.viewingHistory}
+                onClearHistory={handleClearHistory}
+                processMessage={processMessage}
+                onResumeConversation={handleResumeConversation}
+              />
+            )}
             {pendingFeedback && (
               <SessionFeedback
                 mode={pendingFeedback.mode}
@@ -443,6 +492,7 @@ export default function App() {
     <div className="h-px" />
     {showExitConfirm && (
       <ExitConfirmModal
+        mode={state.mode}
         onConfirm={() => {
           setShowExitConfirm(false);
           handleRestart();

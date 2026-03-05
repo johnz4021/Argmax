@@ -23,6 +23,11 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
   useEffect(() => {
     if (transcript) {
       setQuestion(transcript);
+      // Auto-resize textarea to fit STT content
+      if (inputRef.current) {
+        inputRef.current.style.height = 'auto';
+        inputRef.current.style.height = inputRef.current.scrollHeight + 'px';
+      }
     }
   }, [transcript]);
 

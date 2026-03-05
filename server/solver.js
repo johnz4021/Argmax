@@ -3,7 +3,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({ maxRetries: 3 });
+const defaultAnthropicClient = new Anthropic({ maxRetries: 3 });
 
 const SOLVER_SYSTEM_PROMPT = `You are an expert algorithm problem solver. Given a problem, solve it completely and rigorously. The problem may be provided as text, as an image (e.g. a screenshot of a textbook or competition problem), or both. If an image is provided, read and interpret it carefully.
 
@@ -122,7 +122,7 @@ const SOLVER_TIMEOUT_MS = 300_000;
  * Pre-solve multiple sub-problems in a single API call.
  * Returns { success: true, solutions: { [part_label]: solverResult } } or { success: false }.
  */
-export async function solveProblems(subproblems, statusCallback, imageBase64, imageMimeType) {
+export async function solveProblems(subproblems, statusCallback, imageBase64, imageMimeType, anthropicClient) {
   if (statusCallback) statusCallback('Analyzing problems...');
 
   try {
@@ -140,7 +140,7 @@ export async function solveProblems(subproblems, statusCallback, imageBase64, im
     const textPart = `Solve ALL of the following sub-problems completely. They share context (same graph, variables, etc.). Call submit_solutions with one solution per part.\n\n${partsText}`;
     userContent.push({ type: 'text', text: textPart });
 
-    const responsePromise = anthropic.messages.create({
+    const responsePromise = (anthropicClient || defaultAnthropicClient).messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 16000,
       thinking: { type: 'adaptive' },
@@ -182,7 +182,7 @@ export async function solveProblems(subproblems, statusCallback, imageBase64, im
  * Pre-solve a problem using extended thinking.
  * Returns { success: true, ...solutionFields } or { success: false }.
  */
-export async function solveProblem(problemText, statusCallback, imageBase64, imageMimeType) {
+export async function solveProblem(problemText, statusCallback, imageBase64, imageMimeType, anthropicClient) {
   if (statusCallback) statusCallback('Analyzing problem...');
 
   try {
@@ -199,7 +199,7 @@ export async function solveProblem(problemText, statusCallback, imageBase64, ima
       : 'Solve the problem shown in the attached image completely.';
     userContent.push({ type: 'text', text: textPart });
 
-    const responsePromise = anthropic.messages.create({
+    const responsePromise = (anthropicClient || defaultAnthropicClient).messages.create({
       model: 'claude-opus-4-6',
       max_tokens: 16000,
       thinking: { type: 'adaptive' },

@@ -3,6 +3,9 @@ import AlgoSelector from './AlgoSelector';
 import ProblemSolver from './ProblemSolver';
 import ConversationHistory from './ConversationHistory';
 import ConversationTranscript from './ConversationTranscript';
+import { posthog, POSTHOG_KEY } from '../lib/posthog';
+
+const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage }) {
   const [activeTab, setActiveTab] = useState('tutorials');
@@ -12,6 +15,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
   };
 
   const handleResume = (conversationId) => {
+    track('conversation_resumed', {});
     send({ type: 'resume_conversation', conversationId });
   };
 
@@ -28,6 +32,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
           <button
             key={tab.id}
             onClick={() => {
+              track('tab_switched', { tab: tab.id });
               setActiveTab(tab.id);
               if (tab.id !== 'history' && viewingHistory) {
                 onClearHistory?.();

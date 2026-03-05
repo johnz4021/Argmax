@@ -22,7 +22,7 @@ export function gcd(a, b) {
     const remainder = a % b;
 
     trace.push({
-      type: 'compare',
+      type: 'compute_remainder',
       array: [a, b],
       highlight: [0, 1],
       description: `${a} mod ${b} = ${remainder}`,
@@ -35,7 +35,7 @@ export function gcd(a, b) {
     });
 
     trace.push({
-      type: 'swap',
+      type: 'shift_values',
       array: [b, remainder],
       highlight: [0, 1],
       description: `Replace: a = ${b}, b = ${remainder}`,

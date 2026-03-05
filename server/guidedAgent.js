@@ -552,18 +552,6 @@ const guidedTools = [
     },
   },
   {
-    name: 'conversational_reply',
-    description: 'Send a short Socratic counter-question or conversational nudge (1-2 sentences). Use instead of emit_segment when responding to student why/how questions.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        text: { type: 'string', description: 'The reply or counter-question (1-2 sentences max)' },
-        wait_for_response: { type: 'boolean', description: 'Wait for student reply before continuing. Default true.' },
-      },
-      required: ['text'],
-    },
-  },
-  {
     name: 'get_renderer_docs',
     description: 'Get full documentation (params, classNames, examples) for one or more visualization renderers. Call this before constructing viz_actions for a renderer you haven\'t used yet.',
     input_schema: {
@@ -1122,9 +1110,11 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           if (ttsResult?.aborted || session.pauseFlag) {
             sendJSON(ws, { type: 'audio_flush' });
             session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
             sendJSON(ws, { type: 'paused' });
             await new Promise((resolve) => { session.pauseResolver = resolve; });
             session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
             if (!session.interruptFlag) {
               sendJSON(ws, { type: 'resumed' });
             }
@@ -1135,7 +1125,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
             session.guidedResponseResolver = null;
 
-            if (raceResult === '__timeout__') {
+            if (raceResult === '__end_session__' || session.endSessionFlag) {
+              throw new Error('__end_session__');
+            } else if (raceResult === '__timeout__') {
               result = {
                 student_response: null,
                 timed_out: true,
@@ -1183,9 +1175,11 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           if (ttsResult?.aborted || session.pauseFlag) {
             sendJSON(ws, { type: 'audio_flush' });
             session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
             sendJSON(ws, { type: 'paused' });
             await new Promise((resolve) => { session.pauseResolver = resolve; });
             session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
             if (!session.interruptFlag) {
               sendJSON(ws, { type: 'resumed' });
             }
@@ -1199,7 +1193,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
           session.guidedResponseResolver = null;
 
-          if (raceResult === '__timeout__') {
+          if (raceResult === '__end_session__' || session.endSessionFlag) {
+            throw new Error('__end_session__');
+          } else if (raceResult === '__timeout__') {
             sendJSON(ws, { type: 'clear_guided_options' });
             result = {
               student_response: null,
@@ -1445,6 +1441,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       }
       session.followUpResolver = null;
 
+      if (followUpMsg === '__end_session__' || session.endSessionFlag) {
+        throw new Error('__end_session__');
+      }
       if (followUpMsg === '__timeout__' || ws.readyState !== 1) {
         continueLoop = false;
         break;

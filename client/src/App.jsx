@@ -5,7 +5,10 @@ import Transcript from './components/Transcript';
 import Controls from './components/Controls';
 import LandingTabs from './components/LandingTabs';
 import AuthModal from './components/AuthModal';
+import SessionFeedback from './components/SessionFeedback';
 import ContextPanelHost from './components/context/ContextPanelHost';
+import ResizableSplit from './components/ResizableSplit';
+import ExitConfirmModal from './components/ExitConfirmModal';
 import Logo from './components/Logo';
 import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
@@ -14,12 +17,18 @@ import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
 import { applyActions } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
+import { posthog, POSTHOG_KEY } from './lib/posthog';
+
+const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function App() {
   const { session, user, loading: authLoading, signOut } = useAuth();
   const { state, processMessage, interrupt, reset, dispatchContext } = useTutorState();
   const audioPlayer = useAudioPlayer();
   const [ttsMuted, setTtsMuted] = useState(false);
+  const [pendingFeedback, setPendingFeedback] = useState(null);
+  const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
 
   const contextPanelsRef = useRef(state.contextPanels);
@@ -29,6 +38,19 @@ export default function App() {
     initContextManager(dispatchContext);
     return () => destroyContextManager();
   }, [dispatchContext]);
+
+  // Track session completion
+  useEffect(() => {
+    if (state.status === 'complete') {
+      const duration = sessionStartRef.current
+        ? Math.round((Date.now() - sessionStartRef.current) / 1000)
+        : undefined;
+      track('session_completed', {
+        mode: state.mode, algorithm: state.algorithm,
+        segment_count: state.segmentCount, duration_seconds: duration,
+      });
+    }
+  }, [state.status, state.mode, state.algorithm, state.segmentCount]);
 
   const onMessage = useCallback(
     (msg) => {
@@ -110,6 +132,11 @@ export default function App() {
     (algorithm, data) => {
       audioPlayer.init(); // Must be from user gesture
       reset();
+      sessionStartRef.current = Date.now();
+      track('session_started', {
+        mode: algorithm === 'guided' ? 'guided' : 'tutorial',
+        algorithm,
+      });
       if (algorithm === 'guided') {
         const msg = { type: 'start_guided', problemText: data.problemText };
         if (data.imageBase64) {
@@ -126,6 +153,7 @@ export default function App() {
 
   const handleGuidedResponse = useCallback(
     (response) => {
+      track('question_answered', { answer_mode: state.guidedOptions?.mode });
       if (state.guidedOptions?.prompt) {
         processMessage({ type: 'add_guided_question', text: state.guidedOptions.prompt });
       }
@@ -159,6 +187,7 @@ export default function App() {
   );
 
   const handlePause = useCallback(() => {
+    track('pause_used', {});
     send({ type: 'pause' });
     // Don't flush here — the server will send audio_flush once TTS is aborted.
     // Double-flushing can race and destroy the AudioContext needed for resumed playback.
@@ -171,6 +200,7 @@ export default function App() {
 
   const handleInterrupt = useCallback(
     (question) => {
+      track('interrupt_asked', { question_length: question.length });
       interrupt(question);
       processMessage({ type: 'clear_guided_options' });
       send({ type: 'interrupt', question });
@@ -180,12 +210,28 @@ export default function App() {
   );
 
   const handleRestart = useCallback(() => {
+    if (state.status !== 'idle') {
+      if (state.status !== 'complete') {
+        const duration = sessionStartRef.current
+          ? Math.round((Date.now() - sessionStartRef.current) / 1000)
+          : undefined;
+        track('session_abandoned', {
+          mode: state.mode, algorithm: state.algorithm,
+          segment_count: state.segmentCount, duration_seconds: duration,
+        });
+      }
+      send({ type: 'end_session' });
+      setPendingFeedback({ mode: state.mode, algorithm: state.algorithm });
+    }
+    sessionStartRef.current = null;
+    audioPlayer.flush();
     audioPlayer.stop();
     reset();
-  }, [reset, audioPlayer]);
+  }, [reset, send, audioPlayer, state.status, state.mode, state.algorithm, state.segmentCount]);
 
   const handleSpeedChange = useCallback(
     (multiplier) => {
+      track('speed_changed', { multiplier });
       send({ type: 'set_speed', multiplier });
     },
     [send]
@@ -194,6 +240,7 @@ export default function App() {
   const handleTtsMuteToggle = useCallback(() => {
     setTtsMuted((prev) => {
       const next = !prev;
+      track('tts_toggled', { muted: next });
       send({ type: 'set_tts_muted', muted: next });
       if (next) audioPlayer.flush(); // Immediately stop any playing audio
       return next;
@@ -248,6 +295,18 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          {!showSelector && (
+            <button
+              onClick={() => setShowExitConfirm(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary hover:text-text-primary bg-surface-2 hover:bg-surface-3 border border-border rounded-lg transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M17 4.25A2.25 2.25 0 0014.75 2h-5.5A2.25 2.25 0 007 4.25v2a.75.75 0 001.5 0v-2a.75.75 0 01.75-.75h5.5a.75.75 0 01.75.75v11.5a.75.75 0 01-.75.75h-5.5a.75.75 0 01-.75-.75v-2a.75.75 0 00-1.5 0v2A2.25 2.25 0 009.25 18h5.5A2.25 2.25 0 0017 15.75V4.25z" clipRule="evenodd" />
+                <path fillRule="evenodd" d="M14 10a.75.75 0 00-.75-.75H3.704l1.048-.943a.75.75 0 10-1.004-1.114l-2.5 2.25a.75.75 0 000 1.114l2.5 2.25a.75.75 0 101.004-1.114l-1.048-.943h9.546A.75.75 0 0014 10z" clipRule="evenodd" />
+              </svg>
+              Exit
+            </button>
+          )}
           {user && (
             <>
               <span className="text-xs text-text-tertiary">{user.email}</span>
@@ -270,7 +329,7 @@ export default function App() {
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {showSelector ? (
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <LandingTabs
               onSelect={handleSelectAlgorithm}
               disabled={!connected}
@@ -281,14 +340,23 @@ export default function App() {
               onClearHistory={handleClearHistory}
               processMessage={processMessage}
             />
+            {pendingFeedback && (
+              <SessionFeedback
+                mode={pendingFeedback.mode}
+                algorithm={pendingFeedback.algorithm}
+                onDismiss={() => setPendingFeedback(null)}
+              />
+            )}
           </div>
         ) : contextOnly ? (
           <div className="flex-1 flex flex-col items-center overflow-hidden">
             <div className="w-full max-w-2xl flex flex-col flex-1 overflow-hidden">
-              <ContextPanelHost panels={state.contextPanels} expanded />
-              <div className="flex-1 overflow-hidden">
-                <Transcript segments={state.segments} agentStatus={state.agentStatus} centered />
-              </div>
+              <ResizableSplit
+                initialRatio={0.35}
+                className="flex-1"
+                top={<ContextPanelHost panels={state.contextPanels} expanded className="h-full overflow-auto" />}
+                bottom={<Transcript segments={state.segments} agentStatus={state.agentStatus} centered />}
+              />
               <Controls
                 status={state.status}
                 agentStatus={state.agentStatus}
@@ -337,10 +405,18 @@ export default function App() {
 
             {/* Transcript panel */}
             <div className="w-1/3 flex flex-col overflow-hidden bg-surface-1">
-              <ContextPanelHost panels={state.contextPanels} />
-              <div className="flex-1 overflow-hidden">
-                <Transcript segments={state.segments} agentStatus={state.agentStatus} />
-              </div>
+              {state.contextPanels.length > 0 ? (
+                <ResizableSplit
+                  initialRatio={0.35}
+                  className="flex-1"
+                  top={<ContextPanelHost panels={state.contextPanels} className="h-full overflow-auto" />}
+                  bottom={<Transcript segments={state.segments} agentStatus={state.agentStatus} />}
+                />
+              ) : (
+                <div className="flex-1 overflow-hidden">
+                  <Transcript segments={state.segments} agentStatus={state.agentStatus} />
+                </div>
+              )}
               <Controls
                 status={state.status}
                 agentStatus={state.agentStatus}
@@ -365,6 +441,15 @@ export default function App() {
       </div>
     </div>
     <div className="h-px" />
+    {showExitConfirm && (
+      <ExitConfirmModal
+        onConfirm={() => {
+          setShowExitConfirm(false);
+          handleRestart();
+        }}
+        onCancel={() => setShowExitConfirm(false)}
+      />
+    )}
     </>
   );
 }

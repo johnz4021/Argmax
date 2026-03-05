@@ -30,7 +30,7 @@ export default function ConversationTranscript({ messages, onBack }) {
                 {isStudent ? 'You' : 'Argmax'}
               </span>
               <span className={style}>
-                <MathText text={msg.content} />
+                <MathText>{msg.content}</MathText>
               </span>
             </div>
           );

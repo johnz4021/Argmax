@@ -1,4 +1,7 @@
 import { useState, useRef } from 'react';
+import { posthog, POSTHOG_KEY } from '../lib/posthog';
+
+const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function ProblemSolver({ onSelect, disabled }) {
   const [problemText, setProblemText] = useState('');
@@ -11,6 +14,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      track('image_uploaded', {});
       setImageFile(file);
       setImagePreview(reader.result);
     };

@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import GuidedOptions from './GuidedOptions';
 import MathText from './MathText';
+import { posthog, POSTHOG_KEY } from '../lib/posthog';
+
+const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
   const [question, setQuestion] = useState('');
@@ -36,6 +39,9 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
     if (guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
       // Open-ended guided question (works in both guided and lesson mode)
       onGuidedResponse({ text: question.trim() });
+    } else if (guidedPrompt && onGuidedMessage) {
+      // conversational_reply is waiting for a response — route as guided message
+      onGuidedMessage(question.trim());
     } else if (isGuided && onGuidedMessage) {
       onGuidedMessage(question.trim());
     } else {
@@ -84,6 +90,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
     if (isListening) {
       stop();
     } else {
+      track('mic_used', {});
       start();
     }
   };

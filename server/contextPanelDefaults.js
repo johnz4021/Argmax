@@ -109,6 +109,14 @@ const PANEL_DEFAULTS = {
   gcd: [
     { id: 'stats', type: 'key_value', title: 'GCD Progress' },
   ],
+
+  // --- Graph (continued) ---
+  bellman_ford: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.bellman_ford } },
+    { id: 'distances', type: 'key_value', title: 'Distances' },
+    { id: 'round_info', type: 'key_value', title: 'Round' },
+  ],
 };
 
 /**

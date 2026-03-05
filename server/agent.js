@@ -87,6 +87,28 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
       - Never go more than 3 segments without learner interaction
       - After interaction, give brief (1-sentence) feedback and move on
 
+   MONOLOGUE CAP:
+   - HARD RULE: Never emit more than 3 consecutive emit_segments without learner input.
+   - After 3 consecutive emit_segments, you MUST use one of:
+     (a) conversational_reply to ask the learner to predict, explain, or apply a concept
+     (b) send_options for a quick multiple-choice check
+   - The count resets whenever the learner provides input.
+
+   CONVERSATIONAL CHECKPOINTS:
+   Use conversational_reply (not just send_options) for natural back-and-forth:
+   - After introducing a concept: "In your own words, what does relaxation mean here?"
+   - Before a key step: "What do you think the algorithm does next?"
+   - After a surprising result: "Why do you think this path is shorter?"
+   Keep questions short (1 sentence). Wait for the response. Give brief feedback.
+
+   TEACH-BACK CHECKPOINTS:
+   - After explaining a key concept (the core recurrence, invariant, or decision logic),
+     use conversational_reply to ask the learner to APPLY it — not just confirm understanding.
+   - Good: "Given what we just saw, what value goes in dp[2][5]?"
+   - Good: "Which node would Dijkstra visit next, and why?"
+   - Bad: "Does that make sense?" (too passive)
+   - After the learner responds, give brief feedback (1 sentence) and continue.
+
 8. END WITH THE "SO WHAT"
    Don't just state the result — connect it back to the motivation:
    - "So out of 16 possible combinations, DP found the optimal one by checking just 32 cells. That's the power of breaking a problem into overlapping subproblems."
@@ -657,6 +679,9 @@ export async function startAgentSession(session, algorithm, graph, source) {
 }
 
 export async function handleToolCall(session, toolCall, graph, algorithm, source) {
+  if (session.endSessionFlag) {
+    throw new Error('__end_session__');
+  }
   const { ws } = session;
   const { name, input } = toolCall;
 
@@ -904,9 +929,11 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         sendJSON(ws, { type: 'audio_flush' });
         sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
         session.pauseFlag = false;
+        if (session.endSessionFlag) throw new Error('__end_session__');
         sendJSON(ws, { type: 'paused' });
         await new Promise((resolve) => { session.pauseResolver = resolve; });
         session.pauseResolver = null;
+        if (session.endSessionFlag) throw new Error('__end_session__');
         if (!session.interruptFlag) {
           sendJSON(ws, { type: 'resumed' });
         }
@@ -941,7 +968,21 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+        session.pauseFlag = false;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+      }
 
       // If rewind mode, also narrate each replayed step
       if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
@@ -949,7 +990,20 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           if (session.pauseFlag) break;
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
-          await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+          if (rewindTts?.aborted || session.pauseFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            if (!session.interruptFlag) {
+              sendJSON(ws, { type: 'resumed' });
+            }
+          }
         }
       }
 
@@ -989,9 +1043,11 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       if (ttsResult?.aborted || session.pauseFlag) {
         sendJSON(ws, { type: 'audio_flush' });
         session.pauseFlag = false;
+        if (session.endSessionFlag) throw new Error('__end_session__');
         sendJSON(ws, { type: 'paused' });
         await new Promise((resolve) => { session.pauseResolver = resolve; });
         session.pauseResolver = null;
+        if (session.endSessionFlag) throw new Error('__end_session__');
         if (!session.interruptFlag) {
           sendJSON(ws, { type: 'resumed' });
         }
@@ -1002,7 +1058,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       session.guidedResponseResolver = null;
 
-      if (raceResult === '__timeout__') {
+      if (raceResult === '__end_session__' || session.endSessionFlag) {
+        throw new Error('__end_session__');
+      } else if (raceResult === '__timeout__') {
         sendJSON(ws, { type: 'clear_guided_options' });
         return {
           student_response: null,
@@ -1027,6 +1085,62 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           freeform_text: studentResponse?.text || null,
         };
       }
+    }
+
+    case 'conversational_reply': {
+      const { text, wait_for_response } = input;
+
+      sendJSON(ws, { type: 'interrupt_response', answer: text, explanation_mode: 'none' });
+
+      // Set up resolver BEFORE TTS so early responses are captured
+      let responsePromise, timeoutPromise;
+      if (wait_for_response !== false) {
+        sendJSON(ws, { type: 'guided_prompt', prompt: text });
+        responsePromise = new Promise((resolve) => {
+          if (session.guidedResponse) { resolve(); return; }
+          session.guidedResponseResolver = resolve;
+        });
+        timeoutPromise = new Promise((resolve) => {
+          setTimeout(() => resolve('__timeout__'), 600000);
+        });
+      }
+
+      // TTS for the reply (abortable on pause) — learner can respond during this
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+
+      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+        session.pauseFlag = false;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+      }
+
+      if (wait_for_response !== false) {
+        const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+        session.guidedResponseResolver = null;
+
+        if (raceResult === '__end_session__' || session.endSessionFlag) {
+          throw new Error('__end_session__');
+        } else if (raceResult === '__timeout__') {
+          return { student_response: null, timed_out: true, message: 'Learner did not respond. Move on.' };
+        } else if (raceResult === '__interrupted__') {
+          return { student_response: null, interrupted: true, message: 'Learner interrupted with a question.' };
+        } else {
+          const studentResponse = session.guidedResponse;
+          session.guidedResponse = null;
+          return { student_response: studentResponse, timed_out: false, freeform_text: studentResponse?.text || null };
+        }
+      }
+      return { success: true, message: 'Reply sent.' };
     }
 
     default:

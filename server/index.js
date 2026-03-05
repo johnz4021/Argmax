@@ -8,8 +8,10 @@ import { fileURLToPath } from 'url';
 import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
 import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
+import Anthropic from '@anthropic-ai/sdk';
 import { verifyJWT } from './supabase.js';
-import { createConversation, listConversations, loadConversationMessages, loadAgentState } from './db.js';
+import { createConversation, listConversations, loadConversationMessages, loadAgentState, countConversations, getUserSettings, saveUserSettings } from './db.js';
+import { encrypt, decrypt } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +28,18 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
+const FREE_SESSION_LIMIT = 15;
+
 const sessions = new Map();
+
+async function checkSessionGate(session) {
+  if (!session.userId) return { allowed: true };
+  const count = await countConversations(session.userId);
+  if (count < FREE_SESSION_LIMIT) return { allowed: true, remaining: FREE_SESSION_LIMIT - count };
+  const settings = await getUserSettings(session.userId);
+  if (settings?.anthropic_api_key_encrypted) return { allowed: true, byok: true };
+  return { allowed: false, count };
+}
 
 function generateId() {
   return Math.random().toString(36).slice(2, 10);
@@ -109,6 +122,18 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({ type: 'error', message: 'Lesson already in progress' }));
             return;
           }
+          {
+            const gate = await checkSessionGate(session);
+            if (!gate.allowed) {
+              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
+              return;
+            }
+            if (gate.byok) {
+              const settings = await getUserSettings(session.userId);
+              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
+              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
+            }
+          }
           session.active = true;
           const algorithm = msg.algorithm || 'dijkstra';
           const graph = msg.graph || DEFAULT_GRAPH;
@@ -133,6 +158,18 @@ wss.on('connection', (ws, req) => {
           if (session.active) {
             ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
             return;
+          }
+          {
+            const gate = await checkSessionGate(session);
+            if (!gate.allowed) {
+              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
+              return;
+            }
+            if (gate.byok) {
+              const settings = await getUserSettings(session.userId);
+              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
+              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
+            }
           }
           session.active = true;
           session.mode = 'guided';
@@ -283,6 +320,18 @@ wss.on('connection', (ws, req) => {
             ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
             return;
           }
+          {
+            const gate = await checkSessionGate(session);
+            if (!gate.allowed) {
+              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
+              return;
+            }
+            if (gate.byok) {
+              const settings = await getUserSettings(session.userId);
+              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
+              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
+            }
+          }
 
           const agentState = await loadAgentState(msg.conversationId);
           if (!agentState) {
@@ -314,6 +363,67 @@ wss.on('connection', (ws, req) => {
           session.followUpResolver = null;
           session.followUpSent = false;
           session.conversationId = null;
+          break;
+        }
+
+        case 'save_api_key': {
+          if (!session.userId) {
+            ws.send(JSON.stringify({ type: 'api_key_result', success: false, error: 'Not authenticated' }));
+            return;
+          }
+          const key = msg.apiKey?.trim();
+          if (!key || !key.startsWith('sk-ant-')) {
+            ws.send(JSON.stringify({ type: 'api_key_result', success: false, error: 'Invalid API key format. Key should start with sk-ant-' }));
+            return;
+          }
+          // Test the key with a cheap API call
+          try {
+            const testClient = new Anthropic({ apiKey: key });
+            await testClient.messages.create({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 1,
+              messages: [{ role: 'user', content: 'hi' }],
+            });
+          } catch (err) {
+            console.error('[WS] API key validation failed:', err.message);
+            ws.send(JSON.stringify({ type: 'api_key_result', success: false, error: 'API key validation failed. Please check your key.' }));
+            return;
+          }
+          // Encrypt and store
+          const encrypted = encrypt(key);
+          await saveUserSettings(session.userId, { anthropic_api_key_encrypted: encrypted });
+          ws.send(JSON.stringify({ type: 'api_key_result', success: true }));
+          break;
+        }
+
+        case 'register_interest': {
+          if (!session.userId) return;
+          await saveUserSettings(session.userId, {
+            would_pay: true,
+            would_pay_amount: msg.amount || null,
+            other_classes: msg.otherClasses || null,
+            comments: msg.comments || null,
+          });
+          ws.send(JSON.stringify({ type: 'interest_registered' }));
+          break;
+        }
+
+        case 'check_session_status': {
+          if (!session.userId) {
+            ws.send(JSON.stringify({ type: 'session_status', allowed: true }));
+            return;
+          }
+          const count = await countConversations(session.userId);
+          const settings = await getUserSettings(session.userId);
+          const hasByok = !!settings?.anthropic_api_key_encrypted;
+          const allowed = count < FREE_SESSION_LIMIT || hasByok;
+          ws.send(JSON.stringify({
+            type: 'session_status',
+            allowed,
+            count,
+            limit: FREE_SESSION_LIMIT,
+            hasByok,
+          }));
           break;
         }
       }

@@ -13,7 +13,10 @@ import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
-const anthropic = new Anthropic({ maxRetries: 5 });
+const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
+function getClient(session) {
+  return session?.anthropicClient || defaultAnthropicClient;
+}
 
 // Build algorithm list dynamically from registry
 function buildAlgorithmList() {
@@ -805,7 +808,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
     let response;
     try {
-      response = await anthropic.messages.create({
+      response = await getClient(session).messages.create({
         model: 'claude-opus-4-6',
         max_tokens: 4096,
         system: systemPrompt,
@@ -1275,7 +1278,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               block.input.subproblem_text,
               statusCb,
               session.imageBase64,
-              session.imageMimeType
+              session.imageMimeType,
+              session.anthropicClient
             );
             if (sr.success) {
               solverResult = sr;
@@ -1309,7 +1313,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               subproblems,
               statusCb,
               session.imageBase64,
-              session.imageMimeType
+              session.imageMimeType,
+              session.anthropicClient
             );
             if (batchResult.success) {
               solverResultsMap = batchResult.solutions;

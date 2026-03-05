@@ -120,3 +120,60 @@ export async function loadAgentState(conversationId) {
   }
   return data;
 }
+
+/**
+ * Count total conversations for a user.
+ */
+export async function countConversations(userId) {
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from('conversations')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[DB] countConversations error:', error.message);
+    return 0;
+  }
+  return count || 0;
+}
+
+/**
+ * Get user settings (API key, payment interest, etc.).
+ */
+export async function getUserSettings(userId) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('user_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // not found
+    console.error('[DB] getUserSettings error:', error.message);
+    return null;
+  }
+  return data;
+}
+
+/**
+ * Upsert user settings.
+ */
+export async function saveUserSettings(userId, fields) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('user_settings')
+    .upsert(
+      { user_id: userId, ...fields, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id' }
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.error('[DB] saveUserSettings error:', error.message);
+    return null;
+  }
+  return data;
+}

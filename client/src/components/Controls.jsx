@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import GuidedOptions from './GuidedOptions';
 import MathText from './MathText';
+import { posthog, POSTHOG_KEY } from '../lib/posthog';
+
+const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
   const [question, setQuestion] = useState('');
@@ -84,6 +87,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
     if (isListening) {
       stop();
     } else {
+      track('mic_used', {});
       start();
     }
   };

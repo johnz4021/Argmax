@@ -220,12 +220,14 @@ export default function App() {
           segment_count: state.segmentCount, duration_seconds: duration,
         });
       }
+      send({ type: 'end_session' });
       setPendingFeedback({ mode: state.mode, algorithm: state.algorithm });
     }
     sessionStartRef.current = null;
+    audioPlayer.flush();
     audioPlayer.stop();
     reset();
-  }, [reset, audioPlayer, state.status, state.mode, state.algorithm, state.segmentCount]);
+  }, [reset, send, audioPlayer, state.status, state.mode, state.algorithm, state.segmentCount]);
 
   const handleSpeedChange = useCallback(
     (multiplier) => {

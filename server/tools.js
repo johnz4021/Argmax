@@ -434,4 +434,16 @@ export const tools = [
       required: ['prompt'],
     },
   },
+  {
+    name: 'conversational_reply',
+    description: 'Send a short question or conversational nudge (1-2 sentences) and optionally wait for the learner\'s response. Use this for comprehension checks, predict-before-reveal moments, and Socratic follow-ups.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'The reply or question (1-2 sentences max)' },
+        wait_for_response: { type: 'boolean', description: 'Wait for learner reply before continuing. Default true.' },
+      },
+      required: ['text'],
+    },
+  },
 ];

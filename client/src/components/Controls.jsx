@@ -39,6 +39,9 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
     if (guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
       // Open-ended guided question (works in both guided and lesson mode)
       onGuidedResponse({ text: question.trim() });
+    } else if (guidedPrompt && onGuidedMessage) {
+      // conversational_reply is waiting for a response — route as guided message
+      onGuidedMessage(question.trim());
     } else if (isGuided && onGuidedMessage) {
       onGuidedMessage(question.trim());
     } else {

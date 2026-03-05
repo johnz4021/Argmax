@@ -83,6 +83,7 @@ wss.on('connection', (ws, req) => {
     interruptFlag: null,
     pauseFlag: false,
     pauseResolver: null,
+    endSessionFlag: false,
     active: false,
     mode: 'direct',
     speedMultiplier: 1,
@@ -116,10 +117,15 @@ wss.on('connection', (ws, req) => {
           try {
             await startAgentSession(session, algorithm, graph, source);
           } catch (err) {
-            console.error('[Agent] Error:', err);
-            ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
+            if (err.message === '__end_session__') {
+              console.log('[Agent] Session ended by user');
+            } else {
+              console.error('[Agent] Error:', err);
+              ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
+            }
           }
           session.active = false;
+          session.endSessionFlag = false;
           break;
         }
 
@@ -143,10 +149,15 @@ wss.on('connection', (ws, req) => {
           try {
             await startGuidedSession(session, msg.problemText, msg.imageBase64, msg.imageMimeType);
           } catch (err) {
-            console.error('[GuidedAgent] Error:', err);
-            ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
+            if (err.message === '__end_session__') {
+              console.log('[GuidedAgent] Session ended by user');
+            } else {
+              console.error('[GuidedAgent] Error:', err);
+              ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
+            }
           }
           session.active = false;
+          session.endSessionFlag = false;
           session.mode = 'direct';
           session.followUpResolver = null;
           session.followUpSent = false;
@@ -197,6 +208,29 @@ wss.on('connection', (ws, req) => {
           if (session.guidedResponseResolver) {
             session.guidedResponseResolver('__interrupted__');
             session.guidedResponseResolver = null;
+          }
+          break;
+        }
+
+        case 'end_session': {
+          if (!session.active) return;
+          console.log(`[WS] End session requested`);
+          session.endSessionFlag = true;
+          session.pauseFlag = true; // unblock TTS waits
+          // Unblock any pause wait
+          if (session.pauseResolver) {
+            session.pauseResolver();
+            session.pauseResolver = null;
+          }
+          // Unblock guided response wait
+          if (session.guidedResponseResolver) {
+            session.guidedResponseResolver('__end_session__');
+            session.guidedResponseResolver = null;
+          }
+          // Unblock follow-up wait
+          if (session.followUpResolver) {
+            session.followUpResolver('__end_session__');
+            session.followUpResolver = null;
           }
           break;
         }
@@ -267,10 +301,15 @@ wss.on('connection', (ws, req) => {
           try {
             await resumeGuidedSession(session, agentState.messages_json, agentState.solver_result_json);
           } catch (err) {
-            console.error('[GuidedAgent] Resume error:', err);
-            ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
+            if (err.message === '__end_session__') {
+              console.log('[GuidedAgent] Resumed session ended by user');
+            } else {
+              console.error('[GuidedAgent] Resume error:', err);
+              ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
+            }
           }
           session.active = false;
+          session.endSessionFlag = false;
           session.mode = 'direct';
           session.followUpResolver = null;
           session.followUpSent = false;

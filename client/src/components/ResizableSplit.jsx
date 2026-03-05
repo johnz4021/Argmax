@@ -3,6 +3,7 @@ import { useState, useRef, useCallback } from 'react';
 /**
  * Vertical resizable split: renders two children stacked with a draggable divider.
  * `initialRatio` is the fraction (0–1) of space given to the top child.
+ * Designed to live inside a flex column — uses flex-1 + min-h-0 so siblings (e.g. Controls) stay visible.
  */
 export default function ResizableSplit({ top, bottom, initialRatio = 0.35, minRatio = 0.1, maxRatio = 0.8, className = '' }) {
   const [ratio, setRatio] = useState(initialRatio);
@@ -35,12 +36,9 @@ export default function ResizableSplit({ top, bottom, initialRatio = 0.35, minRa
     window.addEventListener('pointerup', onPointerUp);
   }, [minRatio, maxRatio]);
 
-  const topPercent = `${ratio * 100}%`;
-  const bottomPercent = `${(1 - ratio) * 100}%`;
-
   return (
-    <div ref={containerRef} className={`flex flex-col ${className}`} style={{ height: '100%' }}>
-      <div className="overflow-auto" style={{ height: topPercent, flexShrink: 0 }}>
+    <div ref={containerRef} className={`flex flex-col min-h-0 ${className}`}>
+      <div className="overflow-auto flex-shrink-0" style={{ maxHeight: `${ratio * 100}%` }}>
         {top}
       </div>
       {/* Drag handle */}
@@ -50,7 +48,7 @@ export default function ResizableSplit({ top, bottom, initialRatio = 0.35, minRa
       >
         <div className="w-8 h-0.5 rounded-full bg-border group-hover:bg-accent transition-colors" />
       </div>
-      <div className="overflow-hidden" style={{ height: bottomPercent, flexShrink: 1 }}>
+      <div className="overflow-hidden min-h-0" style={{ flex: 1 }}>
         {bottom}
       </div>
     </div>

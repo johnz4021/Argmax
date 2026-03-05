@@ -1,58 +1,39 @@
-const ALGORITHM_GROUPS = [
+const VISIBLE_GROUPS = [
   {
-    category: 'Graph Algorithms',
+    category: 'Divide and Conquer',
     algorithms: [
-      { id: 'dijkstra', name: "Dijkstra's Shortest Path", description: 'Find shortest paths from a source node' },
-      { id: 'bfs', name: 'Breadth-First Search', description: 'Explore nodes level by level' },
-      { id: 'dfs', name: 'Depth-First Search', description: 'Explore as deep as possible first' },
-      { id: 'kruskal', name: "Kruskal's MST", description: 'Build minimum spanning tree by sorted edges' },
-      { id: 'prim', name: "Prim's MST", description: 'Grow minimum spanning tree from a source' },
-      { id: 'maxflow', name: 'Ford-Fulkerson Max Flow', description: 'Find maximum flow and minimum cut in a network' },
+      { id: 'mergesort', name: 'Merge Sort', description: 'Divide and conquer with sorted merging [2.3]' },
     ],
   },
   {
-    category: 'Sorting',
+    category: 'Graphs',
     algorithms: [
-      { id: 'quicksort', name: 'Quicksort', description: 'Divide and conquer with pivot partitioning' },
-      { id: 'mergesort', name: 'Merge Sort', description: 'Divide and conquer with sorted merging' },
-      { id: 'insertion_sort', name: 'Insertion Sort', description: 'Build sorted array one element at a time' },
-      { id: 'selection_sort', name: 'Selection Sort', description: 'Find minimum, place it, repeat' },
-      { id: 'bubble_sort', name: 'Bubble Sort', description: 'Repeatedly swap adjacent out-of-order elements' },
+      { id: 'dfs', name: 'Depth-First Search', description: 'Explore as deep as possible first [3.2, 4.1]' },
+      { id: 'bfs', name: 'Breadth-First Search', description: 'Explore nodes level by level [4.2]' },
+      { id: 'dijkstra', name: "Dijkstra's Algorithm", description: 'Find shortest paths from a source node [4.4, 4.5]' },
     ],
   },
   {
-    category: 'Searching',
+    category: 'Greedy Algorithms',
     algorithms: [
-      { id: 'binary_search', name: 'Binary Search', description: 'Efficiently find a target in a sorted array' },
+      { id: 'kruskal', name: "Kruskal's Algorithm", description: 'Build minimum spanning tree by sorted edges [5.1.3]' },
+      { id: 'prim', name: "Prim's Algorithm", description: 'Grow minimum spanning tree from a source [5.1.5]' },
     ],
   },
   {
     category: 'Dynamic Programming',
     algorithms: [
-      { id: 'knapsack', name: '0/1 Knapsack', description: 'Maximize value within a weight constraint' },
-      { id: 'lcs', name: 'Longest Common Subsequence', description: 'Find longest shared subsequence of two strings' },
-      { id: 'edit_distance', name: 'Edit Distance', description: 'Minimum edits to transform one string to another' },
-      { id: 'coin_change', name: 'Coin Change', description: 'Minimum coins to make a given amount' },
+      { id: 'knapsack', name: '0/1 Knapsack', description: 'Maximize value within a weight constraint [6.4]' },
+      { id: 'edit_distance', name: 'Edit Distance', description: 'Minimum edits to transform one string to another [6.3]' },
     ],
   },
   {
-    category: 'Trees',
+    category: 'Network Flow',
     algorithms: [
-      { id: 'bst_insert', name: 'BST Insertion', description: 'Build a binary search tree by sequential insertion' },
-      { id: 'heap_operations', name: 'Min-Heap Operations', description: 'Insert and extract-min on a binary min-heap' },
-    ],
-  },
-  {
-    category: 'Linked Structures',
-    algorithms: [
-      { id: 'linked_list_reversal', name: 'Linked List Reversal', description: 'Reverse a singly linked list in-place' },
-      { id: 'stack_operations', name: 'Stack Operations', description: 'Push, pop, and peek on a stack' },
-      { id: 'queue_operations', name: 'Queue Operations', description: 'Enqueue, dequeue, and peek on a queue' },
+      { id: 'maxflow', name: 'Ford-Fulkerson Max Flow', description: 'Find maximum flow and minimum cut in a network [7.2]' },
     ],
   },
 ];
-
-const VISIBLE_GROUPS = ALGORITHM_GROUPS;
 
 export default function AlgoSelector({ onSelect, disabled }) {
   return (

@@ -86,12 +86,6 @@ server.on('upgrade', async (req, socket, head) => {
         return;
       }
 
-      if (user.email && !user.email.toLowerCase().endsWith('.edu')) {
-        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
-        socket.destroy();
-        return;
-      }
-
       req.user = user;
     } catch (err) {
       console.error('[WS] Auth error during upgrade:', err.message);

@@ -20,11 +20,6 @@ export default function AuthModal() {
 
     try {
       if (isSignUp) {
-        if (!isEduEmail(email)) {
-          setError('Please use a .edu email address to sign up.');
-          setLoading(false);
-          return;
-        }
         const { error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
         setMessage('Check your email for a confirmation link.');
@@ -57,7 +52,7 @@ export default function AuthModal() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder={isSignUp ? 'you@university.edu' : 'you@example.com'}
+              placeholder="you@example.com"
               required
               className="w-full px-3 py-2 bg-surface-2 border border-border rounded-lg text-sm text-text-primary font-body placeholder-text-tertiary focus:outline-none focus:border-accent transition-colors"
             />
@@ -104,11 +99,6 @@ export default function AuthModal() {
             {isSignUp ? 'Sign In' : 'Sign Up'}
           </button>
         </p>
-        {isSignUp && (
-          <p className="text-xs text-text-tertiary text-center mt-2 font-body">
-            A .edu email is required for signup.
-          </p>
-        )}
       </div>
     </div>
   );

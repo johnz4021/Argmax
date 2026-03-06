@@ -426,6 +426,7 @@ function restoreGraphState(session, ws) {
 
 export async function startAgentSession(session, algorithm, graph, source) {
   const { ws } = session;
+  const myGeneration = session.runGeneration;
 
   sendJSON(ws, { type: 'lesson_start', algorithm, source });
 
@@ -440,7 +441,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
   let continueLoop = true;
   while (continueLoop) {
     if (ws.readyState !== ws.OPEN) break;
-    if (session.endSessionFlag) throw new Error('__end_session__');
+    if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
     if (apiCallCount >= MAX_API_CALLS_PER_SESSION) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
       break;
@@ -464,7 +465,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
       break;
     }
 
-    if (session.endSessionFlag) throw new Error('__end_session__');
+    if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {

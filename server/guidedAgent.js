@@ -798,6 +798,7 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
 
 async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult, restoredBatchState) {
   const { ws } = session;
+  const myGeneration = session.runGeneration;
   let sessionPlan = null;
   let emptyEndTurnCount = 0;
   let systemPrompt = initialSystemPrompt;
@@ -813,7 +814,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
   while (continueLoop) {
     let lessonDone = false;
     if (ws.readyState !== ws.OPEN) break;
-    if (session.endSessionFlag) throw new Error('__end_session__');
+    if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
     if (apiCallCount >= MAX_API_CALLS_PER_SESSION) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
       break;
@@ -837,7 +838,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       break;
     }
 
-    if (session.endSessionFlag) throw new Error('__end_session__');
+    if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
     console.log('[GuidedAgent] Response stop_reason:', response.stop_reason, 'content types:', response.content.map(b => b.type));
 
     messages.push({ role: 'assistant', content: response.content });

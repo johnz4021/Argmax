@@ -54,11 +54,11 @@ export function useAudioPlayer() {
 
     try {
       const ctx = ctxRef.current;
-      if (!ctx) return;
+      if (!ctx || ctx.state === 'closed') return;
       // Suspend stops all scheduled sources immediately
       await ctx.suspend();
       // Close the old context and create a fresh one
-      ctx.close();
+      await ctx.close();
       ctxRef.current = new AudioContext({ sampleRate: SAMPLE_RATE });
       if (ctxRef.current.state === 'suspended') {
         await ctxRef.current.resume();
@@ -72,7 +72,7 @@ export function useAudioPlayer() {
   }, []);
 
   const stop = useCallback(() => {
-    if (ctxRef.current) {
+    if (ctxRef.current && ctxRef.current.state !== 'closed') {
       ctxRef.current.close();
       ctxRef.current = null;
       nextStartTimeRef.current = 0;

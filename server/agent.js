@@ -16,7 +16,7 @@ function getClient(session) {
   return session?.anthropicClient || defaultAnthropicClient;
 }
 
-const MAX_API_CALLS_PER_SESSION = 100;
+const MAX_API_CALLS_PER_SESSION = 150;
 
 const SYSTEM_PROMPT = `You are Argmax, an expert algorithm teacher. You teach algorithms step-by-step using visualizations.
 

@@ -25,7 +25,7 @@ function buildAlgorithmList() {
     .join('\n');
 }
 
-const MAX_API_CALLS_PER_SESSION = 100;
+const MAX_API_CALLS_PER_SESSION = 150;
 
 const GUIDED_SYSTEM_PROMPT = `You are Argmax, an expert algorithm tutor. A student has pasted a problem and you will guide them through solving it via conversation.
 

@@ -431,11 +431,14 @@ export default function GraphRenderer({
       preExplanationSnapshotRef.current = takeSnapshot(cy);
       applyOverlay(cy, explanationMode.config);
       if (explanationMode.config?.annotations) {
-        const annots = explanationMode.config.annotations.map((a) => {
-          const ele = cy.getElementById(a.target);
-          const pos = ele.renderedPosition();
-          return { ...a, x: pos.x, y: pos.y };
-        });
+        const annots = explanationMode.config.annotations
+          .map((a) => {
+            const ele = cy.getElementById(a.target);
+            if (!ele || ele.empty()) return null;
+            const pos = ele.renderedPosition();
+            return { ...a, x: pos.x, y: pos.y };
+          })
+          .filter(Boolean);
         setAnnotations(annots);
       }
     } else if (explanationMode?.mode === 'ghost_alternative') {

@@ -892,13 +892,17 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         Promise.resolve(false),
       ]);
       if (done) {
+        console.log(`[GuidedAgent] Solver promise resolved, solverResult.success=${solverResult?.success}`);
         pendingSolverPromise = null;
         if (solverResult?.success) {
+          console.log('[GuidedAgent] Injecting [SOLVER COMPLETE] message into conversation');
           messages.push({
             role: 'user',
             content: '[SOLVER COMPLETE] Background solver finished. Use the solution context now available in your system prompt to guide the student.',
           });
         }
+      } else {
+        console.log('[GuidedAgent] Solver still running in background...');
       }
     }
 
@@ -1423,9 +1427,11 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             session.imageMimeType,
             session.anthropicClient
           ).then((sr) => {
+            console.log(`[GuidedAgent] run_solver completed: success=${sr.success}, approach=${sr.approach || 'N/A'}, keyInsight=${(sr.keyInsight || '').slice(0, 80)}`);
             if (sr.success) {
               solverResult = sr;
               systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(sr);
+              console.log('[GuidedAgent] Solver context integrated into system prompt');
             }
             return sr;
           }).catch((err) => {
@@ -1453,11 +1459,13 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             session.imageMimeType,
             session.anthropicClient
           ).then((batchResult) => {
+            console.log(`[GuidedAgent] run_solver_batch completed: success=${batchResult.success}, parts=${Object.keys(batchResult.solutions || {}).join(', ')}`);
             if (batchResult.success) {
               solverResultsMap = batchResult.solutions;
               solverResult = solverResultsMap[activePart];
               systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
               sessionPlan = null;
+              console.log(`[GuidedAgent] Batch solver context integrated, active part: ${activePart}`);
             }
             return batchResult;
           }).catch((err) => {

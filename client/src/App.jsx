@@ -327,7 +327,9 @@ export default function App() {
 
   const showSelector = state.status === 'idle' || state.status === 'error';
   const useVizLayout = state.vizPanels && state.vizPanels.some((p) => p.renderer !== 'graph');
-  const contextOnly = !state.graph && (!state.vizPanels || state.vizPanels.length === 0) && state.contextPanels.length > 0;
+  const noVis = !state.graph && (!state.vizPanels || state.vizPanels.length === 0);
+  const contextOnly = noVis && state.contextPanels.length > 0;
+  const transcriptOnly = noVis && state.contextPanels.length === 0 && !showSelector;
 
   return (
     <>
@@ -407,6 +409,32 @@ export default function App() {
                 onDismiss={() => setPendingFeedback(null)}
               />
             )}
+          </div>
+        ) : transcriptOnly ? (
+          <div className="flex-1 flex flex-col items-center overflow-hidden">
+            <div className="w-full max-w-2xl flex flex-col flex-1 overflow-hidden">
+              <div className="flex-1 overflow-hidden">
+                <Transcript segments={state.segments} agentStatus={state.agentStatus} centered />
+              </div>
+              <Controls
+                status={state.status}
+                agentStatus={state.agentStatus}
+                onInterrupt={handleInterrupt}
+                onPause={handlePause}
+                onResume={handleResume}
+                onRestart={handleRestart}
+                onSpeedChange={handleSpeedChange}
+                onTtsMuteToggle={handleTtsMuteToggle}
+                ttsMuted={ttsMuted}
+                explanationMode={state.explanationMode}
+                guidedOptions={state.guidedOptions}
+                onGuidedResponse={handleGuidedResponse}
+                mode={state.mode}
+                onGuidedMessage={handleGuidedMessage}
+                guidedPrompt={state.guidedPrompt}
+                registerInsertRef={registerInsertRef}
+              />
+            </div>
           </div>
         ) : contextOnly ? (
           <div className="flex-1 flex flex-col items-center overflow-hidden">

@@ -35,6 +35,7 @@ export default function App() {
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
+  const sendRef = useRef(null);
 
   const contextPanelsRef = useRef(state.contextPanels);
   contextPanelsRef.current = state.contextPanels;
@@ -144,7 +145,7 @@ export default function App() {
       }
       if (msg.type === 'tts_auto_disabled') {
         setTtsMuted(true);
-        send({ type: 'set_tts_muted', muted: true });
+        sendRef.current?.({ type: 'set_tts_muted', muted: true });
         setTtsToast('Voice narration temporarily unavailable. Continuing with text only.');
         setTimeout(() => setTtsToast(null), 6000);
       }
@@ -152,7 +153,7 @@ export default function App() {
         setShowCreditsModal(true);
       }
     },
-    [processMessage, dispatchContext, audioPlayer, reset, send]
+    [processMessage, dispatchContext, audioPlayer, reset]
   );
 
   const onBinary = useCallback(
@@ -166,6 +167,7 @@ export default function App() {
   // Only connect WebSocket when auth is ready (or if Supabase isn't configured)
   const wsEnabled = !supabase || !!user;
   const { send, connected } = useWebSocket(onMessage, onBinary, wsEnabled);
+  sendRef.current = send;
 
   // Check session gate status on connect
   useEffect(() => {

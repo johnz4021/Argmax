@@ -925,15 +925,13 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           console.log(`[Agent] Auto-setup for '${algo}': renderer=${algoInfo.renderer}, contextPanels=${contextPanels.map(p => p.id).join(',')}, sessionGraph=${!!session.currentGraph}`);
 
           if (algoInfo.renderer === 'graph') {
-            // Auto-create graph if not already set up
-            if (!session.currentGraph) {
-              const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
-              if (graphData) {
-                const directed = graphData.directed !== undefined ? graphData.directed : true;
-                console.log(`[Agent] Auto-creating graph: ${graphData.nodes?.length} nodes, directed=${directed}`);
-                sendJSON(ws, { type: 'create_graph', graph: { ...graphData, directed } });
-                session.currentGraph = graphData;
-              }
+            // Always send the graph for the current algorithm run
+            const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
+            if (graphData) {
+              const directed = graphData.directed !== undefined ? graphData.directed : true;
+              console.log(`[Agent] Auto-creating graph: ${graphData.nodes?.length} nodes, directed=${directed}`);
+              sendJSON(ws, { type: 'create_graph', graph: { ...graphData, directed } });
+              session.currentGraph = graphData;
             }
             // Send context panels via create_visualization
             if (contextPanels.length > 0) {

@@ -439,6 +439,8 @@ wss.on('connection', (ws, req) => {
           // Encrypt and store
           const encrypted = encrypt(key);
           await saveUserSettings(session.userId, { anthropic_api_key_encrypted: encrypted });
+          // Update the active session's Anthropic client so the new key is used immediately
+          session.anthropicClient = new Anthropic({ apiKey: key, maxRetries: 5 });
           ws.send(JSON.stringify({ type: 'api_key_result', success: true }));
           break;
         }

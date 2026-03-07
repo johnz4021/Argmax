@@ -5,6 +5,9 @@ import WebSocket from 'ws';
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 
+// Auto-disable TTS after ElevenLabs failures (rate limit, credit exhaustion, etc.)
+let ttsDisabled = false;
+
 /**
  * Convert math/CS notation into speakable English for TTS.
  * ElevenLabs cannot handle symbols like dp[i][w], O(n log n), ≤, →, ∞, etc.
@@ -267,7 +270,7 @@ export function normalizeTTSText(text) {
  * Falls back to simulated delay if no ElevenLabs key.
  */
 export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 1, sendJsonFn = null, shouldAbort = null, muted = false) {
-  if (muted) {
+  if (ttsDisabled || muted) {
     // Skip TTS audio but add a reading-speed delay so segments don't fly by
     const wordCount = normalizeTTSText(text).split(/\s+/).length;
     // ~180 WPM reading speed, adjusted by speed multiplier
@@ -279,7 +282,7 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    return { aborted: false };
+    return { aborted: false, ttsAutoDisabled: ttsDisabled };
   }
 
   if (!ELEVENLABS_API_KEY) {
@@ -337,15 +340,15 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
 
     elWs.on('open', () => {
       console.log('[TTS] ElevenLabs WS connected');
+      // ElevenLabs speed range is 0.7–1.2; clamp the multiplier
+      const clampedSpeed = Math.min(1.2, Math.max(0.7, speedMultiplier));
       elWs.send(
         JSON.stringify({
           text: ' ',
           voice_settings: {
             stability: 0.5,
             similarity_boost: 0.75,
-          },
-          generation_config: {
-            speed: speedMultiplier,
+            speed: clampedSpeed,
           },
           xi_api_key: ELEVENLABS_API_KEY,
         })
@@ -361,6 +364,15 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
         const msg = JSON.parse(raw);
         if (!msg.audio) {
           console.log('[TTS] Non-audio message:', raw.slice(0, 200));
+          // Detect ElevenLabs error responses (e.g. rate limit, invalid key)
+          if (msg.error || msg.message || msg.detail) {
+            const errorMsg = msg.error || msg.message || msg.detail;
+            console.error('[TTS] ElevenLabs API error, auto-disabling TTS:', errorMsg);
+            ttsDisabled = true;
+            try { elWs.close(); } catch (_) {}
+            resolve({ aborted: false, ttsAutoDisabled: true });
+            return;
+          }
         }
         if (msg.audio) {
           if (!receivedAudio) {
@@ -418,9 +430,10 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
         clearInterval(abortCheckInterval);
         abortCheckInterval = null;
       }
-      console.error('[TTS] ElevenLabs WS error:', err.message);
+      console.error('[TTS] ElevenLabs WS error, auto-disabling TTS:', err.message);
+      ttsDisabled = true;
       try { elWs.close(); } catch (_) {}
-      resolve({ aborted: false });
+      resolve({ aborted: false, ttsAutoDisabled: true });
     });
   });
 }

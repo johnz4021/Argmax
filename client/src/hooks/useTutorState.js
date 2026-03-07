@@ -20,6 +20,7 @@ const initialState = {
   conversations: [],           // conversation history list
   loadedConversation: null,    // loaded transcript messages for viewing
   viewingHistory: false,       // whether we're viewing a transcript
+  creditsExhausted: false,     // whether Anthropic credits are exhausted (triggers BYOK modal)
 };
 
 /**
@@ -258,6 +259,15 @@ function reducer(state, action) {
     case 'CLEAR_LOADED_CONVERSATION':
       return { ...state, loadedConversation: null, viewingHistory: false };
 
+    case 'TTS_AUTO_DISABLED':
+      return { ...state, ttsMuted: true };
+
+    case 'CREDITS_EXHAUSTED':
+      return { ...state, creditsExhausted: true };
+
+    case 'CLEAR_CREDITS_EXHAUSTED':
+      return { ...state, creditsExhausted: false };
+
     case 'RESET':
       return initialState;
 
@@ -376,6 +386,12 @@ export function useTutorState() {
         break;
       case 'error':
         dispatch({ type: 'ERROR', message: msg.message });
+        break;
+      case 'tts_auto_disabled':
+        dispatch({ type: 'TTS_AUTO_DISABLED' });
+        break;
+      case 'credits_exhausted':
+        dispatch({ type: 'CREDITS_EXHAUSTED' });
         break;
     }
   }, []);

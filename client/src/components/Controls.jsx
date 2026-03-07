@@ -114,7 +114,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
       ? 'Type your thoughts...'
       : status === 'complete'
         ? 'Any questions about the lesson?'
-        : 'Ask a question...';
+        : 'Ask a question, request something visual...';
 
   return (
     <div className="border-t border-border px-4 py-3 space-y-3 font-body">
@@ -277,9 +277,9 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
             <label className="text-xs text-text-tertiary">Speed:</label>
             <input
               type="range"
-              min="0.5"
-              max="2"
-              step="0.25"
+              min="0.7"
+              max="1.2"
+              step="0.1"
               defaultValue="1"
               onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
               className="w-24 accent-accent"

@@ -31,6 +31,8 @@ export default function App() {
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [gateStatus, setGateStatus] = useState(null);
   const [apiKeyResult, setApiKeyResult] = useState(null);
+  const [ttsToast, setTtsToast] = useState(null);
+  const [showCreditsModal, setShowCreditsModal] = useState(false);
   const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
 
@@ -140,8 +142,17 @@ export default function App() {
         audioPlayer.flush();
         audioPlayer.stop();
       }
+      if (msg.type === 'tts_auto_disabled') {
+        setTtsMuted(true);
+        send({ type: 'set_tts_muted', muted: true });
+        setTtsToast('Voice narration temporarily unavailable. Continuing with text only.');
+        setTimeout(() => setTtsToast(null), 6000);
+      }
+      if (msg.type === 'credits_exhausted') {
+        setShowCreditsModal(true);
+      }
     },
-    [processMessage, dispatchContext, audioPlayer, reset]
+    [processMessage, dispatchContext, audioPlayer, reset, send]
   );
 
   const onBinary = useCallback(
@@ -538,6 +549,34 @@ export default function App() {
         }}
         onCancel={() => setShowExitConfirm(false)}
       />
+    )}
+    {showCreditsModal && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-surface-1 border border-border rounded-xl p-6 max-w-md w-full mx-4 shadow-xl">
+          <SessionGate
+            count={0}
+            limit={0}
+            send={send}
+            apiKeyResult={apiKeyResult}
+            onKeySuccess={() => {
+              setShowCreditsModal(false);
+              setApiKeyResult(null);
+              processMessage({ type: 'clear_guided_options' });
+            }}
+          />
+          <button
+            onClick={() => setShowCreditsModal(false)}
+            className="mt-3 w-full text-center text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    )}
+    {ttsToast && (
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-surface-2 border border-border text-text-secondary text-sm px-4 py-2.5 rounded-lg shadow-lg animate-fade-in">
+        {ttsToast}
+      </div>
     )}
     </>
   );

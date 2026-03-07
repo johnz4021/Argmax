@@ -543,7 +543,14 @@ export async function startAgentSession(session, algorithm, graph, source) {
       });
     } catch (err) {
       console.error('[Agent] API error:', err.message);
-      sendJSON(ws, { type: 'error', message: 'API request failed. Please try again.' });
+      const status = err?.status;
+      if (status === 429) {
+        sendJSON(ws, { type: 'error', message: 'Rate limited. Please wait a moment and try again.' });
+      } else if (status === 401 || status === 403) {
+        sendJSON(ws, { type: 'credits_exhausted' });
+      } else {
+        sendJSON(ws, { type: 'error', message: 'API request failed. Please try again.' });
+      }
       break;
     }
 
@@ -772,7 +779,14 @@ export async function startAgentSession(session, algorithm, graph, source) {
       }
     } catch (err) {
       console.error('[Agent] Q&A API error:', err.message);
-      sendJSON(ws, { type: 'error', message: 'Failed to answer question. Please try again.' });
+      const status = err?.status;
+      if (status === 429) {
+        sendJSON(ws, { type: 'error', message: 'Rate limited. Please wait a moment and try again.' });
+      } else if (status === 401 || status === 403) {
+        sendJSON(ws, { type: 'credits_exhausted' });
+      } else {
+        sendJSON(ws, { type: 'error', message: 'Failed to answer question. Please try again.' });
+      }
     }
 
     // Restore original graph if respond_to_interrupt didn't consume the saved state
@@ -1026,6 +1040,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
 
       if (ttsResult?.aborted || session.pauseFlag) {
         // Pause was pressed during or after TTS — send flush to stop client audio, then pause immediately
@@ -1072,6 +1090,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
 
       // Handle pause — either TTS was aborted, or pause arrived after TTS finished
       if (ttsResult?.aborted || session.pauseFlag) {
@@ -1094,6 +1116,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
           const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          if (rewindTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+            session._ttsDisabledNotified = true;
+            sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+          }
 
           if (rewindTts?.aborted || session.pauseFlag) {
             sendJSON(ws, { type: 'audio_flush' });
@@ -1141,6 +1167,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
 
       // Handle pause — either TTS was aborted, or pause arrived after TTS finished
       if (ttsResult?.aborted || session.pauseFlag) {
@@ -1216,6 +1246,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
       const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
 
       // Handle pause — either TTS was aborted, or pause arrived after TTS finished
       if (ttsResult?.aborted || session.pauseFlag) {

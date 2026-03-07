@@ -5,6 +5,7 @@ const ArrayRenderer = lazy(() => import('./renderers/ArrayRenderer'));
 const TableRenderer = lazy(() => import('./renderers/TableRenderer'));
 const TreeRenderer = lazy(() => import('./renderers/TreeRenderer'));
 const LinkedRenderer = lazy(() => import('./renderers/LinkedRenderer'));
+const IntervalRenderer = lazy(() => import('./renderers/IntervalRenderer'));
 
 /**
  * Error boundary that catches renderer crashes and shows a fallback.
@@ -71,6 +72,9 @@ function RendererSwitch({ type, ...props }) {
       break;
     case 'linked':
       Renderer = LinkedRenderer;
+      break;
+    case 'interval':
+      Renderer = IntervalRenderer;
       break;
     default:
       return (

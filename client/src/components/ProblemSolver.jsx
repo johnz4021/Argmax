@@ -7,11 +7,12 @@ export default function ProblemSolver({ onSelect, disabled }) {
   const [problemText, setProblemText] = useState('');
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const cardRef = useRef(null);
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const processFile = (file) => {
+    if (!file || !file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = () => {
       track('image_uploaded', {});
@@ -19,6 +20,43 @@ export default function ProblemSolver({ onSelect, disabled }) {
       setImagePreview(reader.result);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processFile(file);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        processFile(file);
+        return;
+      }
+    }
+    const text = e.dataTransfer.getData('text/plain');
+    if (text) {
+      setProblemText((prev) => (prev ? prev + '\n' + text : text));
+    }
   };
 
   const removeImage = () => {
@@ -52,7 +90,23 @@ export default function ProblemSolver({ onSelect, disabled }) {
 
       {/* Claude-style input card */}
       <form onSubmit={handleSubmit} className="w-full max-w-2xl">
-        <div className="bg-surface-2 border border-border rounded-2xl overflow-hidden focus-within:border-border-hover transition-colors">
+        <div
+          ref={cardRef}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative bg-surface-2 border rounded-2xl overflow-hidden focus-within:border-border-hover transition-colors ${
+            isDragging ? 'border-accent' : 'border-border'
+          }`}
+        >
+          {/* Drag overlay */}
+          {isDragging && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-accent-muted/20 border-2 border-dashed border-accent rounded-2xl">
+              <span className="text-sm font-medium text-accent font-body">Drop image or text here</span>
+            </div>
+          )}
+
           {/* Image preview inside card */}
           {imagePreview && (
             <div className="px-4 pt-4">

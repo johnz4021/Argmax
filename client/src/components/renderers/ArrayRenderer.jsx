@@ -47,6 +47,7 @@ export default function ArrayRenderer({
   }, []);
 
   const applyArrayAction = useCallback((action, params) => {
+    console.log(`[ArrayRenderer] applyArrayAction: ${action}`, params);
     switch (action) {
       case 'set_data': {
         const values = params.values || [];

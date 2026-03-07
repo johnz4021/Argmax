@@ -159,6 +159,52 @@ export const RENDERER_MANIFEST = {
   ]
 })`,
   },
+
+  interval: {
+    actions: [
+      { name: 'set_jobs', params: { jobs: '{id, name, start, end}[]' }, description: 'Initialize jobs with start/end times' },
+      { name: 'set_machines', params: { count: 'number?', machines: 'string[]?' }, description: 'Create N machine rows (names auto-generated if count given)' },
+      { name: 'assign_machine', params: { job_id: 'string', machine: 'number' }, description: 'Assign a job to a machine row (0-indexed)' },
+      { name: 'highlight_job', params: { job_id: 'string', className: 'string?' }, description: 'Highlight a single job' },
+      { name: 'highlight_jobs', params: { job_ids: 'string[]', className: 'string?' }, description: 'Highlight multiple jobs' },
+      { name: 'highlight_overlap', params: { job1: 'string', job2: 'string' }, description: 'Show overlap conflict between two jobs (marks both red)' },
+      { name: 'clear_overlaps', params: {}, description: 'Remove all overlap indicators' },
+      { name: 'mark_sorted', params: { job_ids: 'string[]' }, description: 'Mark jobs as sorted (green)' },
+      { name: 'mark_selected', params: { job_ids: 'string[]' }, description: 'Mark jobs as selected/accepted (green)' },
+      { name: 'mark_rejected', params: { job_ids: 'string[]' }, description: 'Mark jobs as rejected (gray)' },
+      { name: 'sweep_line', params: { time: 'number' }, description: 'Show vertical sweep line at time position' },
+      { name: 'clear_sweep_line', params: {}, description: 'Remove sweep line' },
+      { name: 'set_pointer', params: { name: 'string', job_id: 'string' }, description: 'Show a named label on a job' },
+      { name: 'clear_pointers', params: {}, description: 'Remove all pointer labels' },
+      { name: 'reset', params: {}, description: 'Clear all highlights, assignments, overlaps, and pointers' },
+    ],
+    classNames: [
+      { name: 'current', color: 'yellow' },
+      { name: 'selected', color: 'green' },
+      { name: 'rejected', color: 'gray' },
+      { name: 'overlap', color: 'red' },
+      { name: 'comparing', color: 'yellow' },
+      { name: 'assigned', color: 'cyan' },
+      { name: 'sorted', color: 'green' },
+    ],
+    setup: 'create_visualization({ panels: [{ renderer: "interval" }], context_panels: [...] })',
+    example: `emit_segment({
+  narration: "We have 5 jobs. Let's sort them by end time and assign to machines...",
+  viz_actions: [
+    { renderer: "interval", action: "set_jobs", params: { jobs: [
+      { id: "A", name: "Job A", start: 0, end: 3 },
+      { id: "B", name: "Job B", start: 1, end: 4 },
+      { id: "C", name: "Job C", start: 2, end: 6 },
+      { id: "D", name: "Job D", start: 5, end: 8 },
+      { id: "E", name: "Job E", start: 6, end: 9 }
+    ] } },
+    { renderer: "interval", action: "set_machines", params: { machines: ["M1", "M2", "M3"] } },
+    { renderer: "interval", action: "assign_machine", params: { job_id: "A", machine: 0 } },
+    { renderer: "interval", action: "highlight_job", params: { job_id: "A", className: "current" } },
+    { renderer: "interval", action: "sweep_line", params: { time: 3 } }
+  ]
+})`,
+  },
 };
 
 /**

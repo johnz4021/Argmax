@@ -455,6 +455,8 @@ C. Visualizing with any renderer in non-execution mode:
   - table: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, clear_dependency_arrows, set_row_header, set_col_header, mark_optimal, reset
   - tree: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset
   - linked: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset
+  - interval: set_jobs, set_machines, assign_machine, highlight_job, highlight_jobs, highlight_overlap, clear_overlaps, mark_sorted, mark_selected, mark_rejected, sweep_line, clear_sweep_line, set_pointer, clear_pointers, reset
+    USE interval FOR: job scheduling, minimum machines, interval overlap, activity selection, conference scheduling, any problem with jobs/intervals on a timeline. It shows a Gantt-chart / timeline with horizontal bars.
 
   Call get_renderer_docs to get full parameter docs, classNames, and examples for any renderer(s) you need.
 
@@ -591,7 +593,7 @@ const guidedTools = [
       properties: {
         renderers: {
           type: 'array',
-          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked'] },
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval'] },
           description: 'Which renderer(s) to get docs for',
         },
       },
@@ -982,6 +984,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           sessionPlan = plan;
           session.modelContract = plan.internal_model_contract;
           session.reasoningMode = plan.reasoning_mode;
+          console.log(`[GuidedAgent] classify_problem: reasoning_mode=${plan.reasoning_mode}, target=${plan.target_algorithm}, closest=${plan.closest_algorithm}, in_scope=${plan.is_in_scope}`);
 
           const validAlgorithms = Object.keys(ALGORITHMS);
           if (plan.reasoning_mode === 'algorithm_execution' && plan.is_in_scope && plan.target_algorithm && !validAlgorithms.includes(plan.target_algorithm)) {
@@ -1008,7 +1011,13 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             if (plan.reasoning_mode !== 'algorithm_execution') {
               const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
               const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
-              const rendererType = algoInfo?.renderer || 'graph';
+              let rendererType = algoInfo?.renderer || 'graph';
+              // Detect interval/scheduling problems by keyword in target algorithm or problem context
+              const algoLower = (targetAlgo || '').toLowerCase();
+              if (algoLower.includes('interval') || algoLower.includes('schedule') || algoLower.includes('machine') || algoLower.includes('job') || algoLower.includes('activity')) {
+                rendererType = 'interval';
+              }
+              console.log(`[GuidedAgent] Non-execution mode: targetAlgo=${targetAlgo}, algoInfo=${!!algoInfo}, rendererType=${rendererType}`);
               const rendererDocs = buildRendererDocs([rendererType]);
               message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
             }
@@ -1435,12 +1444,19 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         });
 
         // Track viz state for viz_action reminders
+        if (block.name === 'create_visualization') {
+          console.log(`[GuidedAgent] create_visualization called:`, JSON.stringify(block.input).slice(0, 500));
+        }
         if (block.name === 'create_visualization' || block.name === 'create_graph' || block.name === 'update_graph') {
           vizActive = true;
           segmentsWithoutVizActions = 0;
         }
         if (block.name === 'emit_segment') {
           const hasVizActions = block.input?.viz_actions?.length > 0 || block.input?.trace_step_indices?.length > 0;
+          console.log(`[GuidedAgent] emit_segment: hasVizActions=${hasVizActions}, viz_actions=${block.input?.viz_actions?.length || 0}, trace_steps=${block.input?.trace_step_indices?.length || 0}, hasTrace=${!!session.currentTrace}`);
+          if (block.input?.viz_actions?.length > 0) {
+            console.log(`[GuidedAgent] emit_segment viz_actions:`, JSON.stringify(block.input.viz_actions).slice(0, 500));
+          }
           if (hasVizActions) {
             segmentsWithoutVizActions = 0;
           } else {

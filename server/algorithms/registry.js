@@ -293,5 +293,6 @@ function guessRenderer(algorithmId) {
   if (id.includes('knapsack') || id.includes('lcs') || id.includes('edit') || id.includes('coin') || id.includes('matrix') || id.includes('dp')) return 'table';
   if (id.includes('tree') || id.includes('bst') || id.includes('avl') || id.includes('heap') || id.includes('red_black')) return 'tree';
   if (id.includes('linked') || id.includes('stack') || id.includes('queue')) return 'linked';
+  if (id.includes('interval') || id.includes('schedule') || id.includes('machine') || id.includes('job') || id.includes('timeline') || id.includes('gantt') || id.includes('activity_selection')) return 'interval';
   return 'graph';
 }

@@ -95,7 +95,9 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
 
    d) HANDLING LEARNER RESPONSES — WRONG ANSWER ESCALATION
       ALWAYS evaluate the learner's answer for correctness before continuing.
-      - If CORRECT: brief positive feedback (1 sentence) and continue.
+      - If CORRECT: brief positive feedback (1 sentence) via conversational_reply with
+        wait_for_response: false, then continue with emit_segment in the SAME turn.
+        Do NOT ask follow-up probing questions on a concept the learner just got right.
       - If PARTIALLY RIGHT: acknowledge what's correct, clarify the mistake, continue.
       - If WRONG (first attempt): Say WHY their answer is wrong (1 sentence), then
         give a targeted hint via conversational_reply. Do NOT reveal the answer yet.
@@ -104,10 +106,7 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
       - If WRONG (second attempt on same question): State the correct answer directly
         via conversational_reply with wait_for_response: true.
         Say "Actually, [correct answer] because [reason]."
-        Do NOT ask another Socratic question about the same concept they got wrong twice.
-        WAIT for the student to acknowledge (e.g., "ok", "got it", "I see") before
-        continuing the lesson. Accept any acknowledgement and move on — do not quiz
-        them again on the same point.
+        do not quiz them again on the same point.
       - After the acknowledgement, verify understanding on a DIFFERENT aspect:
         "Now that we know [X], what does that tell us about [Y]?"
       - NEVER ignore a wrong answer or continue as if it were correct.
@@ -156,6 +155,21 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
    - Max 2 conversational_reply exchanges per Socratic sequence.
    - After 1 wrong answer, explain why and give a concrete hint.
    - After 2 wrong answers on the same concept, give the answer directly.
+   - "I DON'T KNOW" RESPONSES: If the learner says "idk", "I don't know", "no idea",
+     or similar — try ONE simpler sub-question first to guide them toward the answer.
+     If they still can't answer, give the answer with a brief explanation (2-3 sentences),
+     then ask "Does that make sense?" via conversational_reply with wait_for_response: true.
+     Do NOT just explain and leave them hanging — always end with a confirmation question
+     so the learner knows what to do next.
+   - CORRECT ANSWER = DONE: If the learner answers your Socratic question correctly,
+     give brief praise via conversational_reply with wait_for_response: false, then
+     continue with emit_segment in the SAME turn. Do NOT ask additional probing
+     questions on a concept the learner just got right.
+   - MOVE-ON SIGNALS: If the learner says "I understand", "I get it", "let's move on",
+     "let's continue", "next", "skip", "got it", or otherwise signals they want to
+     advance — IMMEDIATELY stop the Socratic sequence. Give a brief 1-sentence summary
+     via conversational_reply with wait_for_response: false, then continue the lesson.
+     Do NOT ask "are you sure?" or re-probe. Respect the learner's pace.
    - Anti-patterns to avoid: paragraphs of explanation, restating the same point
      in different words, preemptively answering follow-ups the learner didn't ask.
 
@@ -171,7 +185,9 @@ You teach like a great 1-on-1 tutor, not a textbook being read aloud. This means
      use conversational_reply to ask the learner to APPLY it — not just confirm understanding.
    - Good: "Given what we just saw, what value goes in dp[2][5]?"
    - Good: "Which node would Dijkstra visit next, and why?"
-   - Bad: "Does that make sense?" (too passive — learner can coast with "yes")
+   - Okay situationally: "Does that make sense?" — use this ONLY after explaining an answer
+     the learner didn't know (e.g., after an "idk" response, or after giving the answer
+     following 2 wrong attempts). Do NOT use it as the default comprehension check.
    - Bad: "Any questions?" (invites disengagement, not demonstration of understanding)
    - After the learner responds, EVALUATE their answer using the wrong-answer
      escalation rules above. NEVER ignore a wrong answer or proceed as if it were correct.
@@ -1173,7 +1189,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           selected_option_ids: studentResponse?.optionIds || null,
           selected_labels: studentResponse?.labels || null,
           freeform_text: studentResponse?.text || null,
-          message: `The learner answered: "${answerText}". IMPORTANT: You MUST evaluate this answer for correctness BEFORE continuing the lesson. If wrong, explain why and give the correct answer. If correct, give brief praise. Do NOT ignore this response.`,
+          message: `The learner answered: "${answerText}". STOP and evaluate this answer BEFORE continuing. If CORRECT: give brief praise (1 sentence) via conversational_reply with wait_for_response: false, then continue the lesson in the SAME turn. Do NOT ask follow-up probing questions on the same concept. If WRONG: explain why and give a hint (first attempt) or the correct answer (second attempt).`,
         };
       }
     }
@@ -1218,6 +1234,8 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       if (wait_for_response !== false) {
         const raceResult = await Promise.race([responsePromise, timeoutPromise]);
         session.guidedResponseResolver = null;
+        // Clear guided prompt so subsequent student messages route as interrupts, not guided_message
+        sendJSON(ws, { type: 'clear_guided_options' });
 
         if (raceResult === '__end_session__' || session.endSessionFlag) {
           throw new Error('__end_session__');
@@ -1233,7 +1251,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             student_response: studentResponse,
             timed_out: false,
             freeform_text: answerText,
-            message: `The learner responded: "${answerText}". IMPORTANT: You MUST acknowledge and evaluate this response BEFORE continuing the lesson. If they answered a question, assess correctness. If they expressed confusion, address it. Do NOT skip over their response.`,
+            message: `The learner responded: "${answerText}". STOP and address this response BEFORE continuing. If the learner answered CORRECTLY or is signaling they want to move on (e.g., "I understand", "got it", "next", "skip", "let's move on") — give brief praise if correct via conversational_reply with wait_for_response: false, then continue the lesson in the SAME turn. Do NOT ask follow-up probing questions on a concept they just got right. If they are disagreeing, re-explain. If they expressed confusion, address it.`,
           };
         }
       }

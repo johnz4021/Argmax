@@ -292,7 +292,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
                 ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50'
                 : 'bg-surface-2 text-text-tertiary hover:text-text-secondary'
             }`}
-            title={ttsMuted ? 'Unmute voice' : 'Mute voice'}
+            title={ttsMuted ? 'Turn voice on' : 'Turn voice off'}
           >
             {ttsMuted ? (
               <>
@@ -300,7 +300,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
                   <path d="M9.547 3.062A.75.75 0 0110 3.75v12.5a.75.75 0 01-1.264.546L5.203 13.5H2.667a.75.75 0 01-.7-.48A6.985 6.985 0 011.5 10c0-.98.201-1.916.467-2.52a.75.75 0 01.7-.48h2.536l3.533-3.296a.75.75 0 01.811-.142z" />
                   <path d="M13.28 7.22a.75.75 0 10-1.06 1.06L13.94 10l-1.72 1.72a.75.75 0 101.06 1.06L15 11.06l1.72 1.72a.75.75 0 101.06-1.06L16.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L15 8.94l-1.72-1.72z" />
                 </svg>
-                TTS Off
+                Turn Voice On
               </>
             ) : (
               <>
@@ -308,7 +308,7 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
                   <path d="M10 3.75a.75.75 0 00-1.264-.546L5.203 6.5H2.667a.75.75 0 00-.7.48 6.985 6.985 0 000 6.04.75.75 0 00.7.48h2.536l3.533 3.296A.75.75 0 0010 16.25V3.75zM15.95 5.05a.75.75 0 00-1.06 1.061 5.5 5.5 0 010 7.778.75.75 0 001.06 1.06 7 7 0 000-9.899z" />
                   <path d="M13.829 7.172a.75.75 0 00-1.061 1.06 2.5 2.5 0 010 3.536.75.75 0 001.06 1.06 4 4 0 000-5.656z" />
                 </svg>
-                TTS On
+                Turn Voice Off
               </>
             )}
           </button>

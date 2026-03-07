@@ -200,7 +200,7 @@ function reducer(state, action) {
       return { ...state, agentStatus: null, guidedOptions: { prompt: action.prompt, options: action.options, mode: action.mode || 'mc', input_placeholder: action.input_placeholder, multiSelect: action.multiSelect || false } };
 
     case 'CLEAR_GUIDED_OPTIONS':
-      return { ...state, guidedOptions: null };
+      return { ...state, guidedOptions: null, guidedPrompt: null };
 
     case 'ADD_GUIDED_QUESTION':
       return { ...state, agentStatus: null, segments: [...state.segments, { id: 'gq_' + Date.now(), narration: action.text, type: 'guided_question', active: false }] };

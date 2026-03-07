@@ -118,6 +118,7 @@ wss.on('connection', (ws, req) => {
     ttsMuted: false,
     guidedResponse: null,
     guidedResponseResolver: null,
+    pendingGuidedResponses: [],
     guidedMessageQueue: [],
     followUpResolver: null,
     followUpSent: false,
@@ -240,6 +241,8 @@ wss.on('connection', (ws, req) => {
           if (session.guidedResponseResolver) {
             session.guidedResponseResolver();
             session.guidedResponseResolver = null;
+          } else {
+            session.pendingGuidedResponses.push(session.guidedResponse);
           }
           // Auto-resume if paused so the response gets processed immediately
           if (session.pauseResolver) {

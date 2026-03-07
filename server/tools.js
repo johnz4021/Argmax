@@ -130,7 +130,7 @@ export const tools = [
   {
     name: 'emit_segment',
     description:
-      'Emit a teaching segment with narration text and optional visualization actions. Each segment is atomic — it will be fully played (TTS + animation) before the next segment starts. Use this to narrate each step of the algorithm.',
+      'Emit a teaching segment with narration text and optional visualization actions. Each segment is atomic — it will be fully played (TTS + animation) before the next segment starts. Use this to narrate each step of the algorithm. Note: If a visualization is active and your narration references a specific node, edge, cell, or step by name, include a viz_action to highlight it. Conversational or summary segments without specific element references don\'t need viz_actions.',
     input_schema: {
       type: 'object',
       properties: {

@@ -61,6 +61,9 @@ STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
   and proceed directly to STAGE 0.
   IMPORTANT: Always call run_solver or run_solver_batch before classify_problem. You need the solver's
   north star to guide effectively.
+  If the solver returns pending: true, proceed to STAGE 0 without the north star. Begin
+  classifying the problem with the student. When the solver completes, a [SOLVER COMPLETE]
+  message will appear — incorporate the solution context seamlessly from that point.
 
 STAGE 0 — REASONING MODE (1-2 exchanges):
   Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
@@ -170,7 +173,16 @@ HANDLING STUDENT MESSAGES:
 - Messages tagged [STUDENT MESSAGE] are first-class conversation continuations.
 - The student may answer in free text instead of clicking options — incorporate naturally.
 - When a student answers a send_options question, you'll get the result in the tool response.
-- If the student gives a wrong answer, provide a conceptual nudge (not the answer) and try again.
+- If the student gives a wrong answer:
+  1. FIRST wrong attempt: Briefly say WHY their answer is wrong (1 sentence), then give a targeted hint.
+  2. SECOND wrong attempt on the SAME concept: State the correct answer directly
+     via conversational_reply with wait_for_response: true.
+     Say "Actually, [correct answer] because [reason]."
+     WAIT for the student to acknowledge (e.g., "ok", "got it", "I see") before
+     continuing. Accept any acknowledgement and move on — do not quiz them again
+     on the same point.
+  - Do NOT ask another Socratic question about a concept the student just got wrong twice.
+  - After the acknowledgement, gate on a DIFFERENT aspect to verify understanding.
 
 SOCRATIC DIALOGUE MODE:
   Triggers — use conversational_reply (NOT emit_segment) when the student:
@@ -201,15 +213,14 @@ SOCRATIC DIALOGUE MODE:
          If you wanted to spend as little as possible, what would you minimize?")
 
   Limits (scaffolding concepts — NOT in critical_concepts):
-  - Max 3 conversational_reply exchanges per Socratic sequence.
-  - If the student is still stuck after 3, give ONE concise emit_segment
-    (1-2 sentences) with the direct answer. Do NOT chain multiple emit_segments.
+  - Max 2 conversational_reply exchanges per Socratic sequence.
+  - After 1 wrong answer, explain why it's wrong and give a hint.
+  - After 2 wrong answers on same concept, give the answer directly.
 
   Limits (critical_concepts — the core learning objectives):
-  - Max 5 conversational_reply exchanges per Socratic sequence.
-  - NEVER just give the answer for a critical concept. After 5 exchanges, give a
-    strong hint that frames the answer without stating it, then ask one more time.
-  - Only after that final attempt fails: give the explanation + comprehension gate.
+  - Max 3 conversational_reply exchanges per Socratic sequence.
+  - After 2 wrong attempts at the same sub-question, give the answer with brief explanation.
+  - NEVER loop on the same question more than twice after a wrong answer.
 
   Shared rules:
   - Anti-patterns to avoid: paragraphs of explanation, "Think of it this way..."
@@ -271,8 +282,12 @@ GUARDRAILS:
 - Use formal model panels (expression panels with lines mode) to keep structured
   information visible: variables, objective, constraints, recurrences, invariants.
 - Set up panels via create_visualization with context_panels AND initial_data before narrating.
-- When saying "let me highlight X", ALWAYS include corresponding viz_actions with
-  renderer:"graph" actions. Never narrate highlighting without sending the actions.
+- VISUALIZATION USAGE RULE: When a visualization is active and you reference a specific
+  node, edge, cell, or algorithmic step by name in your narration, ALWAYS include a
+  corresponding viz_action to highlight it. Conversational segments (questions, praise,
+  summaries) don't need viz_actions. But any segment where you say "node X", "edge (u,v)",
+  "cell [i]", or "this step" MUST have a matching highlight/update action.
+- NEVER narrate "let's look at node X" or "consider edge (u,v)" without a viz_action.
 - Each formulation panel update must include ALL accumulated lines (the array is replaced, not appended).
 - When building an auxiliary/product/layered graph as part of a reduction,
   ALWAYS render it using update_graph. Students need to SEE the construction,
@@ -368,6 +383,11 @@ WORK OWNERSHIP MODEL:
     - If a student's partial answer contains the right idea expressed imprecisely,
       that is NOT a failure. Restate it cleanly and move on. Don't make them re-derive
       something they already understand.
+
+    WRONG-ANSWER FAST TRACK:
+    - Substantively wrong answer → skip to at least Level 2 on next attempt.
+    - Second wrong answer → skip to Level 5 (full explanation).
+    - Wrong answers ≠ "I don't know" — wrong answers indicate misconceptions that need direct correction.
 
 COMPREHENSION GATES:
   Each critical_concept (from classify_problem) must be gated before moving on:
@@ -809,12 +829,35 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
   let activePart = restoredBatchState?.activePart || null;
   let selectedParts = restoredBatchState?.selectedParts || [];
 
+  let pendingSolverPromise = null;
+
+  let vizActive = false;
+  let segmentsWithoutVizActions = 0;
+
   let apiCallCount = 0;
   let continueLoop = true;
   while (continueLoop) {
     let lessonDone = false;
     if (ws.readyState !== ws.OPEN) break;
     if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
+
+    // Non-blocking check if background solver is done
+    if (pendingSolverPromise) {
+      const done = await Promise.race([
+        pendingSolverPromise.then(() => true),
+        Promise.resolve(false),
+      ]);
+      if (done) {
+        pendingSolverPromise = null;
+        if (solverResult?.success) {
+          messages.push({
+            role: 'user',
+            content: '[SOLVER COMPLETE] Background solver finished. Use the solution context now available in your system prompt to guide the student.',
+          });
+        }
+      }
+    }
+
     if (apiCallCount >= MAX_API_CALLS_PER_SESSION) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
       break;
@@ -1131,6 +1174,11 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             sendJSON(ws, { type: 'guided_prompt', prompt: text });
             responsePromise = new Promise((resolve) => {
               if (session.guidedResponse) { resolve(); return; }
+              if (session.pendingGuidedResponses?.length > 0) {
+                session.guidedResponse = session.pendingGuidedResponses.shift();
+                resolve();
+                return;
+              }
               session.guidedResponseResolver = resolve;
             });
             timeoutPromise = new Promise((resolve) => {
@@ -1179,10 +1227,12 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             } else {
               const studentResponse = session.guidedResponse;
               session.guidedResponse = null;
+              const answerText = studentResponse?.text || '';
               result = {
                 student_response: studentResponse,
                 timed_out: false,
-                freeform_text: studentResponse?.text || null,
+                freeform_text: answerText,
+                message: `The student responded: "${answerText}". You MUST acknowledge and evaluate this response BEFORE continuing. If they answered a question, assess correctness. If they expressed confusion, address it. Do NOT skip over their response.`,
               };
             }
           } else {
@@ -1197,6 +1247,11 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           // Set up resolver BEFORE TTS so early responses are captured
           const responsePromise = new Promise((resolve) => {
             if (session.guidedResponse) { resolve(); return; }
+            if (session.pendingGuidedResponses?.length > 0) {
+              session.guidedResponse = session.pendingGuidedResponses.shift();
+              resolve();
+              return;
+            }
             session.guidedResponseResolver = resolve;
           });
           const timeoutPromise = new Promise((resolve) => {
@@ -1250,6 +1305,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             const studentResponse = session.guidedResponse;
             session.guidedResponse = null;
             sendJSON(ws, { type: 'clear_guided_options' });
+            const answerText = studentResponse?.text || studentResponse?.labels?.join(', ') || studentResponse?.optionId || '';
             result = {
               student_response: studentResponse,
               timed_out: false,
@@ -1257,6 +1313,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               selected_option_ids: studentResponse?.optionIds || null,
               selected_labels: studentResponse?.labels || null,
               freeform_text: studentResponse?.text || null,
+              message: `The student answered: "${answerText}". You MUST evaluate this answer for correctness BEFORE continuing. If wrong, explain why and give the correct answer. If correct, give brief praise. Do NOT ignore this response.`,
             };
           }
         } else if (block.name === 'get_renderer_docs') {
@@ -1291,74 +1348,61 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           }
         } else if (block.name === 'run_solver') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          try {
-            const sr = await solveProblem(
-              block.input.subproblem_text,
-              statusCb,
-              session.imageBase64,
-              session.imageMimeType,
-              session.anthropicClient
-            );
+          pendingSolverPromise = solveProblem(
+            block.input.subproblem_text,
+            statusCb,
+            session.imageBase64,
+            session.imageMimeType,
+            session.anthropicClient
+          ).then((sr) => {
             if (sr.success) {
               solverResult = sr;
-              // Rebuild system prompt with solver context
               systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(sr);
-              result = {
-                success: true,
-                message: `Solver completed. Approach: ${sr.approach}. Confidence: ${sr.confidence}. Key insight: ${sr.keyInsight}. Use this as your north star — guide toward this approach without revealing you pre-solved it.`,
-                approach: sr.approach,
-                complexity: sr.complexity,
-                keyInsight: sr.keyInsight,
-                solution: sr.solution,
-                paradigmShift: sr.paradigmShift,
-                obviousApproach: sr.obviousApproach,
-              };
-            } else {
-              result = { success: false, message: 'Solver could not find a solution. Proceed without a north star — guide the student using your own reasoning.' };
             }
-          } catch (err) {
-            console.error('[GuidedAgent] Solver error:', err.message);
-            result = { success: false, message: 'Solver failed. Proceed without a north star.' };
-          }
+            return sr;
+          }).catch((err) => {
+            console.error('[GuidedAgent] Background solver error:', err.message);
+            return { success: false };
+          });
+
+          result = {
+            success: true, pending: true,
+            message: 'Solver running in background. Proceed to STAGE 0 — classify the problem with the student.',
+          };
         } else if (block.name === 'run_solver_batch') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          try {
-            const subproblems = block.input.subproblems.map((sp) => ({
-              part_label: sp.part_label,
-              text: sp.subproblem_text,
-            }));
-            const batchResult = await solveProblems(
-              subproblems,
-              statusCb,
-              session.imageBase64,
-              session.imageMimeType,
-              session.anthropicClient
-            );
+          const subproblems = block.input.subproblems.map((sp) => ({
+            part_label: sp.part_label,
+            text: sp.subproblem_text,
+          }));
+          selectedParts = subproblems.map((sp) => sp.part_label);
+          activePart = selectedParts[0];
+
+          pendingSolverPromise = solveProblems(
+            subproblems,
+            statusCb,
+            session.imageBase64,
+            session.imageMimeType,
+            session.anthropicClient
+          ).then((batchResult) => {
             if (batchResult.success) {
               solverResultsMap = batchResult.solutions;
-              selectedParts = subproblems.map((sp) => sp.part_label);
-              activePart = selectedParts[0];
-              // Set active solver result to first part
               solverResult = solverResultsMap[activePart];
               systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
-              sessionPlan = null; // Reset classification for new part
-
-              const partSummaries = Object.entries(solverResultsMap)
-                .map(([label, sr]) => `  Part ${label}: ${sr.approach} (${sr.confidence})`)
-                .join('\n');
-              result = {
-                success: true,
-                active_part: activePart,
-                selected_parts: selectedParts,
-                message: `Batch solver completed. ${selectedParts.length} parts solved:\n${partSummaries}\n\nNow active on Part ${activePart}. Guide through this part first. When done, call switch_part to move to the next part.`,
-              };
-            } else {
-              result = { success: false, message: 'Batch solver could not find solutions. Proceed without a north star.' };
+              sessionPlan = null;
             }
-          } catch (err) {
-            console.error('[GuidedAgent] Batch solver error:', err.message);
-            result = { success: false, message: 'Batch solver failed. Proceed without a north star.' };
-          }
+            return batchResult;
+          }).catch((err) => {
+            console.error('[GuidedAgent] Background batch solver error:', err.message);
+            return { success: false };
+          });
+
+          result = {
+            success: true, pending: true,
+            active_part: activePart,
+            selected_parts: selectedParts,
+            message: 'Batch solver running in background. Proceed to STAGE 0 with the first part — classify the problem with the student.',
+          };
         } else if (block.name === 'switch_part') {
           const targetLabel = block.input.part_label;
           if (!solverResultsMap[targetLabel]) {
@@ -1389,6 +1433,20 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           tool_use_id: block.id,
           content: JSON.stringify(result),
         });
+
+        // Track viz state for viz_action reminders
+        if (block.name === 'create_visualization' || block.name === 'create_graph' || block.name === 'update_graph') {
+          vizActive = true;
+          segmentsWithoutVizActions = 0;
+        }
+        if (block.name === 'emit_segment') {
+          const hasVizActions = block.input?.viz_actions?.length > 0 || block.input?.trace_step_indices?.length > 0;
+          if (hasVizActions) {
+            segmentsWithoutVizActions = 0;
+          } else {
+            segmentsWithoutVizActions++;
+          }
+        }
 
         // DB save hooks (fire-and-forget)
         if (session.conversationId) {
@@ -1433,6 +1491,15 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           messages.push({ role: 'user', content: [...toolResults] });
           break;
         }
+      }
+
+      // Inject viz reminder if visualization is active but recent segments had no viz_actions
+      if (!interrupted && vizActive && segmentsWithoutVizActions >= 3) {
+        toolResults.push({
+          type: 'text',
+          text: '[VIZ REMINDER] You have an active visualization but recent segments had no viz_actions. When referencing specific nodes, edges, or steps, remember to include highlight actions.',
+        });
+        segmentsWithoutVizActions = 0;
       }
 
       if (!interrupted && toolResults.length > 0) {

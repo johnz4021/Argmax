@@ -268,7 +268,17 @@ export function normalizeTTSText(text) {
  */
 export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 1, sendJsonFn = null, shouldAbort = null, muted = false) {
   if (muted) {
-    // Skip TTS entirely — no audio, no delay
+    // Skip TTS audio but add a reading-speed delay so segments don't fly by
+    const wordCount = normalizeTTSText(text).split(/\s+/).length;
+    // ~180 WPM reading speed, adjusted by speed multiplier
+    const readingDelayMs = (wordCount * 333) / speedMultiplier;
+    const start = Date.now();
+    while (Date.now() - start < readingDelayMs) {
+      if (shouldAbort && shouldAbort()) {
+        return { aborted: true };
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
     return { aborted: false };
   }
 

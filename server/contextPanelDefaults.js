@@ -127,3 +127,92 @@ const PANEL_DEFAULTS = {
 export function getDefaultContextPanels(algorithm) {
   return PANEL_DEFAULTS[algorithm] || [];
 }
+
+// --- Mode-based presets for non-execution reasoning modes ---
+
+const MODE_DEFAULTS = {
+  greedy_design: {
+    renderer: null, // determined by keyword matching on target algorithm
+    context_panels: [
+      {
+        id: 'greedy_rule', type: 'expression', title: 'Greedy Rule',
+        initial_data: { label: 'Greedy Rule', lines: [
+          { label: 'Criterion', text: '___' },
+        ] },
+      },
+      {
+        id: 'proof_skeleton', type: 'expression', title: 'Proof Skeleton',
+        initial_data: { label: 'Exchange Argument', lines: [
+          { label: 'Lower bound', text: '___' },
+          { label: 'Upper bound', text: '___' },
+          { label: 'Combining', text: '___' },
+        ] },
+      },
+    ],
+  },
+  dp_design: {
+    renderer: 'table',
+    context_panels: [
+      {
+        id: 'dp_definition', type: 'expression', title: 'DP Definition',
+        initial_data: { label: 'Subproblem', lines: [
+          { label: 'Definition', text: '___' },
+        ] },
+      },
+      {
+        id: 'recurrence', type: 'expression', title: 'Recurrence',
+        initial_data: { label: 'Recurrence', lines: [
+          { label: 'Recurrence', text: '___' },
+          { label: 'Base case', text: '___' },
+        ] },
+      },
+    ],
+  },
+  modeling: {
+    renderer: 'graph',
+    context_panels: [
+      {
+        id: 'formulation', type: 'expression', title: 'Formulation',
+        initial_data: { label: 'Formulation', lines: [
+          { label: 'Variables', text: '___' },
+          { label: 'Objective', text: '___' },
+          { label: 'Constraints', text: '___' },
+        ] },
+      },
+    ],
+  },
+  dc_design: {
+    renderer: null,
+    context_panels: [
+      {
+        id: 'dc_structure', type: 'expression', title: 'D&C Structure',
+        initial_data: { label: 'Divide & Conquer', lines: [
+          { label: 'Split', text: '___' },
+          { label: 'Subproblems', text: '___' },
+          { label: 'Combine', text: '___' },
+          { label: '$T(n)$', text: '___' },
+        ] },
+      },
+    ],
+  },
+  runtime: {
+    renderer: null,
+    context_panels: [
+      {
+        id: 'runtime_analysis', type: 'expression', title: 'Runtime Analysis',
+        initial_data: { label: 'Runtime', lines: [
+          { label: '$T(n)$', text: '___' },
+        ] },
+      },
+    ],
+  },
+};
+
+/**
+ * Return the default renderer and context panels for a non-execution reasoning mode.
+ * @param {string} reasoning_mode - e.g. 'greedy_design', 'dp_design', 'modeling'
+ * @returns {{ renderer: string|null, context_panels: Array } | null}
+ */
+export function getModeDefaultPanels(reasoning_mode) {
+  return MODE_DEFAULTS[reasoning_mode] || null;
+}

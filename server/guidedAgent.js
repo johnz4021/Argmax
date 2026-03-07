@@ -7,7 +7,7 @@ import { handleToolCall, sendJSON, sendBinary } from './agent.js';
 import { synthesizeAndStream } from './tts.js';
 import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
-import { getDefaultContextPanels } from './contextPanelDefaults.js';
+import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
@@ -98,6 +98,9 @@ ALGORITHM EXECUTION MODE (existing flow):
 
 MODELING MODE (LP, reductions, duality):
   Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
+  After classify_problem, a Formulation panel is auto-configured with placeholder lines
+  (Variables, Objective, Constraints). Use emit_segment with viz_actions
+  (renderer:"context", action:"update") to fill in panel content as the student works.
 
   Follow the Modeling Template:
   NOTE: For each step below, the student should PROPOSE the content first.
@@ -106,9 +109,7 @@ MODELING MODE (LP, reductions, duality):
   (corrected if needed), not with your pre-planned version.
 
   1. OBJECTS — Ask "What are the decision variables?"
-     Call create_visualization with context_panels containing an expression panel
-     with initial_data that has the first line (variables).
-     Also set up the example graph via update_graph if applicable.
+     Set up the example graph via update_graph if applicable.
   2. OBJECTIVE — Ask "What is being optimized?"
      Use emit_segment with viz_actions to update the formulation panel (add objective line)
      and highlight relevant graph edges.
@@ -125,6 +126,9 @@ MODELING MODE (LP, reductions, duality):
   The related algorithm provides context, not execution.
 
 GREEDY DESIGN MODE:
+  After classify_problem, Greedy Rule and Proof Skeleton panels are auto-configured.
+  Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
+
   1. RULE — Guide student to propose the greedy criterion (student-produces)
   2. EXAMPLE — Set up a concrete example and trace through the greedy behavior.
      The tutor CAN lead the example walkthrough — this is setup, not the learning
@@ -136,8 +140,7 @@ GREEDY DESIGN MODE:
      - Use the hint escalation ladder if they're stuck
      - After they've produced a version: confirm, refine, or correct it
   4. PROOF — This is the critical learning moment. Do NOT write the proof for them.
-     - Set up an expression panel with skeleton headers:
-       "Lower bound: ___", "Upper bound: ___", "Combining: ___"
+     - The Proof Skeleton panel already has headers: "Lower bound: ___", "Upper bound: ___", "Combining: ___"
      - Ask the student to fill each section, one at a time
      - The student should articulate WHY greedy ≤ OPT before seeing the formal proof
      - Only complete a section yourself after the student has attempted it and
@@ -145,9 +148,12 @@ GREEDY DESIGN MODE:
   5. RUNTIME — Ask the student to analyze (usually straightforward, Level 2-3 is fine)
 
 DP DESIGN MODE:
+  After classify_problem, DP Definition and Recurrence panels are auto-configured.
+  Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
+
   1. SUBPROBLEM — "What does dp[i] (or dp[i][j]) represent?" (student-produces)
      This is the hardest part. Use hint escalation ladder starting at Level 0.
-  2. RECURRENCE — Set up an expression panel with a blank recurrence.
+  2. RECURRENCE — The Recurrence panel already has blank placeholders.
      Ask the student to write the recurrence. Do NOT fill it in for them.
      Use emit_segment viz_actions to update the panel only after the student
      provides their version (correct or corrected).
@@ -157,15 +163,21 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
+  After classify_problem, a D&C Structure panel is auto-configured with placeholders
+  (Split, Subproblems, Combine, T(n)). Use emit_segment viz_actions to fill them.
+
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
   4. RECURRENCE — Write T(n) = ... and solve it
 
 RUNTIME / ASYMPTOTICS MODE:
+  After classify_problem, a Runtime Analysis panel is auto-configured.
+  Use emit_segment viz_actions (renderer:"context", action:"update") to fill it.
+
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method applies (Master theorem, substitution, recursion tree)
-  3. Walk through the proof steps using expression panels.
+  3. Walk through the proof steps using the auto-configured expression panel.
      Use emit_segment viz_actions with renderer:"context" to display recurrence steps.
   4. Use concrete values to build intuition
 
@@ -174,7 +186,12 @@ HANDLING STUDENT MESSAGES:
 - The student may answer in free text instead of clicking options — incorporate naturally.
 - When a student answers a send_options question, you'll get the result in the tool response.
 - If the student gives a wrong answer:
-  1. FIRST wrong attempt: Briefly say WHY their answer is wrong (1 sentence), then give a targeted hint.
+  CRITICAL: You must EXPLICITLY ADDRESS the student's answer. Never silently replace it
+  with the correct one. Never say "Okay" or "Right" and then proceed with a different answer.
+  The student must understand WHY their answer was wrong before you move on.
+  1. FIRST wrong attempt: Say "Not quite — [their answer] doesn't work here because [reason]."
+     Then give a targeted hint toward the correct answer. Do NOT reveal the correct answer yet.
+     Do NOT skip ahead as if they answered correctly.
   2. SECOND wrong attempt on the SAME concept: State the correct answer directly
      via conversational_reply with wait_for_response: true.
      Say "Actually, [correct answer] because [reason]."
@@ -183,6 +200,18 @@ HANDLING STUDENT MESSAGES:
      on the same point.
   - Do NOT ask another Socratic question about a concept the student just got wrong twice.
   - After the acknowledgement, gate on a DIFFERENT aspect to verify understanding.
+  - If a student PUSHES BACK or disagrees with your correction, briefly re-explain
+    why the correct answer is right (1-2 sentences). Do NOT capitulate to an incorrect answer
+    just because the student insists. But DO acknowledge their reasoning and explain
+    specifically where it breaks down.
+  - If the student gives a CORRECT answer:
+    Give brief praise (1 sentence max) and IMMEDIATELY advance to the next step.
+    Do NOT ask follow-up probing questions on the same concept — a correct answer
+    already demonstrates understanding. Do NOT say "Right! And can you also explain why..."
+    or "Good! But what about..." — just move on.
+    IMPORTANT: Use conversational_reply with wait_for_response: false for the praise,
+    then continue with emit_segment or the next tool call in the SAME turn.
+    Do NOT use wait_for_response: true for praise — that blocks progress.
 
 SOCRATIC DIALOGUE MODE:
   Triggers — use conversational_reply (NOT emit_segment) when the student:
@@ -226,6 +255,16 @@ SOCRATIC DIALOGUE MODE:
   - Anti-patterns to avoid: paragraphs of explanation, "Think of it this way..."
     + 3 sentences, restating the same point, preemptively answering follow-ups.
   - If the message is not conceptual (e.g., "go back", "skip"), use normal flow.
+  - CORRECT ANSWER = DONE: If the student answers your Socratic question correctly,
+    give brief praise via conversational_reply with wait_for_response: false, then
+    IMMEDIATELY continue with emit_segment or the next tool in the SAME turn.
+    Do NOT ask additional probing questions on a concept the student just got right.
+  - MOVE-ON SIGNALS: If the student says anything like "I understand", "I get it",
+    "let's move on", "let's continue", "okay move on", "next", "skip", "got it",
+    or otherwise signals they want to advance — IMMEDIATELY stop the Socratic sequence.
+    Use conversational_reply with wait_for_response: false for any brief summary,
+    then proceed to the next stage in the SAME turn.
+    Do NOT ask "are you sure?" or re-probe. Respect the student's pace.
 
 MONOLOGUE CAP:
 - HARD RULE: Never emit more than 2 consecutive emit_segments without student input.
@@ -281,7 +320,8 @@ GUARDRAILS:
   do NOT call run_algorithm unless the student explicitly asks to see it run.
 - Use formal model panels (expression panels with lines mode) to keep structured
   information visible: variables, objective, constraints, recurrences, invariants.
-- Set up panels via create_visualization with context_panels AND initial_data before narrating.
+- In non-execution modes, context panels are auto-configured after classify_problem.
+  Use emit_segment viz_actions to fill them — no need to call create_visualization.
 - VISUALIZATION USAGE RULE: When a visualization is active and you reference a specific
   node, edge, cell, or algorithmic step by name in your narration, ALWAYS include a
   corresponding viz_action to highlight it. Conversational segments (questions, praise,
@@ -410,23 +450,13 @@ COMPREHENSION GATES:
 
 TOOL USAGE FOR NON-EXECUTION MODES:
 
-A. Creating an expression panel with initial content:
-  To set up a formal model panel, call create_visualization with initial_data containing lines:
-    create_visualization({
-      panels: [],
-      context_panels: [{
-        id: "formulation",
-        type: "expression",
-        title: "LP Formulation",
-        initial_data: {
-          label: "LP: Flow Distance",
-          lines: [{ label: "Variables", text: "$f_{uv}$ for each directed edge $(u,v)$" }]
-        }
-      }]
-    })
+A. Context panels are AUTO-CONFIGURED after classify_problem. You do NOT need to call
+  create_visualization — panels are already set up with placeholder content.
+  You CAN still call create_visualization manually if you need to override the auto-setup
+  (e.g., mount additional renderer panels or add extra context panels).
 
-B. Updating the panel incrementally as you build the formulation:
-  To add lines to an existing panel, use emit_segment with a context viz_action.
+B. Updating panels incrementally as you build the formulation:
+  Use emit_segment with a context viz_action.
   NOTE: lines is an array — each update must include ALL lines accumulated so far.
     emit_segment({
       narration: "Now let's add the objective...",
@@ -445,9 +475,8 @@ B. Updating the panel incrementally as you build the formulation:
     })
 
 C. Visualizing with any renderer in non-execution mode:
-  Mount a renderer panel, then send viz_actions via emit_segment.
-  Setup: create_visualization({ panels: [{ renderer: "<type>" }], context_panels: [...] })
-  You can mount multiple renderer panels for problems needing more than one (e.g. table + graph).
+  A renderer panel is auto-mounted based on the problem type. You can mount additional
+  renderer panels via create_visualization if needed (e.g. table + graph).
 
   Available renderers and actions:
   - graph: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label
@@ -1007,7 +1036,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime.`
               : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence.`;
 
-            // Auto-inject primary renderer docs for non-execution modes
+            // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
             if (plan.reasoning_mode !== 'algorithm_execution') {
               const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
               const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
@@ -1020,6 +1049,23 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               console.log(`[GuidedAgent] Non-execution mode: targetAlgo=${targetAlgo}, algoInfo=${!!algoInfo}, rendererType=${rendererType}`);
               const rendererDocs = buildRendererDocs([rendererType]);
               message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
+
+              // Auto-create visualization with mode-based preset panels
+              const modeDefaults = getModeDefaultPanels(plan.reasoning_mode);
+              if (modeDefaults) {
+                const autoRenderer = modeDefaults.renderer || rendererType;
+                const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
+                sendJSON(ws, {
+                  type: 'create_visualization',
+                  panels,
+                  context_panels: modeDefaults.context_panels,
+                });
+                vizActive = true;
+                segmentsWithoutVizActions = 0;
+                const panelIds = modeDefaults.context_panels.map(p => p.id);
+                message += `\n\nAUTO-CONFIGURED PANELS: Visualization created with renderer "${autoRenderer}" and context panels: ${panelIds.join(', ')}. Use emit_segment with viz_actions (renderer:"context", action:"update", params:{panel_id:"<id>", ...}) to fill in panel content as the student works through each step. Do NOT call create_visualization — it's already set up.`;
+                console.log(`[GuidedAgent] Auto-created visualization: renderer=${autoRenderer}, panels=${panelIds.join(', ')}`);
+              }
             }
 
             result = { success: true, message };
@@ -1241,7 +1287,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                 student_response: studentResponse,
                 timed_out: false,
                 freeform_text: answerText,
-                message: `The student responded: "${answerText}". You MUST acknowledge and evaluate this response BEFORE continuing. If they answered a question, assess correctness. If they expressed confusion, address it. Do NOT skip over their response.`,
+                message: `The student responded: "${answerText}". STOP and address this response BEFORE doing anything else. If the student answered CORRECTLY or is signaling they want to move on (e.g., "I understand", "I get it", "let's move on", "got it", "next", "skip", "continue") — give brief praise via conversational_reply with wait_for_response: false, then advance to the next stage in the SAME turn using emit_segment or send_options. Do NOT use wait_for_response: true for praise. Do NOT ask follow-up probing questions on a concept they just got right. If they are disagreeing, re-explain your reasoning. If they expressed confusion, address it.`,
               };
             }
           } else {
@@ -1322,7 +1368,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               selected_option_ids: studentResponse?.optionIds || null,
               selected_labels: studentResponse?.labels || null,
               freeform_text: studentResponse?.text || null,
-              message: `The student answered: "${answerText}". You MUST evaluate this answer for correctness BEFORE continuing. If wrong, explain why and give the correct answer. If correct, give brief praise. Do NOT ignore this response.`,
+              message: `The student answered: "${answerText}". STOP and evaluate this answer BEFORE doing anything else. If their answer is WRONG: you must say "Not quite — [their answer] doesn't work because [reason]" and give a hint. Do NOT silently proceed with the correct answer as if they agreed. Do NOT say "Okay" and then use a different answer. The student must hear explicit feedback on what they said. If CORRECT: give brief praise (1 sentence) via conversational_reply with wait_for_response: false, then continue advancing in the SAME turn. Do NOT ask follow-up probing questions on the same concept.`,
             };
           }
         } else if (block.name === 'get_renderer_docs') {

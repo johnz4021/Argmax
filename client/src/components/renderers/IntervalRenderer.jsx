@@ -12,6 +12,8 @@ const CLASS_COLORS = {
   sorted: 'bg-green-600/80 border-green-500',
 };
 
+const MIN_PX_PER_UNIT = 60;
+
 const MACHINE_COLORS = [
   'bg-blue-600/70 border-blue-400',
   'bg-purple-600/70 border-purple-400',
@@ -232,6 +234,7 @@ export default function IntervalRenderer({
   const timeMin = jobs.length > 0 ? Math.min(...jobs.map(j => j.start)) : 0;
   const timeMax = jobs.length > 0 ? Math.max(...jobs.map(j => j.end)) : 10;
   const timeRange = timeMax - timeMin || 1;
+  const minTimelineWidth = timeRange * MIN_PX_PER_UNIT;
 
   // Group jobs by machine assignment
   const assignedJobs = {};
@@ -315,7 +318,7 @@ export default function IntervalRenderer({
 
   const renderRow = (label, rowJobs, rowIndex) => (
     <div key={`row-${rowIndex}-${label}`} className="flex items-stretch min-h-[36px]">
-      <div className="w-24 flex-shrink-0 flex items-center justify-end pr-3">
+      <div className="w-16 flex-shrink-0 flex items-center justify-end pr-3">
         <span className="text-xs font-mono text-gray-400 truncate">{label}</span>
       </div>
       <div className="flex-1 relative border-b border-gray-800">
@@ -325,7 +328,7 @@ export default function IntervalRenderer({
   );
 
   return (
-    <div className="relative h-full flex flex-col p-6 overflow-auto">
+    <div className="relative h-full flex flex-col p-4 overflow-auto">
       {phase && (
         <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
           {phase}
@@ -344,7 +347,7 @@ export default function IntervalRenderer({
           <p className="text-gray-500">Waiting for interval data...</p>
         </div>
       ) : (
-        <div className="w-full max-w-4xl mx-auto flex flex-col gap-1 mt-8">
+        <div className="flex flex-col gap-1 mt-8" style={{ minWidth: minTimelineWidth + 64 }}>
           {/* Machine rows */}
           {machines.map((name, i) => renderRow(name, assignedJobs[i] || [], i))}
 
@@ -355,7 +358,7 @@ export default function IntervalRenderer({
 
           {/* Time axis */}
           <div className="flex items-start mt-1">
-            <div className="w-24 flex-shrink-0" />
+            <div className="w-16 flex-shrink-0" />
             <div className="flex-1 relative h-6">
               {ticks.map((t, i) => {
                 const left = ((t - timeMin) / timeRange) * 100;
@@ -375,7 +378,7 @@ export default function IntervalRenderer({
           {/* Sweep line */}
           {sweepLine !== null && (
             <div className="flex items-start">
-              <div className="w-24 flex-shrink-0" />
+              <div className="w-16 flex-shrink-0" />
               <div className="flex-1 relative" style={{ height: 0 }}>
                 <div
                   className="absolute bg-red-500/80 z-20"
@@ -397,7 +400,7 @@ export default function IntervalRenderer({
           {/* Overlap indicators */}
           {overlaps.length > 0 && (
             <div className="flex items-start mt-2">
-              <div className="w-24 flex-shrink-0" />
+              <div className="w-16 flex-shrink-0" />
               <div className="flex-1">
                 <div className="flex flex-wrap gap-2">
                   {overlaps.map((o, i) => (

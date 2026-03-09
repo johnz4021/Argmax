@@ -1258,6 +1258,13 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                 resolve();
                 return;
               }
+              // Drain queued freeform messages that arrived during API call
+              if (session.guidedMessageQueue?.length > 0) {
+                const queued = session.guidedMessageQueue.shift();
+                session.guidedResponse = { text: queued, timestamp: Date.now() };
+                resolve();
+                return;
+              }
               session.guidedResponseResolver = resolve;
             });
             timeoutPromise = new Promise((resolve) => {
@@ -1332,6 +1339,13 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             if (session.guidedResponse) { resolve(); return; }
             if (session.pendingGuidedResponses?.length > 0) {
               session.guidedResponse = session.pendingGuidedResponses.shift();
+              resolve();
+              return;
+            }
+            // Drain queued freeform messages that arrived during API call
+            if (session.guidedMessageQueue?.length > 0) {
+              const queued = session.guidedMessageQueue.shift();
+              session.guidedResponse = { text: queued, timestamp: Date.now() };
               resolve();
               return;
             }

@@ -5,7 +5,7 @@ import { knapsack, lcs, editDistance, coinChange } from './dp/index.js';
 import { linkedListReversal, stackOperations, queueOperations } from './linked/index.js';
 import { bstInsert, heapOperations } from './tree/index.js';
 import { gcd } from './math/gcd.js';
-import { graphColoringNP, DEFAULT_COLORING_GRAPH, polyReduction, DEFAULT_REDUCTION_FORMULA, DEFAULT_REDUCTION_GRAPH } from './complexity/index.js';
+import { graphColoringNP, DEFAULT_COLORING_GRAPH, polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -226,7 +226,7 @@ export const ALGORITHMS = {
     run: (input) => polyReduction(input.formula),
     renderer: 'graph',
     category: 'Complexity Theory',
-    defaultInput: { formula: DEFAULT_REDUCTION_FORMULA, graph: DEFAULT_REDUCTION_GRAPH },
+    defaultInput: { formula: DEFAULT_REDUCTION_FORMULA, graph: { nodes: [], edges: [], directed: false, positions: {} } },
     capabilities: { supports_directed: false, max_nodes: 12 },
   },
 };

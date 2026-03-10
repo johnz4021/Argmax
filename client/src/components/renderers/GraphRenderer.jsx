@@ -383,7 +383,7 @@ export default function GraphRenderer({
     for (const node of graph.nodes) {
       elements.push({
         group: 'nodes',
-        data: { id: node.id, label: node.label || node.id },
+        data: { id: node.id, label: node.label || node.id, originalLabel: node.label || node.id },
         position: graph.positions?.[node.id] || { x: 0, y: 0 },
       });
     }

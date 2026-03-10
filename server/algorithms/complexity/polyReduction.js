@@ -125,6 +125,14 @@ export function polyReduction(formula) {
     ];
     triangleEdges.push(...triEdges);
 
+    // Pull positions from the pre-built graph
+    const nodePositions = {};
+    for (const nid of nodeIds) {
+      if (DEFAULT_REDUCTION_GRAPH.positions[nid]) {
+        nodePositions[nid] = DEFAULT_REDUCTION_GRAPH.positions[nid];
+      }
+    }
+
     trace.push({
       type: 'build_clause_gadget',
       clause_index: ci + 1,
@@ -132,6 +140,7 @@ export function polyReduction(formula) {
       node_ids: nodeIds,
       literals: clause,
       triangle_edges: triEdges,
+      node_positions: nodePositions,
       description: `Clause ${ci + 1}: ${formatClause(clause)} → create triangle with nodes ${nodeIds.join(', ')}. Triangle edges force at most ONE node selected per clause.`,
     });
   }

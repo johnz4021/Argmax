@@ -476,16 +476,31 @@ Graph 3-Coloring NP (graph_coloring_np):
 Polynomial Reductions (poly_reduction):
   Follow this phase structure:
 
+  PHASE 0 — Define Independent Set (BEFORE running the algorithm):
+  - Start by defining Independent Set: "An independent set is a set of nodes in a graph
+    where NO two nodes share an edge."
+  - Give a tiny example: "In a triangle (3 nodes, 3 edges), the largest independent set
+    is just 1 node — any two nodes share an edge."
+  - State the decision problem: "Given a graph and a number k, does it contain an
+    independent set of size k?"
+  - Motivate the reduction: "We'll prove Independent Set is NP-Complete by reducing
+    3-SAT to it. If we could solve Independent Set efficiently, we could solve 3-SAT."
+  - Ask a quick comprehension question: "In a graph with 4 nodes in a line (A-B-C-D),
+    what's the largest independent set?" (Answer: 2, e.g. {A,C} or {B,D})
+  - THEN run the algorithm.
+
   PHASE 1 — Formula (show_formula step):
   - Present the 3-SAT formula. Explain: each clause must have at least one true literal.
   - Ask: "Can you find values for x₁, x₂, x₃ that satisfy ALL three clauses?" Give
     them a moment to think before showing the construction.
 
   PHASE 2 — Construction (build_clause_gadget / add_conflict_edges steps):
-  - Build triangles one clause at a time. "Each triangle represents a clause. The
-    triangle edges mean we can pick AT MOST one literal from each clause."
-  - Then add conflict edges: "x₁ and ¬x₁ can't both be true — so we connect them.
-    This prevents inconsistent assignments."
+  - The graph starts EMPTY. Nodes and edges appear progressively as you narrate.
+  - Build triangles one clause at a time. Each build_clause_gadget step adds 3 nodes
+    and 3 triangle edges. "Each triangle represents a clause. The triangle edges mean
+    we can pick AT MOST one literal from each clause."
+  - Then add conflict edges (add_conflict_edges step adds them all): "x₁ and ¬x₁ can't
+    both be true — so we connect them. This prevents inconsistent assignments."
   - Key insight: "Triangle edges = at most one per clause. Conflict edges = consistency."
 
   PHASE 3 — Solution (find_independent_set / map_to_assignment steps):
@@ -532,7 +547,7 @@ function buildInitialPrompt(algorithm, source) {
   }
 
   if (algorithm === 'poly_reduction') {
-    return `Please teach me polynomial reductions by reducing 3-SAT to Independent Set. Use the default formula. Run the algorithm and narrate each step. Start with ONE introduction segment, then present the formula and build the gadget graph.`;
+    return `Please teach me polynomial reductions by reducing 3-SAT to Independent Set. Use the default formula. Start by explaining what Independent Set is (Phase 0) before running the algorithm. Then run the algorithm and narrate each step, building the graph progressively.`;
   }
 
   if (algoInfo.renderer === 'graph') {

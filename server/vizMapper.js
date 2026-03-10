@@ -648,12 +648,19 @@ function mapGraphStep(algo, step, state) {
     }
 
     case 'build_clause_gadget': {
-      // Highlight the 3 nodes in this clause triangle
-      for (const nodeId of step.node_ids) {
+      // Add nodes for this clause triangle progressively
+      for (let i = 0; i < step.node_ids.length; i++) {
+        const nodeId = step.node_ids[i];
+        const label = step.literals[i] || nodeId;
+        // Use unicode subscripts for display labels
+        const displayLabel = label.replace(/x(\d)/g, (_, d) => `x${String.fromCharCode(0x2080 + parseInt(d))}`);
+        const position = step.node_positions?.[nodeId] || { x: 0, y: 0 };
+        v.push(viz('graph', 'add_node', { id: nodeId, label: displayLabel, position }));
         v.push(viz('graph', 'highlight_node', { node: nodeId, className: 'current' }));
       }
-      // Highlight triangle edges
+      // Add triangle edges
       for (const edge of step.triangle_edges) {
+        v.push(viz('graph', 'add_edge', { from: edge.source, to: edge.target, undirected: true }));
         v.push(viz('graph', 'highlight_edge', { from: edge.source, to: edge.target, className: 'highlighted' }));
       }
       c.push(ctxUpdate('reduction_status', {
@@ -668,8 +675,9 @@ function mapGraphStep(algo, step, state) {
 
     case 'add_conflict_edges': {
       v.push(viz('graph', 'reset_highlights', {}));
+      // Add conflict edges progressively
       for (const edge of step.conflict_edges) {
-        v.push(viz('graph', 'highlight_edge', { from: edge.source, to: edge.target, className: 'examining' }));
+        v.push(viz('graph', 'add_edge', { from: edge.source, to: edge.target, undirected: true, className: 'examining' }));
       }
       c.push(ctxUpdate('reduction_status', {
         entries: [

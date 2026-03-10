@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
 import { handleToolCall, sendJSON, sendBinary } from './agent.js';
-import { synthesizeAndStream } from './tts.js';
+import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDefaults.js';
@@ -794,6 +794,16 @@ RULES:
 }
 
 export async function startGuidedSession(session, problemText, imageBase64, imageMimeType) {
+  // Clear stale state from previous session
+  resetTTSDisabled();
+  session.currentGraph = null;
+  session.currentTrace = null;
+  session.currentRenderer = null;
+  session.currentAlgorithm = null;
+  session.mapperState = {};
+  session._emittedTraceSteps = [];
+  session._savedGraphState = null;
+
   const { ws } = session;
   sendJSON(ws, { type: 'guided_start', problemText });
 

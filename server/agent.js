@@ -6,7 +6,7 @@ import { runAlgorithm } from './algorithms.js';
 import { runRegisteredAlgorithm, runAlgorithmWithFallback, ALGORITHMS } from './algorithms/registry.js';
 import { validateAlgorithmInput } from './algorithms/validateInput.js';
 import { adaptAlgorithmInput } from './algorithms/adaptInput.js';
-import { synthesizeAndStream } from './tts.js';
+import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
@@ -614,6 +614,7 @@ function restoreGraphState(session, ws) {
 
 export async function startAgentSession(session, algorithm, graph, source) {
   // Clear stale state from previous lesson
+  resetTTSDisabled();
   session.currentGraph = null;
   session.currentTrace = null;
   session.currentRenderer = null;

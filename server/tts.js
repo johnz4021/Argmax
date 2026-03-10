@@ -8,6 +8,13 @@ const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL';
 // Auto-disable TTS after ElevenLabs failures (rate limit, credit exhaustion, etc.)
 let ttsDisabled = false;
 
+export function resetTTSDisabled() {
+  if (ttsDisabled) {
+    console.log('[TTS] Re-enabling TTS for new session');
+    ttsDisabled = false;
+  }
+}
+
 /**
  * Convert math/CS notation into speakable English for TTS.
  * ElevenLabs cannot handle symbols like dp[i][w], O(n log n), ≤, →, ∞, etc.

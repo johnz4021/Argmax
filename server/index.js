@@ -369,6 +369,9 @@ wss.on('connection', (ws, req) => {
           session.active = false;
           session.endSessionFlag = false;
           session.runGeneration++;
+          session.currentGraph = null;
+          session.currentTrace = null;
+          session._emittedTraceSteps = [];
           const resumeGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);

@@ -18,7 +18,7 @@ export const DEFAULT_REDUCTION_FORMULA = {
 };
 
 // Pre-built gadget graph matching the default formula
-// 9 nodes: one per literal per clause, arranged in 3 rows
+// 9 nodes: one per literal per clause, arranged in 3 triangles
 export const DEFAULT_REDUCTION_GRAPH = {
   nodes: [
     // Clause 1: (x1 ∨ ¬x2 ∨ x3)
@@ -55,18 +55,18 @@ export const DEFAULT_REDUCTION_GRAPH = {
   ],
   directed: false,
   positions: {
-    // Row 1 — Clause 1
-    c1_x1:  { x: 150, y: 80 },
-    c1_nx2: { x: 350, y: 80 },
-    c1_x3:  { x: 550, y: 80 },
-    // Row 2 — Clause 2
-    c2_nx1: { x: 150, y: 240 },
-    c2_x2:  { x: 350, y: 240 },
-    c2_nx3: { x: 550, y: 240 },
-    // Row 3 — Clause 3
-    c3_x1:  { x: 150, y: 400 },
-    c3_x2:  { x: 350, y: 400 },
-    c3_x3:  { x: 550, y: 400 },
+    // Clause 1 — triangle pointing down (▽)
+    c1_x1:  { x: 150, y: 60 },
+    c1_nx2: { x: 350, y: 140 },
+    c1_x3:  { x: 550, y: 60 },
+    // Clause 2 — triangle pointing up (△)
+    c2_nx1: { x: 150, y: 300 },
+    c2_x2:  { x: 350, y: 220 },
+    c2_nx3: { x: 550, y: 300 },
+    // Clause 3 — triangle pointing down (▽)
+    c3_x1:  { x: 150, y: 420 },
+    c3_x2:  { x: 350, y: 500 },
+    c3_x3:  { x: 550, y: 420 },
   },
 };
 

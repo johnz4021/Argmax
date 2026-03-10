@@ -613,6 +613,15 @@ function restoreGraphState(session, ws) {
 }
 
 export async function startAgentSession(session, algorithm, graph, source) {
+  // Clear stale state from previous lesson
+  session.currentGraph = null;
+  session.currentTrace = null;
+  session.currentRenderer = null;
+  session.currentAlgorithm = null;
+  session.mapperState = {};
+  session._emittedTraceSteps = [];
+  session._savedGraphState = null;
+
   const { ws } = session;
   const myGeneration = session.runGeneration;
 

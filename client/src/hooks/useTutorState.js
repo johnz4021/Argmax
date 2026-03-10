@@ -382,6 +382,7 @@ export function useTutorState() {
         dispatch({ type: 'GUIDED_TRANSITION' });
         break;
       case 'agent_status':
+        console.log('[State] AGENT_STATUS received:', msg.status, msg.tool);
         dispatch({ type: 'AGENT_STATUS', agentStatus: { status: msg.status, tool: msg.tool } });
         break;
       case 'error':

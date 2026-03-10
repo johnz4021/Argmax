@@ -1,5 +1,7 @@
 // Maps viz_action objects to Cytoscape API calls
 
+const ALL_TRANSIENT_CLASSES = 'highlighted current visited path ghost examining dimmed spotlit ghost-alt mst-edge strikethrough saturated augmenting min-cut source-side sink-side tapped residual-fwd residual-rev residual-dimmed color-red color-blue color-green';
+
 export function applyVizActions(cy, actions) {
   if (!cy || !actions) return;
 
@@ -49,7 +51,7 @@ function applyAction(cy, action) {
 
     case 'reset_highlights': {
       cy.elements('.residual-temp').remove();
-      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
+      cy.elements().removeClass(ALL_TRANSIENT_CLASSES);
       // Reset labels to just IDs
       cy.nodes().forEach((n) => {
         n.data('label', n.data('id'));
@@ -163,7 +165,7 @@ export function restoreSnapshot(cy, snapshot) {
     const ele = cy.getElementById(saved.id);
     if (!ele || ele.length === 0) continue;
 
-    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
+    ele.removeClass(ALL_TRANSIENT_CLASSES);
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }

@@ -142,6 +142,20 @@ function mapGraphStep(algo, step, state) {
             { key: 'Status', value: 'Initialized' },
           ],
         }));
+      } else if (algo === 'graph_coloring_np') {
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Phase', value: 'Starting', status: 'default' },
+            { key: 'Attempts', value: '0' },
+          ],
+        }));
+        c.push(ctxUpdate('concepts', { entries: [] }));
+      } else if (algo === 'poly_reduction') {
+        c.push(ctxUpdate('reduction_status', {
+          entries: [
+            { key: 'Phase', value: 'Introduction' },
+          ],
+        }));
       } else if (algo === 'maxflow') {
         // Set initial edge labels
         if (step.edge_labels) {
@@ -307,6 +321,25 @@ function mapGraphStep(algo, step, state) {
             { key: 'Min cut', value: step.min_cut, status: 'updated' },
           ],
         }));
+      }
+      if (algo === 'graph_coloring_np' && step.coloring) {
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Phase', value: 'Complete', status: 'updated' },
+            { key: 'Result', value: 'Graph 3-Coloring is NP-Complete' },
+          ],
+        }));
+        // Concepts panel already built incrementally via concept_intro steps — don't overwrite
+      }
+      if (algo === 'poly_reduction') {
+        c.push(ctxUpdate('reduction_status', {
+          entries: [
+            { key: 'Phase', value: 'Reduction complete', status: 'updated' },
+            { key: 'Result', value: 'Independent Set is NP-Complete' },
+            { key: 'Assignment', value: step.assignment ? Object.entries(step.assignment).map(([v, val]) => `${v}=${val}`).join(', ') : '' },
+          ],
+        }));
+        c.push(ctxLog('log', 'Reduction complete: Independent Set is NP-Complete', 'result'));
       }
       break;
     }
@@ -477,6 +510,215 @@ function mapGraphStep(algo, step, state) {
           { key: 'Status', value: 'Complete' },
         ],
       }));
+      break;
+    }
+
+    // ── Graph Coloring NP ─────────────────────────────────────────────
+    case 'attempt_coloring': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      if (step.node_classes) {
+        for (const [node, cls] of Object.entries(step.node_classes)) {
+          v.push(viz('graph', 'highlight_node', { node, className: cls }));
+        }
+      }
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Attempts', value: `${step.attempt_number} / ${step.total_possible}`, status: 'highlight' },
+          { key: 'Phase', value: 'Brute-force search' },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', `Attempt #${step.attempt_number}: ${step.description?.split(': ')[1] || '...'}`, 'info'));
+      break;
+    }
+
+    case 'coloring_conflict': {
+      v.push(viz('graph', 'highlight_edge', { from: step.from, to: step.to, className: 'examining' }));
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Attempts', value: `${step.attempt_number} / ${step.total_possible}` },
+          { key: 'Phase', value: 'Brute-force search' },
+          { key: 'Last result', value: 'CONFLICT', status: 'updated' },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', `FAIL: ${step.from}-${step.to} both ${step.color}`, 'decision'));
+      break;
+    }
+
+    case 'coloring_success': {
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Attempts', value: `${step.attempt_number} / ${step.total_possible}` },
+          { key: 'Phase', value: 'Brute-force search' },
+          { key: 'Last result', value: 'VALID!', status: 'updated' },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', `SUCCESS on attempt #${step.attempt_number}: ${step.coloring_str}`, 'result'));
+      break;
+    }
+
+    case 'verify_start': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      if (step.node_classes) {
+        for (const [node, cls] of Object.entries(step.node_classes)) {
+          v.push(viz('graph', 'highlight_node', { node, className: cls }));
+        }
+      }
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Phase', value: 'Certificate verification', status: 'highlight' },
+          { key: 'Edges checked', value: `0 / ${step.total_edges}` },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', 'Verification phase: checking certificate...', 'info'));
+      break;
+    }
+
+    case 'verify_edge': {
+      // Keep coloring visible
+      if (step.node_classes) {
+        for (const [node, cls] of Object.entries(step.node_classes)) {
+          v.push(viz('graph', 'highlight_node', { node, className: cls }));
+        }
+      }
+      v.push(viz('graph', 'highlight_edge', {
+        from: step.from, to: step.to,
+        className: step.pass ? 'highlighted' : 'examining',
+      }));
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Phase', value: 'Certificate verification' },
+          { key: 'Edges checked', value: `${step.check_number} / ${step.total_edges}`, status: 'highlight' },
+          { key: 'Current edge', value: `${step.from}-${step.to}: ${step.pass ? 'PASS' : 'FAIL'}` },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', `Edge ${step.from}-${step.to}: ${step.color_from} vs ${step.color_to} → ${step.pass ? 'PASS' : 'FAIL'}`, step.pass ? 'info' : 'decision'));
+      break;
+    }
+
+    case 'verify_complete': {
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Phase', value: 'Verification complete', status: 'updated' },
+          { key: 'Edges checked', value: `${step.checks} / ${step.checks}` },
+          { key: 'Result', value: 'Certificate VALID', status: 'updated' },
+        ],
+      }));
+      c.push(ctxLog('attempt_log', `All ${step.checks} edges verified — certificate is valid!`, 'result'));
+      break;
+    }
+
+    case 'concept_intro': {
+      const conceptDefs = {
+        p_definition:  { key: 'P',          value: 'Solvable in polynomial time' },
+        np_definition: { key: 'NP',         value: 'Verifiable in polynomial time' },
+        np_hard:       { key: 'NP-Hard',    value: 'At least as hard as every problem in NP (via reductions)' },
+        np_complete:   { key: 'NP-Complete', value: 'In NP and NP-Hard; the hardest problems still in NP' },
+        p_vs_np:       { key: 'P vs NP',    value: 'Does P = NP? The central open question' },
+        reduction_correctness: { key: 'Reduction', value: `Formula satisfiable ⟺ independent set of size k=${step.k || '?'}` },
+      };
+      const def = conceptDefs[step.concept];
+      if (def) {
+        c.push(ctxUpdate('concepts', {
+          entries: [def],
+          append: true,
+        }));
+      }
+      c.push(ctxLog('attempt_log', step.description || `Concept: ${step.concept}`, 'info'));
+      // For poly_reduction, also log to reduction log
+      c.push(ctxLog('log', step.description || `Concept: ${step.concept}`, 'info'));
+      break;
+    }
+
+    // ── Polynomial Reduction ─────────────────────────────────────────────
+    case 'show_formula': {
+      if (step.clauses) {
+        c.push(ctxUpdate('formula', {
+          lines: step.clauses.map(cl => ({ label: `C${cl.id}`, text: cl.text })),
+        }));
+      }
+      c.push(ctxUpdate('reduction_status', {
+        entries: [
+          { key: 'Phase', value: 'Formula presented' },
+          { key: 'Variables', value: step.variables?.join(', ') || '' },
+          { key: 'Clauses', value: String(step.clauses?.length || 0) },
+        ],
+      }));
+      c.push(ctxLog('log', `Formula: ${step.formula_text}`, 'info'));
+      break;
+    }
+
+    case 'build_clause_gadget': {
+      // Add nodes for this clause triangle progressively
+      for (let i = 0; i < step.node_ids.length; i++) {
+        const nodeId = step.node_ids[i];
+        const label = step.literals[i] || nodeId;
+        // Use unicode subscripts for display labels
+        const displayLabel = label.replace(/x(\d)/g, (_, d) => `x${String.fromCharCode(0x2080 + parseInt(d))}`);
+        const position = step.node_positions?.[nodeId] || { x: 0, y: 0 };
+        v.push(viz('graph', 'add_node', { id: nodeId, label: displayLabel, position }));
+        v.push(viz('graph', 'highlight_node', { node: nodeId, className: 'current' }));
+      }
+      // Add triangle edges
+      for (const edge of step.triangle_edges) {
+        v.push(viz('graph', 'add_edge', { from: edge.source, to: edge.target, undirected: true }));
+        v.push(viz('graph', 'highlight_edge', { from: edge.source, to: edge.target, className: 'highlighted' }));
+      }
+      c.push(ctxUpdate('reduction_status', {
+        entries: [
+          { key: 'Phase', value: `Building clause ${step.clause_index} triangle`, status: 'highlight' },
+          { key: 'Clause', value: step.clause_text },
+        ],
+      }));
+      c.push(ctxLog('log', `Clause ${step.clause_index}: ${step.clause_text} → triangle {${step.node_ids.join(', ')}}`, 'info'));
+      break;
+    }
+
+    case 'add_conflict_edges': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      // Add conflict edges progressively
+      for (const edge of step.conflict_edges) {
+        v.push(viz('graph', 'add_edge', { from: edge.source, to: edge.target, undirected: true, className: 'examining' }));
+      }
+      c.push(ctxUpdate('reduction_status', {
+        entries: [
+          { key: 'Phase', value: 'Adding conflict edges', status: 'highlight' },
+          { key: 'Conflict edges', value: String(step.conflict_edges.length) },
+        ],
+      }));
+      c.push(ctxLog('log', `Added ${step.conflict_edges.length} conflict edges between complementary literals`, 'decision'));
+      break;
+    }
+
+    case 'find_independent_set': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      for (const nodeId of step.selected_nodes) {
+        v.push(viz('graph', 'highlight_node', { node: nodeId, className: 'visited' }));
+      }
+      c.push(ctxUpdate('reduction_status', {
+        entries: [
+          { key: 'Phase', value: 'Independent set found', status: 'updated' },
+          { key: 'k', value: String(step.k) },
+          { key: 'Selected', value: step.selected_nodes.join(', ') },
+        ],
+      }));
+      c.push(ctxLog('log', `Independent set of size ${step.k}: {${step.selected_nodes.join(', ')}}`, 'result'));
+      break;
+    }
+
+    case 'map_to_assignment': {
+      v.push(viz('graph', 'reset_highlights', {}));
+      for (const nodeId of step.selected_nodes) {
+        v.push(viz('graph', 'highlight_node', { node: nodeId, className: 'path' }));
+      }
+      c.push(ctxUpdate('reduction_status', {
+        entries: [
+          { key: 'Phase', value: 'Mapped to assignment', status: 'updated' },
+          { key: 'Assignment', value: step.assignment_str },
+        ],
+      }));
+      for (const cr of step.clause_results) {
+        c.push(ctxLog('log', `${cr.clause} satisfied by ${cr.satisfiedBy}`, 'result'));
+      }
       break;
     }
 

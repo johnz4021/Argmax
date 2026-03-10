@@ -42,6 +42,13 @@ const VISIBLE_GROUPS = [
     ],
   },
   {
+    category: 'Complexity Theory',
+    algorithms: [
+      { id: 'graph_coloring_np', name: 'NP-Completeness', description: 'P vs NP through graph coloring — why some problems are fundamentally hard [8.1]' },
+      { id: 'poly_reduction', name: 'Polynomial Reductions', description: 'Reduce 3-SAT to Independent Set — proving NP-Completeness [8.3]' },
+    ],
+  },
+  {
     category: 'Trees',
     algorithms: [
       { id: 'bst_insert', name: 'BST Insert', description: 'Insert values into a binary search tree' },

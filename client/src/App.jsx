@@ -484,6 +484,7 @@ export default function App() {
             <div className="w-2/3 h-full overflow-hidden border-r border-border">
               {useVizLayout ? (
                 <VizLayout
+                  key={state.algorithm}
                   panels={state.vizPanels}
                   explanationMode={state.explanationMode}
                   segmentCount={state.segmentCount}
@@ -493,6 +494,7 @@ export default function App() {
                 />
               ) : (
                 <GraphRenderer
+                  key={state.algorithm}
                   graph={state.graph}
                   phase={state.currentPhase}
                   explanationMode={state.explanationMode}

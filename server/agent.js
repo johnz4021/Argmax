@@ -417,7 +417,105 @@ Knapsack (0/1 Knapsack DP):
   Point to both cells visually so the learner sees the two options being compared.
 
   Reference the Items panel: "Check the items panel on the right — it highlights which
-  item we're currently considering and shows its weight and value."`;
+  item we're currently considering and shows its weight and value."
+
+Graph 3-Coloring NP (graph_coloring_np):
+  This is a CONCEPTUAL lesson — the definitions are the core, not the brute-force demo.
+  Follow this phase structure:
+
+  PHASE 1 — Brute Force (attempt_coloring / coloring_conflict steps):
+  Keep this BRIEF — only 2 failures and 1 success. The point is just to motivate
+  "this problem is hard to solve." Walk through quickly:
+  - Show each failure concisely: "A and B are both Red — conflict."
+  - After the 2 failures, ask ONE question: "What makes this problem hard? Why can't
+    we just fix one conflict without creating others?"
+  - Show the success, then move on quickly. Don't linger here.
+
+  PHASE 2 — Verification (verify_start / verify_edge steps):
+  - "Now imagine someone GIVES us a coloring and says 'this works.' How would you check?"
+  - Check each edge one by one. After a few checks, ask: "Does the order we check edges
+    matter? Could we check them in parallel?" (No dependency between checks — each is
+    independent. This is why verification is simple.)
+  - Key contrast: "Finding required searching through possibilities. Checking just needed
+    one pass through the edges. Why is that difference important?"
+
+  PHASE 3 — Definitions (concept_intro steps) — THIS IS THE CORE OF THE LESSON:
+  Spend the MOST time here. Each definition gets its own dedicated narration with a
+  comprehension question. Do NOT rush through these.
+
+  P definition (p_definition):
+  - Explain P clearly: problems we can SOLVE in polynomial time.
+  - Give concrete examples: sorting, shortest paths, searching a sorted array.
+  - Ask: "Is graph 3-coloring in P?" (Answer: Unknown! That's the whole question.)
+
+  NP definition (np_definition):
+  - Already introduced before verification. Now deepen it.
+  - Tie back: "We just verified a coloring by checking all the edges. That's
+    polynomial — so graph 3-coloring is in NP."
+  - Ask: "Is every P problem also in NP?" (Yes — P ⊆ NP. If you can solve it fast,
+    you can certainly verify a solution fast — just solve it again and compare.)
+
+  NP-Hard (np_hard):
+  - Define via reductions: a problem is NP-Hard if every NP problem reduces to it.
+  - KEY NUANCE: NP-Hard does NOT require being in NP. It could be even harder.
+  - Ask: "If someone solved ANY NP-Hard problem in polynomial time, what would happen
+    to every problem in NP?" (They'd all be solvable in poly time — P would equal NP.)
+
+  NP-Complete (np_complete):
+  - The intersection: NP ∩ NP-Hard. The hardest problems STILL in NP.
+  - Graph 3-coloring is NP-Complete: it's in NP (we verified), and NP-Hard (proven).
+  - Ask: "What's the difference between NP-Hard and NP-Complete?" (NP-Complete must
+    also be in NP — verifiable in poly time. NP-Hard might not be.)
+
+  P vs NP (p_vs_np):
+  - The open question: does P = NP?
+  - Ask: "If P = NP, what happens to graph coloring?" (We'd have a polynomial-time
+    algorithm to FIND colorings, not just verify them.)
+  - Implications: cryptography, optimization, AI would all be transformed.
+
+Polynomial Reductions (poly_reduction):
+  Follow this phase structure:
+
+  PHASE 0 — Define Independent Set (BEFORE running the algorithm):
+  - Start by defining Independent Set: "An independent set is a set of nodes in a graph
+    where NO two nodes share an edge."
+  - Give a tiny example: "In a triangle (3 nodes, 3 edges), the largest independent set
+    is just 1 node — any two nodes share an edge."
+  - State the decision problem: "Given a graph and a number k, does it contain an
+    independent set of size k?"
+  - Motivate the reduction: "We'll prove Independent Set is NP-Complete by reducing
+    3-SAT to it. If we could solve Independent Set efficiently, we could solve 3-SAT."
+  - Ask a quick comprehension question: "In a graph with 4 nodes in a line (A-B-C-D),
+    what's the largest independent set?" (Answer: 2, e.g. {A,C} or {B,D})
+  - THEN run the algorithm.
+
+  PHASE 1 — Formula (show_formula step):
+  - Present the 3-SAT formula. Explain: each clause must have at least one true literal.
+  - Ask: "Can you find values for x₁, x₂, x₃ that satisfy ALL three clauses?" Give
+    them a moment to think before showing the construction.
+
+  PHASE 2 — Construction (build_clause_gadget / add_conflict_edges steps):
+  - The graph starts EMPTY. Nodes and edges appear progressively as you narrate.
+  - Build triangles one clause at a time. Each build_clause_gadget step adds 3 nodes
+    and 3 triangle edges. "Each triangle represents a clause. The triangle edges mean
+    we can pick AT MOST one literal from each clause."
+  - Then add conflict edges (add_conflict_edges step adds them all): "x₁ and ¬x₁ can't
+    both be true — so we connect them. This prevents inconsistent assignments."
+  - Key insight: "Triangle edges = at most one per clause. Conflict edges = consistency."
+
+  PHASE 3 — Solution (find_independent_set / map_to_assignment steps):
+  - Highlight the independent set. Ask: "Why can't we pick two nodes from the same
+    triangle?" (Because triangle edges connect them.)
+  - Map back to variable assignment. Verify each clause is satisfied.
+  - "The independent set IS the satisfying assignment, just encoded as a graph!"
+
+  PHASE 4 — Why NP-Complete (result step):
+  - "We showed: IF we can solve Independent Set, we can solve 3-SAT (by building
+    this gadget graph). Since 3-SAT is NP-Complete, Independent Set must be too."
+  - Ask: "What if the formula were unsatisfiable — would an independent set of
+    size k exist?" (No — that's the beauty of the reduction working both ways.)
+  - "This reduction took polynomial time — just building triangles and edges.
+    That's what makes it a valid polynomial reduction."`;
 
 export function sendJSON(ws, obj) {
   if (ws.readyState === ws.OPEN) {
@@ -442,6 +540,14 @@ function buildInitialPrompt(algorithm, source) {
 
   if (algorithm === 'maxflow') {
     return `Please teach me Ford-Fulkerson (Edmonds-Karp) max flow step by step. Use the default flow network. Source is S, sink is T. Run the algorithm and narrate each step.`;
+  }
+
+  if (algorithm === 'graph_coloring_np') {
+    return `Please teach me P, NP, NP-Hard, and NP-Complete through graph 3-coloring. Use the default graph. Run the algorithm and narrate each step. Start with ONE brief introduction, then do the brute-force attempts quickly (they're just motivation). Spend the MOST time on the formal definitions — P, NP, NP-Hard, NP-Complete, and P vs NP. Ask a comprehension question after each definition.`;
+  }
+
+  if (algorithm === 'poly_reduction') {
+    return `Please teach me polynomial reductions by reducing 3-SAT to Independent Set. Use the default formula. Start by explaining what Independent Set is (Phase 0) before running the algorithm. Then run the algorithm and narrate each step, building the graph progressively.`;
   }
 
   if (algoInfo.renderer === 'graph') {
@@ -507,6 +613,15 @@ function restoreGraphState(session, ws) {
 }
 
 export async function startAgentSession(session, algorithm, graph, source) {
+  // Clear stale state from previous lesson
+  session.currentGraph = null;
+  session.currentTrace = null;
+  session.currentRenderer = null;
+  session.currentAlgorithm = null;
+  session.mapperState = {};
+  session._emittedTraceSteps = [];
+  session._savedGraphState = null;
+
   const { ws } = session;
   const myGeneration = session.runGeneration;
 
@@ -528,6 +643,8 @@ export async function startAgentSession(session, algorithm, graph, source) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
       break;
     }
+
+    sendJSON(ws, { type: 'agent_status', status: 'thinking' });
 
     let response;
     try {
@@ -728,6 +845,8 @@ export async function startAgentSession(session, algorithm, graph, source) {
       content: `[POST-LESSON QUESTION] The learner asks: "${question}". Answer the question. If you need to show a new example, use create_graph + run_algorithm + emit_segment to build it, then respond_to_interrupt to wrap up. If the current visualization answers the question, use respond_to_interrupt directly with the appropriate explanation_mode.`,
     });
 
+    sendJSON(ws, { type: 'agent_status', status: 'thinking' });
+
     try {
       const response = await getClient(session).messages.create({
         model: 'claude-opus-4-20250514',
@@ -768,6 +887,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
           }
         }
         // Next API call
+        sendJSON(ws, { type: 'agent_status', status: 'thinking' });
         qaResponse = await getClient(session).messages.create({
           model: 'claude-opus-4-20250514',
           max_tokens: 4096,

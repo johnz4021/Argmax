@@ -49,7 +49,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
-const FREE_SESSION_LIMIT = 20;
+const FREE_SESSION_LIMIT = 30;
 
 const sessions = new Map();
 
@@ -143,6 +143,9 @@ wss.on('connection', (ws, req) => {
           session.active = false;
           session.endSessionFlag = false;
           session.runGeneration++;
+          session.currentGraph = null;
+          session.currentTrace = null;
+          session._emittedTraceSteps = [];
           const lessonGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);
@@ -188,6 +191,9 @@ wss.on('connection', (ws, req) => {
           session.active = false;
           session.endSessionFlag = false;
           session.runGeneration++;
+          session.currentGraph = null;
+          session.currentTrace = null;
+          session._emittedTraceSteps = [];
           const guidedGen = session.runGeneration;
           {
             const gate = await checkSessionGate(session);

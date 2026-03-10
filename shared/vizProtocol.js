@@ -81,4 +81,8 @@ export const ALGORITHM_RENDERERS = {
   linked_list_reversal: { renderer: 'linked', category: 'Linked Structures' },
   stack_operations:     { renderer: 'linked', category: 'Linked Structures' },
   queue_operations:     { renderer: 'linked', category: 'Linked Structures' },
+
+  // Complexity Theory
+  graph_coloring_np: { renderer: 'graph', category: 'Complexity Theory' },
+  poly_reduction:    { renderer: 'graph', category: 'Complexity Theory' },
 };

@@ -1,5 +1,7 @@
 // Maps viz_action objects to Cytoscape API calls
 
+const ALL_TRANSIENT_CLASSES = 'highlighted current visited path ghost examining dimmed spotlit ghost-alt mst-edge strikethrough saturated augmenting min-cut source-side sink-side tapped residual-fwd residual-rev residual-dimmed color-red color-blue color-green';
+
 export function applyVizActions(cy, actions) {
   if (!cy || !actions) return;
 
@@ -49,10 +51,10 @@ function applyAction(cy, action) {
 
     case 'reset_highlights': {
       cy.elements('.residual-temp').remove();
-      cy.elements().removeClass('highlighted current visited path ghost examining saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
-      // Reset labels to just IDs
+      cy.elements().removeClass(ALL_TRANSIENT_CLASSES);
+      // Reset labels to original labels (not IDs)
       cy.nodes().forEach((n) => {
-        n.data('label', n.data('id'));
+        n.data('label', n.data('originalLabel') || n.data('id'));
       });
       break;
     }
@@ -132,6 +134,35 @@ function applyAction(cy, action) {
       break;
     }
 
+    case 'add_node': {
+      // Skip if node already exists
+      if (cy.getElementById(action.id).length > 0) break;
+      const nodeData = {
+        group: 'nodes',
+        data: { id: action.id, label: action.label || action.id, originalLabel: action.label || action.id },
+        position: action.position || { x: 0, y: 0 },
+      };
+      if (action.className) nodeData.classes = action.className;
+      cy.add(nodeData);
+      break;
+    }
+
+    case 'add_edge': {
+      const edgeId = action.id || `${action.from}-${action.to}`;
+      // Skip if edge already exists
+      if (cy.getElementById(edgeId).length > 0) break;
+      const edgeData = {
+        group: 'edges',
+        data: { id: edgeId, source: action.from, target: action.to, weight: action.weight ?? '' },
+      };
+      if (action.className) edgeData.classes = action.className;
+      const addedEdge = cy.add(edgeData);
+      if (action.undirected) {
+        addedEdge.style('target-arrow-shape', 'none');
+      }
+      break;
+    }
+
     case 'update_table': {
       // Table updates are handled in the state, not in Cytoscape
       // The useTutorState hook will pick up table data from segments
@@ -159,11 +190,27 @@ export function restoreSnapshot(cy, snapshot) {
   cy.elements('.ghost-temp').remove();
   cy.elements('.annotation-anchor').remove();
 
-  for (const saved of snapshot.elements) {
-    const ele = cy.getElementById(saved.id);
-    if (!ele || ele.length === 0) continue;
+  // Build set of element IDs that existed at snapshot time
+  const snapshotIds = new Set(snapshot.elements.map((e) => e.id));
 
-    ele.removeClass('highlighted current visited path ghost examining dimmed spotlit ghost-alt saturated augmenting min-cut source-side sink-side residual-fwd residual-rev residual-dimmed');
+  // Remove elements added AFTER the snapshot was taken
+  cy.elements().forEach((ele) => {
+    if (!snapshotIds.has(ele.id())) {
+      ele.remove();
+    }
+  });
+
+  for (const saved of snapshot.elements) {
+    let ele = cy.getElementById(saved.id);
+
+    // Re-add elements that are in the snapshot but missing from current cy (rewind)
+    if (!ele || ele.length === 0) {
+      const toAdd = { group: saved.group, data: { ...saved.data } };
+      if (saved.position) toAdd.position = { ...saved.position };
+      ele = cy.add(toAdd);
+    }
+
+    ele.removeClass(ALL_TRANSIENT_CLASSES);
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }

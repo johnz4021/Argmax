@@ -110,6 +110,23 @@ const PANEL_DEFAULTS = {
     { id: 'stats', type: 'key_value', title: 'GCD Progress' },
   ],
 
+  // --- Complexity Theory ---
+  graph_coloring_np: [
+    { id: 'stats', type: 'key_value', title: 'Statistics' },
+    { id: 'concepts', type: 'key_value', title: 'Key Concepts' },
+    { id: 'attempt_log', type: 'log', title: 'Coloring Attempts' },
+  ],
+  poly_reduction: [
+    { id: 'formula', type: 'expression', title: '3-SAT Formula',
+      initial_data: { label: '3-SAT Formula', lines: [
+        { label: 'C₁', text: '(x₁ ∨ ¬x₂ ∨ x₃)' },
+        { label: 'C₂', text: '(¬x₁ ∨ x₂ ∨ ¬x₃)' },
+        { label: 'C₃', text: '(x₁ ∨ x₂ ∨ x₃)' },
+      ] } },
+    { id: 'reduction_status', type: 'key_value', title: 'Reduction' },
+    { id: 'log', type: 'log', title: 'Construction Log' },
+  ],
+
   // --- Graph (continued) ---
   bellman_ford: [
     { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',

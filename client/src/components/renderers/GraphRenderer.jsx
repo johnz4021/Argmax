@@ -102,6 +102,30 @@ const CYTOSCAPE_STYLE = [
     },
   },
   {
+    selector: '.color-red',
+    style: {
+      'background-color': '#ef4444',
+      'border-color': '#dc2626',
+      'border-width': 4,
+    },
+  },
+  {
+    selector: '.color-blue',
+    style: {
+      'background-color': '#3b82f6',
+      'border-color': '#2563eb',
+      'border-width': 4,
+    },
+  },
+  {
+    selector: '.color-green',
+    style: {
+      'background-color': '#10b981',
+      'border-color': '#059669',
+      'border-width': 4,
+    },
+  },
+  {
     selector: '.ghost',
     style: {
       opacity: 0.3,
@@ -359,7 +383,7 @@ export default function GraphRenderer({
     for (const node of graph.nodes) {
       elements.push({
         group: 'nodes',
-        data: { id: node.id, label: node.label || node.id },
+        data: { id: node.id, label: node.label || node.id, originalLabel: node.label || node.id },
         position: graph.positions?.[node.id] || { x: 0, y: 0 },
       });
     }

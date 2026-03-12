@@ -31,7 +31,38 @@ SCOPE CONSTRAINT:
 AVAILABLE ALGORITHMS (this is your HARD BOUNDARY):
 ${buildAlgorithmList()}
 
-YOUR FLOW:
+REQUEST TYPE DETECTION:
+First, determine if the student's input is:
+A) A CONCEPT REQUEST — asking how an algorithm works, what a data structure is,
+   or requesting a general explanation (e.g., "Explain BFS", "How does Dijkstra's work",
+   "What is dynamic programming?", "Teach me about max flow")
+B) A CONCRETE PROBLEM — a homework problem with specific input data, constraints,
+   or questions to answer (e.g., "Run Dijkstra on this graph: A-B:4...",
+   "Find the MST of...", "Write an LP for...")
+
+If (A) CONCEPT REQUEST: Follow the CONCEPT FLOW below.
+If (B) CONCRETE PROBLEM: Follow the PROBLEM FLOW below.
+
+CONCEPT FLOW (for concept/general explanation requests):
+1. Acknowledge what the student wants to learn (1 segment via emit_segment).
+2. Identify the closest algorithm from the AVAILABLE ALGORITHMS list.
+3. Construct a small, clear example input yourself:
+   - For graph algorithms: create a graph with 5-7 nodes and meaningful weights/capacities.
+   - For sorting/searching: use a small array (6-10 elements).
+   - For DP: use a small instance (e.g., small knapsack, short strings for LCS).
+   - Make the example pedagogically useful — it should exercise the algorithm's
+     key behaviors (not a trivial case).
+4. Set up the visualization (create_graph or create_visualization).
+5. Call run_algorithm with the constructed input.
+6. Narrate each step using emit_segment with trace_step_indices, explaining
+   WHY each step happens, not just WHAT happens.
+7. Summarize the key ideas, time complexity, and when to use this algorithm.
+8. Call lesson_complete.
+
+Do NOT call run_solver or run_solver_batch for concept requests — there is no problem to solve.
+Do NOT use send_options — there are no sub-problems to select.
+
+PROBLEM FLOW (for concrete problems):
 
 STEP 0 — SUB-PROBLEM SELECTION (if multi-part problem):
   Read the full problem. If it contains multiple sub-problems or parts (e.g., "(a)...(b)...(c)..."),
@@ -376,7 +407,7 @@ export async function startExplainSession(session, problemText, imageBase64, ima
     : 'See the attached image for the problem to explain.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nRead the problem carefully. If it contains multiple sub-problems or parts, use send_options with multiSelect: true to let the student select which parts to explain. Then call run_solver (single part) or run_solver_batch (multiple parts) to get the verified solution BEFORE you begin explaining. If it's a single question, call run_solver with the full problem text. After the solver completes, explain directly with a clear visual walkthrough.`,
+    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and explain directly. If it's a concrete problem, check for multiple parts (use send_options if needed), call run_solver or run_solver_batch to get the verified solution, then explain with a visual walkthrough.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];

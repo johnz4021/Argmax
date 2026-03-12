@@ -1,13 +1,25 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import MathText from './MathText';
 
 export default function Transcript({ segments, agentStatus, centered }) {
   const scrollContainerRef = useRef(null);
+  const [waitSeconds, setWaitSeconds] = useState(0);
 
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [segments, agentStatus]);
+
+  // Track how long agentStatus has been active
+  useEffect(() => {
+    if (!agentStatus) {
+      setWaitSeconds(0);
+      return;
+    }
+    setWaitSeconds(0);
+    const interval = setInterval(() => setWaitSeconds(s => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [agentStatus]);
 
   return (
     <div className="flex flex-col h-full font-body">
@@ -88,6 +100,11 @@ export default function Transcript({ segments, agentStatus, centered }) {
             {agentStatus.status === 'tool' && /deep analysis|analyzing problem|solving/i.test(agentStatus.tool) && (
               <p className="text-xs text-text-tertiary mt-1.5 ml-5">
                 Hang tight — deep analysis can take 3–5 minutes.
+              </p>
+            )}
+            {waitSeconds >= 8 && !(agentStatus.status === 'tool' && /deep analysis|analyzing problem|solving/i.test(agentStatus.tool)) && (
+              <p className="text-xs text-text-tertiary mt-1.5 ml-5 animate-pulse">
+                {waitSeconds >= 20 ? 'Slow connection — hang tight...' : 'Taking longer than usual...'}
               </p>
             )}
           </div>

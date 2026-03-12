@@ -8,6 +8,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [solveMode, setSolveMode] = useState('guided');
   const fileInputRef = useRef(null);
   const cardRef = useRef(null);
 
@@ -76,7 +77,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
         data.imageBase64 = match[2];
       }
     }
-    onSelect('guided', data);
+    onSelect(solveMode === 'explain' ? 'explain' : 'guided', data);
   };
 
   const hasContent = problemText.trim() || imageFile;
@@ -84,8 +85,14 @@ export default function ProblemSolver({ onSelect, disabled }) {
   return (
     <div className="flex flex-col items-center h-full overflow-auto px-4 pt-16">
       <div className="text-center mb-10">
-        <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">Work Through It Together</h1>
-        <p className="text-text-secondary font-body">Paste a problem or upload a screenshot and let's figure it out step by step</p>
+        <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">
+          {solveMode === 'explain' ? 'Quick Solve' : 'Work Through It Together'}
+        </h1>
+        <p className="text-text-secondary font-body">
+          {solveMode === 'explain'
+            ? 'Get a visual walkthrough of the solution'
+            : "Paste a problem or upload a screenshot and let's figure it out step by step"}
+        </p>
       </div>
 
       {/* Claude-style input card */}
@@ -143,6 +150,31 @@ export default function ProblemSolver({ onSelect, disabled }) {
           {/* Bottom action row */}
           <div className="flex items-center justify-between px-4 pb-3">
             <div className="flex items-center gap-2">
+              {/* Mode toggle */}
+              <div className="flex items-center bg-surface-3 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSolveMode('guided')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    solveMode === 'guided'
+                      ? 'bg-surface-1 text-text-primary shadow-sm'
+                      : 'text-text-tertiary hover:text-text-secondary'
+                  }`}
+                >
+                  Guide Me
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSolveMode('explain')}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                    solveMode === 'explain'
+                      ? 'bg-surface-1 text-text-primary shadow-sm'
+                      : 'text-text-tertiary hover:text-text-secondary'
+                  }`}
+                >
+                  Just Explain
+                </button>
+              </div>
               {/* Upload button */}
               <input
                 ref={fileInputRef}
@@ -172,7 +204,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
                   ? 'text-accent hover:text-accent-hover'
                   : 'text-text-tertiary cursor-not-allowed'
               }`}
-              title="Guide me"
+              title={solveMode === 'explain' ? 'Explain it' : 'Guide me'}
             >
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />

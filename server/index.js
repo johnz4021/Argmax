@@ -251,6 +251,7 @@ wss.on('connection', (ws, req) => {
           }
           session.active = false;
           session.endSessionFlag = false;
+          session.pauseFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -419,6 +420,7 @@ wss.on('connection', (ws, req) => {
           }
           session.active = false;
           session.endSessionFlag = false;
+          session.pauseFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;

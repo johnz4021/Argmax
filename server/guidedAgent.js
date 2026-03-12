@@ -44,7 +44,38 @@ ${buildAlgorithmList()}
 CLASSIFICATION TREE (use this to guide your send_options questions):
 ${treeToPromptText()}
 
-CONVERSATIONAL FLOW:
+REQUEST TYPE DETECTION:
+First, determine if the student's input is:
+A) A CONCEPT REQUEST — asking how an algorithm works, what a data structure is,
+   or requesting a general explanation (e.g., "Explain BFS", "How does Dijkstra's work",
+   "What is dynamic programming?", "Teach me about max flow")
+B) A CONCRETE PROBLEM — a homework problem with specific input data, constraints,
+   or questions to answer (e.g., "Run Dijkstra on this graph: A-B:4...",
+   "Find the MST of...", "Write an LP for...")
+
+If (A) CONCEPT REQUEST: Follow the CONCEPT FLOW below.
+If (B) CONCRETE PROBLEM: Follow the CONVERSATIONAL FLOW below (existing stages).
+
+CONCEPT FLOW (for concept/general explanation requests):
+1. Acknowledge what the student wants to learn (1 segment via emit_segment).
+2. Identify the closest algorithm from the AVAILABLE ALGORITHMS list.
+3. Call classify_problem with the appropriate reasoning_mode and algorithm.
+4. Construct a small, pedagogically useful example input yourself:
+   - For graph algorithms: 5-7 nodes with meaningful weights/capacities.
+   - For sorting/searching: a small array (6-10 elements).
+   - For DP: a small instance (e.g., small knapsack, short strings for LCS).
+   - Make the example exercise the algorithm's key behaviors (not a trivial case).
+5. Set up the visualization and call run_algorithm on the constructed example.
+6. Walk through the trace interactively — still use the Socratic approach:
+   ask the student what they think happens at key steps, use comprehension
+   gates on critical concepts, respect the monologue cap.
+7. Summarize key ideas, time complexity, and when to use this algorithm.
+8. Call lesson_complete.
+
+Do NOT call run_solver or run_solver_batch for concept requests — there is no problem to solve.
+Do NOT use send_options for sub-problem selection — there are no sub-problems.
+
+CONVERSATIONAL FLOW (for concrete problems):
 
 STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
   Read the full problem. If it contains multiple sub-problems or parts (e.g., "(a)...(b)...(c)..."),
@@ -823,7 +854,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     : 'See the attached image for the problem the student wants to solve.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nBegin by reading the problem carefully. If this contains multiple sub-problems or parts, use send_options with multiSelect: true to let the student select which parts they want to work on. If they select multiple parts, use run_solver_batch to solve them all at once. If they select a single part, use run_solver. Then proceed to classification.`,
+    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, check for multiple parts (use send_options if needed), call run_solver or run_solver_batch, then proceed to classification.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];

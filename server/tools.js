@@ -8,7 +8,7 @@ export const tools = [
   {
     name: 'create_graph',
     description:
-      'Create and display a graph for the lesson. Call this first to set up the visualization for graph algorithms.',
+      'Create and display a graph for the lesson. Call this first to set up the visualization for graph algorithms. For modeling/LP problems on graphs, include context_panels to show formulations alongside the graph.',
     input_schema: {
       type: 'object',
       properties: {
@@ -45,6 +45,24 @@ export const tools = [
         directed: {
           type: 'boolean',
           description: 'Whether edges are directed (default true). Set false for undirected graphs (MST, etc).',
+        },
+        context_panels: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'Unique panel ID (e.g., "formulation", "variables")' },
+              type: {
+                type: 'string',
+                enum: ['key_value', 'collection', 'expression', 'log', 'pseudocode'],
+                description: 'Panel display type',
+              },
+              title: { type: 'string', description: 'Display title' },
+              initial_data: { type: 'object', description: 'Initial data for the panel (optional)' },
+            },
+            required: ['id', 'type', 'title'],
+          },
+          description: 'Optional context panels to show alongside the graph (e.g., LP formulation, proof skeleton).',
         },
       },
       required: ['nodes', 'edges'],

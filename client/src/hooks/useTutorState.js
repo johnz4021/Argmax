@@ -171,7 +171,7 @@ function reducer(state, action) {
       };
 
     case 'GUIDED_START':
-      return { ...initialState, status: 'teaching', mode: 'guided', guidedPhase: 'analyzing' };
+      return { ...initialState, status: 'teaching', mode: action.mode || 'guided', guidedPhase: 'analyzing' };
 
     case 'GUIDED_RESUME': {
       const restored = (state.loadedConversation || []).map((m, i) => ({
@@ -286,6 +286,9 @@ export function useTutorState() {
         break;
       case 'create_graph':
         dispatch({ type: 'CREATE_GRAPH', graph: msg.graph });
+        if (msg.context_panels) {
+          dispatch({ type: 'SET_CONTEXT_PANELS', panels: msg.context_panels });
+        }
         break;
       case 'create_visualization': {
         const panels = (msg.panels || []).map((p, i) => ({
@@ -337,7 +340,7 @@ export function useTutorState() {
         if (msg.resuming) {
           dispatch({ type: 'GUIDED_RESUME' });
         } else {
-          dispatch({ type: 'GUIDED_START' });
+          dispatch({ type: 'GUIDED_START', mode: msg.mode || 'guided' });
         }
         break;
       case 'conversations_list':

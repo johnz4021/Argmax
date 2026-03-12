@@ -85,7 +85,7 @@ export default function Transcript({ segments, agentStatus, centered }) {
               </span>
               {agentStatus.status === 'tool' ? `${agentStatus.tool}...` : 'Thinking...'}
             </div>
-            {agentStatus.status === 'tool' && /deep analysis/i.test(agentStatus.tool) && (
+            {agentStatus.status === 'tool' && /deep analysis|analyzing problem|solving/i.test(agentStatus.tool) && (
               <p className="text-xs text-text-tertiary mt-1.5 ml-5">
                 Hang tight — deep analysis can take 3–5 minutes.
               </p>

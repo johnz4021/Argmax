@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { DEFAULT_GRAPH } from './algorithms.js';
 import { startAgentSession } from './agent.js';
 import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
+import { startExplainSession } from './explainAgent.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { verifyJWT } from './supabase.js';
 import { createConversation, listConversations, loadConversationMessages, loadAgentState, countConversations, getUserSettings, saveUserSettings, saveFeedback } from './db.js';
@@ -142,6 +143,7 @@ wss.on('connection', (ws, req) => {
           // Force-release a dying session (endSessionFlag is set but solver/API call still pending)
           session.active = false;
           session.endSessionFlag = false;
+          session.pauseFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -190,6 +192,7 @@ wss.on('connection', (ws, req) => {
           }
           session.active = false;
           session.endSessionFlag = false;
+          session.pauseFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -236,6 +239,54 @@ wss.on('connection', (ws, req) => {
             session.followUpResolver = null;
             session.followUpSent = false;
             session.conversationId = null;
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+          }
+          break;
+        }
+
+        case 'start_explain': {
+          if (session.active && !session.endSessionFlag) {
+            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
+            return;
+          }
+          session.active = false;
+          session.endSessionFlag = false;
+          session.runGeneration++;
+          session.currentGraph = null;
+          session.currentTrace = null;
+          session._emittedTraceSteps = [];
+          const explainGen = session.runGeneration;
+          {
+            const gate = await checkSessionGate(session);
+            if (!gate.allowed) {
+              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
+              return;
+            }
+            if (gate.byok) {
+              const settings = await getUserSettings(session.userId);
+              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
+              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
+            }
+          }
+          session.active = true;
+          session.mode = 'explain';
+
+          try {
+            await startExplainSession(session, msg.problemText, msg.imageBase64, msg.imageMimeType);
+          } catch (err) {
+            if (err.message === '__end_session__') {
+              console.log('[ExplainAgent] Session ended by user');
+            } else {
+              console.error('[ExplainAgent] Error:', err);
+              ws.send(JSON.stringify({ type: 'error', message: 'Explain session failed: ' + err.message }));
+            }
+          }
+          if (session.runGeneration === explainGen) {
+            session.active = false;
+            session.endSessionFlag = false;
+            session.mode = 'direct';
+            session.followUpResolver = null;
+            session.followUpSent = false;
             ws.send(JSON.stringify({ type: 'session_ended' }));
           }
           break;

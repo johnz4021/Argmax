@@ -1619,7 +1619,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       if (!interrupted && vizActive && segmentsWithoutVizActions >= 3) {
         toolResults.push({
           type: 'text',
-          text: '[VIZ REMINDER] You have an active visualization but recent segments had no viz_actions. When referencing specific nodes, edges, or steps, remember to include highlight actions.',
+          text: '[VIZ REMINDER] You have an active visualization but recent segments had no viz_actions. When referencing specific nodes, edges, or steps, include viz_actions to highlight them — e.g. { renderer: "graph", action: "highlight_node", params: { node: "X", className: "current" } } or { renderer: "graph", action: "show_path", params: { path: ["A","B","C"] } }.',
         });
         segmentsWithoutVizActions = 0;
       }

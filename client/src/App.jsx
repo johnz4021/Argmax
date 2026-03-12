@@ -180,11 +180,14 @@ export default function App() {
       reset();
       sessionStartRef.current = Date.now();
       track('session_started', {
-        mode: algorithm === 'guided' ? 'guided' : 'tutorial',
+        mode: algorithm === 'guided' ? 'guided' : algorithm === 'explain' ? 'explain' : 'tutorial',
         algorithm,
       });
-      if (algorithm === 'guided') {
-        const msg = { type: 'start_guided', problemText: data.problemText };
+      if (algorithm === 'guided' || algorithm === 'explain') {
+        const msg = {
+          type: algorithm === 'explain' ? 'start_explain' : 'start_guided',
+          problemText: data.problemText,
+        };
         if (data.imageBase64) {
           msg.imageBase64 = data.imageBase64;
           msg.imageMimeType = data.imageMimeType;

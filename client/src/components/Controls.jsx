@@ -44,6 +44,9 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
     if (guidedOptions?.mode === 'open_ended' && onGuidedResponse) {
       // Open-ended guided question (works in both guided and lesson mode)
       onGuidedResponse({ text: question.trim() });
+    } else if (isExplain) {
+      // In explain mode, all typed messages route as interrupts
+      onInterrupt(question.trim());
     } else if (guidedPrompt && onGuidedMessage) {
       // conversational_reply is waiting for a response — route as guided message
       onGuidedMessage(question.trim());
@@ -102,19 +105,22 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
 
   const showInput = status === 'teaching' || status === 'paused' || status === 'complete';
   const isGuided = mode === 'guided';
+  const isExplain = mode === 'explain';
   // guidedOptions can appear in both guided AND direct (lesson) mode via send_options
   const hasGuidedOptions = !!guidedOptions;
   // Disable sending when the model is thinking/running tools (not waiting for input)
-  const agentBusy = (isGuided || hasGuidedOptions) && !!agentStatus;
+  const agentBusy = (isGuided || isExplain || hasGuidedOptions) && !!agentStatus;
   const placeholder = hasGuidedOptions
     ? (guidedOptions.mode === 'open_ended' && guidedOptions.input_placeholder)
       ? guidedOptions.input_placeholder
       : 'Type your answer...'
-    : isGuided
-      ? 'Type your thoughts...'
-      : status === 'complete'
-        ? 'Any questions about the lesson?'
-        : 'Ask a question, request something visual...';
+    : isExplain
+      ? 'Ask a question about the explanation...'
+      : isGuided
+        ? 'Type your thoughts...'
+        : status === 'complete'
+          ? 'Any questions about the lesson?'
+          : 'Ask a question, request something visual...';
 
   return (
     <div className="border-t border-border px-4 py-3 space-y-3 font-body">

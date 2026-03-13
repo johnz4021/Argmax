@@ -11,6 +11,16 @@ import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
 import { layoutGrid } from './graphLayout.js';
 
+// Proxy that always reads session.ws dynamically, so agent loops survive WS reconnects
+export function liveWs(session) {
+  return new Proxy({}, {
+    get(_, prop) {
+      const target = session.ws;
+      return typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop];
+    }
+  });
+}
+
 const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
 function getClient(session) {
   return session?.anthropicClient || defaultAnthropicClient;
@@ -623,7 +633,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
 
-  const { ws } = session;
+  const ws = liveWs(session);
   const myGeneration = session.runGeneration;
 
   sendJSON(ws, { type: 'lesson_start', algorithm, source });
@@ -638,7 +648,11 @@ export async function startAgentSession(session, algorithm, graph, source) {
   let apiCallCount = 0;
   let continueLoop = true;
   while (continueLoop) {
-    if (ws.readyState !== ws.OPEN) break;
+    if (session.ws.readyState !== 1) {
+      if (!session.wsDisconnectedAt || Date.now() - session.wsDisconnectedAt > 60000) break;
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
     if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
     if (apiCallCount >= MAX_API_CALLS_PER_SESSION) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
@@ -806,7 +820,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
 
       // Listen for future interrupts by polling
       const checkInterval = setInterval(() => {
-        if (ws.readyState !== ws.OPEN) {
+        if (session.ws.readyState !== 1 && (!session.wsDisconnectedAt || Date.now() - session.wsDisconnectedAt > 60000)) {
           clearInterval(checkInterval);
           resolve(null);
         } else if (session.interruptFlag) {
@@ -827,7 +841,7 @@ export async function startAgentSession(session, algorithm, graph, source) {
     session.qaResolver = null;
     session._qaCleanup = null;
 
-    if (!question || ws.readyState !== ws.OPEN) break;
+    if (!question || (session.ws.readyState !== 1 && (!session.wsDisconnectedAt || Date.now() - session.wsDisconnectedAt > 60000))) break;
 
     // Save graph state before Q&A processing so it can be restored
     // if the agent constructs a temporary example graph
@@ -920,7 +934,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
   if (session.endSessionFlag) {
     throw new Error('__end_session__');
   }
-  const { ws } = session;
+  const ws = liveWs(session);
   const { name, input } = toolCall;
 
   switch (name) {

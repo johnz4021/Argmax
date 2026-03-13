@@ -53,6 +53,7 @@ const PORT = process.env.PORT || 3001;
 const FREE_SESSION_LIMIT = 30;
 
 const sessions = new Map();
+const sessionsByUserId = new Map();
 
 async function checkSessionGate(session) {
   if (!session.userId) return { allowed: true };
@@ -101,34 +102,7 @@ server.on('upgrade', async (req, socket, head) => {
   });
 });
 
-wss.on('connection', (ws, req) => {
-  const sessionId = generateId();
-  const user = req.user || null;
-  const session = {
-    id: sessionId,
-    ws,
-    userId: user?.id || null,
-    userEmail: user?.email || null,
-    interruptFlag: null,
-    pauseFlag: false,
-    pauseResolver: null,
-    endSessionFlag: false,
-    active: false,
-    mode: 'direct',
-    speedMultiplier: 1,
-    ttsMuted: false,
-    guidedResponse: null,
-    guidedResponseResolver: null,
-    pendingGuidedResponses: [],
-    guidedMessageQueue: [],
-    followUpResolver: null,
-    followUpSent: false,
-    conversationId: null,
-    runGeneration: 0,
-  };
-  sessions.set(sessionId, session);
-  console.log(`[WS] Client connected: ${sessionId}${user ? ` (${user.email})` : ''}`);
-
+function attachHandlers(ws, session) {
   ws.on('message', async (data) => {
     try {
       const msg = JSON.parse(data.toString());
@@ -173,14 +147,14 @@ wss.on('connection', (ws, req) => {
               console.log('[Agent] Session ended by user');
             } else {
               console.error('[Agent] Error:', err);
-              ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
+              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
             }
           }
           // Only clean up if this run is still the current one (not superseded)
           if (session.runGeneration === lessonGen) {
             session.active = false;
             session.endSessionFlag = false;
-            ws.send(JSON.stringify({ type: 'session_ended' }));
+            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
           }
           break;
         }
@@ -229,7 +203,7 @@ wss.on('connection', (ws, req) => {
               console.log('[GuidedAgent] Session ended by user');
             } else {
               console.error('[GuidedAgent] Error:', err);
-              ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
+              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'Guided session failed: ' + err.message }));
             }
           }
           if (session.runGeneration === guidedGen) {
@@ -239,7 +213,7 @@ wss.on('connection', (ws, req) => {
             session.followUpResolver = null;
             session.followUpSent = false;
             session.conversationId = null;
-            ws.send(JSON.stringify({ type: 'session_ended' }));
+            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
           }
           break;
         }
@@ -279,7 +253,7 @@ wss.on('connection', (ws, req) => {
               console.log('[ExplainAgent] Session ended by user');
             } else {
               console.error('[ExplainAgent] Error:', err);
-              ws.send(JSON.stringify({ type: 'error', message: 'Explain session failed: ' + err.message }));
+              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'Explain session failed: ' + err.message }));
             }
           }
           if (session.runGeneration === explainGen) {
@@ -288,13 +262,18 @@ wss.on('connection', (ws, req) => {
             session.mode = 'direct';
             session.followUpResolver = null;
             session.followUpSent = false;
-            ws.send(JSON.stringify({ type: 'session_ended' }));
+            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
           }
           break;
         }
 
         case 'guided_response': {
-          if (!session.active) return;
+          if (!session.active) {
+            console.warn(`[WS] guided_response dropped — session inactive (${session.userEmail || session.id})`);
+            ws.send(JSON.stringify({ type: 'error', message: 'Session ended unexpectedly. Please start a new session.' }));
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+            return;
+          }
           session.guidedResponse = { optionId: msg.optionId, optionIds: msg.optionIds, labels: msg.labels, text: msg.text, timestamp: Date.now() };
           if (session.guidedResponseResolver) {
             session.guidedResponseResolver();
@@ -311,7 +290,12 @@ wss.on('connection', (ws, req) => {
         }
 
         case 'guided_message': {
-          if (!session.active) return;
+          if (!session.active) {
+            console.warn(`[WS] guided_message dropped — session inactive (${session.userEmail || session.id})`);
+            ws.send(JSON.stringify({ type: 'error', message: 'Session ended unexpectedly. Please start a new session.' }));
+            ws.send(JSON.stringify({ type: 'session_ended' }));
+            return;
+          }
           session.guidedMessageQueue.push(msg.text);
           // If the agent is waiting for a response (send_options), resolve it with the freeform text
           if (session.guidedResponseResolver) {
@@ -460,7 +444,7 @@ wss.on('connection', (ws, req) => {
               console.log('[GuidedAgent] Resumed session ended by user');
             } else {
               console.error('[GuidedAgent] Resume error:', err);
-              ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
+              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'Resume failed: ' + err.message }));
             }
           }
           if (session.runGeneration === resumeGen) {
@@ -470,7 +454,7 @@ wss.on('connection', (ws, req) => {
             session.followUpResolver = null;
             session.followUpSent = false;
             session.conversationId = null;
-            ws.send(JSON.stringify({ type: 'session_ended' }));
+            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
           }
           break;
         }
@@ -544,15 +528,91 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
-    console.log(`[WS] Client disconnected: ${sessionId}`);
-    session.active = false;
-    // Resolve followUpResolver so startGuidedSession can return cleanly
-    if (session.followUpResolver) {
-      session.followUpResolver('__timeout__');
-      session.followUpResolver = null;
+    console.log(`[WS] Client disconnected: ${session.id} (active=${session.active})`);
+
+    if (session.active) {
+      // Grace period: keep session alive for 60s to allow reconnection
+      session.wsDisconnectedAt = Date.now();
+      session.graceTimer = setTimeout(() => {
+        console.log(`[WS] Grace period expired for ${session.id}, cleaning up`);
+        session.active = false;
+        if (session.followUpResolver) {
+          session.followUpResolver('__timeout__');
+          session.followUpResolver = null;
+        }
+        sessions.delete(session.id);
+        if (session.userId) {
+          sessionsByUserId.delete(session.userId);
+        }
+        // Try to notify client if somehow still connected
+        if (session.ws.readyState === 1) {
+          session.ws.send(JSON.stringify({ type: 'session_ended' }));
+        }
+      }, 60000);
+    } else {
+      // No active lesson — clean up immediately
+      sessions.delete(session.id);
+      if (session.userId) {
+        const existing = sessionsByUserId.get(session.userId);
+        if (existing === session) {
+          sessionsByUserId.delete(session.userId);
+        }
+      }
     }
-    sessions.delete(sessionId);
   });
+}
+
+wss.on('connection', (ws, req) => {
+  const user = req.user || null;
+  const userId = user?.id || null;
+
+  // Check for an existing session that's in the grace period (disconnected but active)
+  if (userId) {
+    const existingSession = sessionsByUserId.get(userId);
+    if (existingSession && existingSession.active && existingSession.wsDisconnectedAt) {
+      // Reconnect: swap in the new WebSocket
+      console.log(`[WS] Reconnecting user ${user.email} to session ${existingSession.id} (disconnected ${Date.now() - existingSession.wsDisconnectedAt}ms ago)`);
+      clearTimeout(existingSession.graceTimer);
+      existingSession.graceTimer = null;
+      existingSession.wsDisconnectedAt = null;
+      existingSession.ws = ws;
+      attachHandlers(ws, existingSession);
+      ws.send(JSON.stringify({ type: 'session_resumed' }));
+      return;
+    }
+  }
+
+  // Create a new session
+  const sessionId = generateId();
+  const session = {
+    id: sessionId,
+    ws,
+    userId,
+    userEmail: user?.email || null,
+    interruptFlag: null,
+    pauseFlag: false,
+    pauseResolver: null,
+    endSessionFlag: false,
+    active: false,
+    mode: 'direct',
+    speedMultiplier: 1,
+    ttsMuted: false,
+    guidedResponse: null,
+    guidedResponseResolver: null,
+    pendingGuidedResponses: [],
+    guidedMessageQueue: [],
+    followUpResolver: null,
+    followUpSent: false,
+    conversationId: null,
+    runGeneration: 0,
+  };
+  sessions.set(sessionId, session);
+  if (userId) {
+    sessionsByUserId.set(userId, session);
+  }
+  console.log(`[WS] Client connected: ${sessionId}${user ? ` (${user.email})` : ''}`);
+
+  attachHandlers(ws, session);
 });
 
 // SPA fallback — serve index.html for all non-API routes

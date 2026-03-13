@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary } from './agent.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs } from './agent.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
@@ -835,7 +835,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
 
-  const { ws } = session;
+  const ws = liveWs(session);
   sendJSON(ws, { type: 'guided_start', problemText });
 
   // Store image data on session so the solver can access it later
@@ -862,7 +862,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
 }
 
 export async function resumeGuidedSession(session, savedMessages, savedSolverResult, savedVizState) {
-  const { ws } = session;
+  const ws = liveWs(session);
 
   // Restore image data from the first user message (if present)
   const firstUserMsg = savedMessages.find(m => m.role === 'user');
@@ -902,7 +902,7 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
 }
 
 async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult, restoredBatchState) {
-  const { ws } = session;
+  const ws = liveWs(session);
   const myGeneration = session.runGeneration;
   let sessionPlan = null;
   let emptyEndTurnCount = 0;
@@ -923,7 +923,14 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
   let continueLoop = true;
   while (continueLoop) {
     let lessonDone = false;
-    if (ws.readyState !== ws.OPEN) break;
+    if (session.ws.readyState !== 1) {
+      if (!session.wsDisconnectedAt || Date.now() - session.wsDisconnectedAt > 60000) {
+        console.warn(`[GuidedAgent] Loop exit: WebSocket not open (readyState=${session.ws.readyState}, user=${session.userEmail || session.id})`);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
     if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
 
     // Non-blocking check if background solver is done
@@ -1704,7 +1711,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       if (followUpMsg === '__end_session__' || session.endSessionFlag) {
         throw new Error('__end_session__');
       }
-      if (followUpMsg === '__timeout__' || ws.readyState !== 1) {
+      if (followUpMsg === '__timeout__' || (session.ws.readyState !== 1 && (!session.wsDisconnectedAt || Date.now() - session.wsDisconnectedAt > 60000))) {
         continueLoop = false;
         break;
       }
@@ -1717,6 +1724,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       continue;
     }
   }
+
+  console.log(`[GuidedAgent] Loop ended (apiCalls=${apiCallCount}, continueLoop=${continueLoop}, wsOpen=${ws.readyState === ws.OPEN}, user=${session.userEmail || session.id})`);
 
   // Mark conversation as complete if it finished naturally
   if (session.conversationId) {

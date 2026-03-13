@@ -7,6 +7,7 @@ export function useWebSocket(onMessage, onBinary, enabled = true) {
   const reconnectTimer = useRef(null);
   const onMessageRef = useRef(onMessage);
   const onBinaryRef = useRef(onBinary);
+  const pendingMessages = useRef([]);
 
   // Keep refs current without triggering reconnects
   onMessageRef.current = onMessage;
@@ -49,6 +50,14 @@ export function useWebSocket(onMessage, onBinary, enabled = true) {
 
       ws.onopen = () => {
         console.log('[WS] Connected');
+        // Flush any messages queued while disconnected
+        if (pendingMessages.current.length > 0) {
+          console.log(`[WS] Flushing ${pendingMessages.current.length} queued messages`);
+          for (const queued of pendingMessages.current) {
+            ws.send(JSON.stringify(queued));
+          }
+          pendingMessages.current = [];
+        }
         setConnected(true);
       };
 
@@ -90,6 +99,13 @@ export function useWebSocket(onMessage, onBinary, enabled = true) {
   const send = useCallback((msg) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(msg));
+    } else {
+      // Queue messages that should be delivered on reconnect
+      const queueableTypes = ['guided_response', 'guided_message', 'interrupt', 'end_session', 'pause', 'resume', 'set_speed', 'set_tts_muted'];
+      if (queueableTypes.includes(msg.type)) {
+        console.log(`[WS] Queuing message (disconnected): ${msg.type}`);
+        pendingMessages.current.push(msg);
+      }
     }
   }, []);
 

@@ -138,6 +138,9 @@ export default function App() {
       if (msg.type === 'interest_registered') {
         track('would_pay_registered', {});
       }
+      if (msg.type === 'session_resumed') {
+        console.log('[App] Session resumed after reconnection');
+      }
       if (msg.type === 'session_ended') {
         // Server confirmed session is fully terminated — flush any lingering audio
         audioPlayer.flush();

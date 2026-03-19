@@ -19,6 +19,9 @@ export const RENDERER_MANIFEST = {
       { name: 'visited', color: 'green' },
       { name: 'path', color: 'purple' },
       { name: 'examining', color: 'orange' },
+      { name: 'color-red', color: 'red' },
+      { name: 'color-blue', color: 'blue' },
+      { name: 'color-green', color: 'green' },
     ],
     setup: 'create_visualization({ panels: [], context_panels: [...] })  // graph is set up via update_graph',
     example: `emit_segment({

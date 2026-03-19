@@ -91,7 +91,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
         <p className="text-text-secondary font-body">
           {solveMode === 'explain'
             ? 'Get a visual walkthrough of the solution'
-            : "Paste a problem or upload a screenshot and let's figure it out step by step"}
+            : "Paste a problem or describe where you're stuck"}
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
               e.target.style.height = 'auto';
               e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
             }}
-            placeholder="Paste a problem, describe a concept, or ask a question..."
+            placeholder="What are you trying to understand?"
             rows={2}
             className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary font-body placeholder-text-tertiary focus:outline-none resize-none"
           />

@@ -8,6 +8,7 @@ import AuthModal from './components/AuthModal';
 import SessionFeedback from './components/SessionFeedback';
 import SessionGate from './components/SessionGate';
 import ContextPanelHost from './components/context/ContextPanelHost';
+import ContextOverlay from './components/context/ContextOverlay';
 import ResizableSplit from './components/ResizableSplit';
 import ExitConfirmModal from './components/ExitConfirmModal';
 import Logo from './components/Logo';
@@ -468,7 +469,7 @@ export default function App() {
               <ResizableSplit
                 initialRatio={0.35}
                 className="flex-1"
-                top={<ContextPanelHost panels={state.contextPanels} expanded className="h-full overflow-auto" />}
+                top={<ContextPanelHost panels={state.contextPanels} className="h-full overflow-auto max-h-[40vh]" />}
                 bottom={<Transcript segments={state.segments} agentStatus={state.agentStatus} centered />}
               />
               <Controls
@@ -496,44 +497,37 @@ export default function App() {
           <>
             {/* Visualization panel - 60% */}
             <div className="w-2/3 h-full overflow-hidden border-r border-border">
-              {useVizLayout ? (
-                <VizLayout
-                  key={state.algorithm}
-                  panels={state.vizPanels}
-                  explanationMode={state.explanationMode}
-                  segmentCount={state.segmentCount}
-                  algorithm={state.algorithm}
-                  residualEdges={state.latestResidualEdges}
-                  onElementClick={handleElementClick}
-                />
-              ) : (
-                <GraphRenderer
-                  key={state.algorithm}
-                  graph={state.graph}
-                  phase={state.currentPhase}
-                  explanationMode={state.explanationMode}
-                  segmentCount={state.segmentCount}
-                  algorithm={state.algorithm}
-                  residualEdges={state.latestResidualEdges}
-                  onElementClick={handleElementClick}
-                />
-              )}
+              <ContextOverlay panels={state.contextPanels}>
+                {useVizLayout ? (
+                  <VizLayout
+                    key={state.algorithm}
+                    panels={state.vizPanels}
+                    explanationMode={state.explanationMode}
+                    segmentCount={state.segmentCount}
+                    algorithm={state.algorithm}
+                    residualEdges={state.latestResidualEdges}
+                    onElementClick={handleElementClick}
+                  />
+                ) : (
+                  <GraphRenderer
+                    key={state.algorithm}
+                    graph={state.graph}
+                    phase={state.currentPhase}
+                    explanationMode={state.explanationMode}
+                    segmentCount={state.segmentCount}
+                    algorithm={state.algorithm}
+                    residualEdges={state.latestResidualEdges}
+                    onElementClick={handleElementClick}
+                  />
+                )}
+              </ContextOverlay>
             </div>
 
             {/* Transcript panel */}
             <div className="w-1/3 flex flex-col overflow-hidden bg-surface-1">
-              {state.contextPanels.length > 0 ? (
-                <ResizableSplit
-                  initialRatio={0.35}
-                  className="flex-1"
-                  top={<ContextPanelHost panels={state.contextPanels} className="h-full overflow-auto" />}
-                  bottom={<Transcript segments={state.segments} agentStatus={state.agentStatus} />}
-                />
-              ) : (
-                <div className="flex-1 overflow-hidden">
-                  <Transcript segments={state.segments} agentStatus={state.agentStatus} />
-                </div>
-              )}
+              <div className="flex-1 overflow-hidden">
+                <Transcript segments={state.segments} agentStatus={state.agentStatus} />
+              </div>
               <Controls
                 status={state.status}
                 agentStatus={state.agentStatus}

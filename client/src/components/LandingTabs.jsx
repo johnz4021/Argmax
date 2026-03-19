@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import AlgoSelector from './AlgoSelector';
 import ProblemSolver from './ProblemSolver';
 import ConversationHistory from './ConversationHistory';
 import ConversationTranscript from './ConversationTranscript';
@@ -25,7 +24,6 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
 
   const tabs = [
     { id: 'solver', label: 'Problem Help' },
-    { id: 'tutorials', label: 'Tutorials' },
     { id: 'history', label: 'History' },
     { id: 'help', label: 'Help Center' },
   ];
@@ -54,9 +52,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
         ))}
       </div>
       <div className="flex-1 overflow-auto">
-        {activeTab === 'tutorials' ? (
-          <AlgoSelector onSelect={onSelect} disabled={disabled} />
-        ) : activeTab === 'solver' ? (
+        {activeTab === 'solver' ? (
           <ProblemSolver onSelect={onSelect} disabled={disabled} />
         ) : activeTab === 'help' ? (
           <HelpCenter />

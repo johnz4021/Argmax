@@ -427,8 +427,21 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
       if (sendJsonFn && receivedAudio) {
         sendJsonFn({ type: 'audio_end' });
       }
-      // Wait for client to finish playing queued audio
-      setTimeout(() => resolve({ aborted: false, audioDurationMs }), remainingMs);
+      // Wait for client to finish playing queued audio (abortable)
+      if (remainingMs <= 0 || !shouldAbort) {
+        setTimeout(() => resolve({ aborted: false, audioDurationMs }), remainingMs);
+      } else {
+        const waitStart = Date.now();
+        const pollInterval = setInterval(() => {
+          if (shouldAbort()) {
+            clearInterval(pollInterval);
+            resolve({ aborted: true, audioDurationMs });
+          } else if (Date.now() - waitStart >= remainingMs) {
+            clearInterval(pollInterval);
+            resolve({ aborted: false, audioDurationMs });
+          }
+        }, 50);
+      }
     });
 
     elWs.on('error', (err) => {

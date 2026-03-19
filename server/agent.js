@@ -1172,16 +1172,28 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // TTS or simulated delay (synthesizeAndStream waits for playback to finish)
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
       if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
         session._ttsDisabledNotified = true;
         sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
       }
 
-      if (ttsResult?.aborted || session.pauseFlag) {
-        // Pause was pressed during or after TTS — send flush to stop client audio, then pause immediately
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
         sendJSON(ws, { type: 'audio_flush' });
         sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+
+        // Skip takes priority over pause — advance immediately without pausing
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          return {
+            success: true,
+            message: 'Segment skipped. Continue with the next segment.',
+          };
+        }
+
+        // Pause was pressed during or after TTS
         session.pauseFlag = false;
         if (session.endSessionFlag) throw new Error('__end_session__');
         sendJSON(ws, { type: 'paused' });
@@ -1197,7 +1209,12 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         };
       }
 
-      // Small buffer between segments for natural pacing
+      // Small buffer between segments for natural pacing (skippable)
+      if (session.skipFlag) {
+        session.skipFlag = false;
+        sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+        return { success: true, message: 'Segment skipped during gap. Continue with the next segment.' };
+      }
       const gapMs = 300 / session.speedMultiplier;
       await new Promise((resolve) => setTimeout(resolve, gapMs));
 
@@ -1222,40 +1239,56 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
       if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
         session._ttsDisabledNotified = true;
         sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
       }
 
-      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
-      if (ttsResult?.aborted || session.pauseFlag) {
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
         sendJSON(ws, { type: 'audio_flush' });
-        session.pauseFlag = false;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        sendJSON(ws, { type: 'paused' });
-        await new Promise((resolve) => { session.pauseResolver = resolve; });
-        session.pauseResolver = null;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        if (!session.interruptFlag) {
-          sendJSON(ws, { type: 'resumed' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip past the rest of this interrupt response
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
         }
       }
 
       // If rewind mode, also narrate each replayed step
       if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
         for (const stepNarration of input.rewind.narration_per_step) {
-          if (session.pauseFlag) break;
+          if (session.pauseFlag || session.skipFlag) break;
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
-          const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
           if (rewindTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
           }
 
-          if (rewindTts?.aborted || session.pauseFlag) {
+          if (rewindTts?.aborted || session.pauseFlag || session.skipFlag) {
             sendJSON(ws, { type: 'audio_flush' });
+
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              break; // Skip remaining rewind steps
+            }
+
             session.pauseFlag = false;
             if (session.endSessionFlag) throw new Error('__end_session__');
             sendJSON(ws, { type: 'paused' });
@@ -1296,35 +1329,71 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         setTimeout(() => resolve('__timeout__'), 600000);
       });
 
-      // TTS the prompt (abortable on pause) — learner can respond during this
+      // TTS the prompt (abortable on pause/skip) — learner can respond during this
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
       if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
         session._ttsDisabledNotified = true;
         sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
       }
 
-      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
-      if (ttsResult?.aborted || session.pauseFlag) {
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
         sendJSON(ws, { type: 'audio_flush' });
-        session.pauseFlag = false;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        sendJSON(ws, { type: 'paused' });
-        await new Promise((resolve) => { session.pauseResolver = resolve; });
-        session.pauseResolver = null;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        if (!session.interruptFlag) {
-          sendJSON(ws, { type: 'resumed' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip bypasses the question entirely — clear options and advance
+          session.guidedResponseResolver = null;
+          sendJSON(ws, { type: 'clear_guided_options' });
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
         }
       }
 
       // Now wait for learner response (may already be resolved if they clicked during TTS)
-      const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+      // Also allow skip to break out of the wait
+      const skipPromise = new Promise((resolve) => {
+        const interval = setInterval(() => {
+          if (session.skipFlag) {
+            clearInterval(interval);
+            resolve('__skipped__');
+          }
+        }, 50);
+        // Clean up when other promises win the race
+        responsePromise.then(() => clearInterval(interval));
+        timeoutPromise.then(() => clearInterval(interval));
+      });
+      const raceResult = await Promise.race([responsePromise, timeoutPromise, skipPromise]);
 
       session.guidedResponseResolver = null;
 
-      if (raceResult === '__end_session__' || session.endSessionFlag) {
+      if (raceResult === '__skipped__' || session.skipFlag) {
+        session.skipFlag = false;
+        session.pauseFlag = false;
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          skipped: true,
+          message: 'The learner skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+        };
+      } else if (raceResult === '__end_session__' || session.endSessionFlag) {
         throw new Error('__end_session__');
       } else if (raceResult === '__timeout__') {
         sendJSON(ws, { type: 'clear_guided_options' });
@@ -1375,36 +1444,72 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         });
       }
 
-      // TTS for the reply (abortable on pause) — learner can respond during this
+      // TTS for the reply (abortable on pause/skip) — learner can respond during this
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
       if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
         session._ttsDisabledNotified = true;
         sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
       }
 
-      // Handle pause — either TTS was aborted, or pause arrived after TTS finished
-      if (ttsResult?.aborted || session.pauseFlag) {
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
         sendJSON(ws, { type: 'audio_flush' });
-        session.pauseFlag = false;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        sendJSON(ws, { type: 'paused' });
-        await new Promise((resolve) => { session.pauseResolver = resolve; });
-        session.pauseResolver = null;
-        if (session.endSessionFlag) throw new Error('__end_session__');
-        if (!session.interruptFlag) {
-          sendJSON(ws, { type: 'resumed' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip bypasses the response wait — clear prompt and advance
+          if (wait_for_response !== false) {
+            session.guidedResponseResolver = null;
+            sendJSON(ws, { type: 'clear_guided_options' });
+          }
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
         }
       }
 
       if (wait_for_response !== false) {
-        const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+        // Also allow skip to break out of the wait
+        const skipPromise = new Promise((resolve) => {
+          const interval = setInterval(() => {
+            if (session.skipFlag) {
+              clearInterval(interval);
+              resolve('__skipped__');
+            }
+          }, 50);
+          responsePromise.then(() => clearInterval(interval));
+          timeoutPromise.then(() => clearInterval(interval));
+        });
+        const raceResult = await Promise.race([responsePromise, timeoutPromise, skipPromise]);
         session.guidedResponseResolver = null;
         // Clear guided prompt so subsequent student messages route as interrupts, not guided_message
         sendJSON(ws, { type: 'clear_guided_options' });
 
-        if (raceResult === '__end_session__' || session.endSessionFlag) {
+        if (raceResult === '__skipped__' || session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else if (raceResult === '__end_session__' || session.endSessionFlag) {
           throw new Error('__end_session__');
         } else if (raceResult === '__timeout__') {
           return { student_response: null, timed_out: true, message: 'Learner did not respond. Move on.' };

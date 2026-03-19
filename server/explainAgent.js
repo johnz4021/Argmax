@@ -571,21 +571,29 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
           // TTS for the prompt
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled' });
           }
 
-          if (ttsResult?.aborted || session.pauseFlag) {
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
             sendJSON(ws, { type: 'audio_flush' });
-            session.pauseFlag = false;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            sendJSON(ws, { type: 'paused' });
-            await new Promise((resolve) => { session.pauseResolver = resolve; });
-            session.pauseResolver = null;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            if (!session.interruptFlag) sendJSON(ws, { type: 'resumed' });
+
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // Sub-problem selection is unskippable — just stop TTS, still wait for selection
+            } else {
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              sendJSON(ws, { type: 'paused' });
+              await new Promise((resolve) => { session.pauseResolver = resolve; });
+              session.pauseResolver = null;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              if (!session.interruptFlag) sendJSON(ws, { type: 'resumed' });
+            }
           }
 
           sendJSON(ws, { type: 'guided_prompt', prompt });

@@ -261,6 +261,12 @@ export default function App() {
     audioPlayer.flush();
   }, [send, audioPlayer]);
 
+  const handleSkip = useCallback(() => {
+    track('skip_used', {});
+    send({ type: 'skip' });
+    audioPlayer.flush();
+  }, [send, audioPlayer]);
+
   const handleResume = useCallback(() => {
     send({ type: 'resume' });
     processMessage({ type: 'resumed' });
@@ -440,6 +446,7 @@ export default function App() {
                 agentStatus={state.agentStatus}
                 onInterrupt={handleInterrupt}
                 onPause={handlePause}
+                onSkip={handleSkip}
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
@@ -469,6 +476,7 @@ export default function App() {
                 agentStatus={state.agentStatus}
                 onInterrupt={handleInterrupt}
                 onPause={handlePause}
+                onSkip={handleSkip}
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
@@ -531,6 +539,7 @@ export default function App() {
                 agentStatus={state.agentStatus}
                 onInterrupt={handleInterrupt}
                 onPause={handlePause}
+                onSkip={handleSkip}
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}

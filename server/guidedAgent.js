@@ -1320,35 +1320,72 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             });
           }
 
-          // TTS for the reply (abortable on pause) — student can respond during this
+          // TTS for the reply (abortable on pause/skip) — student can respond during this
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
           }
 
-          // Handle pause — either TTS was aborted, or pause arrived after TTS finished
-          if (ttsResult?.aborted || session.pauseFlag) {
+          // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
             sendJSON(ws, { type: 'audio_flush' });
-            session.pauseFlag = false;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            sendJSON(ws, { type: 'paused' });
-            await new Promise((resolve) => { session.pauseResolver = resolve; });
-            session.pauseResolver = null;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            if (!session.interruptFlag) {
-              sendJSON(ws, { type: 'resumed' });
+
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // Skip bypasses the response wait — clear prompt and advance
+              if (wait_for_response !== false) {
+                session.guidedResponseResolver = null;
+                sendJSON(ws, { type: 'clear_guided_options' });
+              }
+              result = {
+                student_response: null,
+                skipped: true,
+                message: 'The student skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+              };
+            } else {
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              sendJSON(ws, { type: 'paused' });
+              await new Promise((resolve) => { session.pauseResolver = resolve; });
+              session.pauseResolver = null;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              if (!session.interruptFlag) {
+                sendJSON(ws, { type: 'resumed' });
+              }
             }
           }
 
-          if (wait_for_response !== false) {
-            const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+          if (!result && wait_for_response !== false) {
+            // Also allow skip to break out of the wait
+            const skipPromise = new Promise((resolve) => {
+              const interval = setInterval(() => {
+                if (session.skipFlag) {
+                  clearInterval(interval);
+                  resolve('__skipped__');
+                }
+              }, 50);
+              responsePromise.then(() => clearInterval(interval));
+              timeoutPromise.then(() => clearInterval(interval));
+            });
+            const raceResult = await Promise.race([responsePromise, timeoutPromise, skipPromise]);
 
             session.guidedResponseResolver = null;
 
-            if (raceResult === '__end_session__' || session.endSessionFlag) {
+            if (raceResult === '__skipped__' || session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              sendJSON(ws, { type: 'clear_guided_options' });
+              result = {
+                student_response: null,
+                skipped: true,
+                message: 'The student skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+              };
+            } else if (raceResult === '__end_session__' || session.endSessionFlag) {
               throw new Error('__end_session__');
             } else if (raceResult === '__timeout__') {
               result = {
@@ -1373,7 +1410,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                 message: `The student responded: "${answerText}". STOP and address this response BEFORE doing anything else. If the student answered CORRECTLY or is signaling they want to move on (e.g., "I understand", "I get it", "let's move on", "got it", "next", "skip", "continue") — give brief praise via conversational_reply with wait_for_response: false, then advance to the next stage in the SAME turn using emit_segment or send_options. Do NOT use wait_for_response: true for praise. Do NOT ask follow-up probing questions on a concept they just got right. If they are disagreeing, re-explain your reasoning. If they expressed confusion, address it.`,
               };
             }
-          } else {
+          } else if (!result) {
             result = { success: true, message: 'Reply sent.' };
           }
         } else if (block.name === 'send_options') {
@@ -1403,67 +1440,114 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             setTimeout(() => resolve('__timeout__'), 600000);
           });
 
-          // TTS for the prompt (abortable on pause) — student can respond during this
+          // TTS for the prompt (abortable on pause/skip) — student can respond during this
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
           }
 
-          // Handle pause — either TTS was aborted, or pause arrived after TTS finished
-          if (ttsResult?.aborted || session.pauseFlag) {
+          // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
             sendJSON(ws, { type: 'audio_flush' });
-            session.pauseFlag = false;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            sendJSON(ws, { type: 'paused' });
-            await new Promise((resolve) => { session.pauseResolver = resolve; });
-            session.pauseResolver = null;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            if (!session.interruptFlag) {
-              sendJSON(ws, { type: 'resumed' });
+
+            if (session.skipFlag && !block.input.multiSelect) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // Skip bypasses Socratic questions — clear options and advance
+              session.guidedResponseResolver = null;
+              sendJSON(ws, { type: 'clear_guided_options' });
+              result = {
+                student_response: null,
+                skipped: true,
+                message: 'The student skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+              };
+            } else if (session.skipFlag) {
+              // Sub-problem selection (multiSelect) is unskippable — just stop TTS
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+            } else {
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              sendJSON(ws, { type: 'paused' });
+              await new Promise((resolve) => { session.pauseResolver = resolve; });
+              session.pauseResolver = null;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              if (!session.interruptFlag) {
+                sendJSON(ws, { type: 'resumed' });
+              }
             }
           }
 
-          // Also send a guided_prompt so the student can type in the input field
-          sendJSON(ws, { type: 'guided_prompt', prompt });
+          if (!result) {
+            // Also send a guided_prompt so the student can type in the input field
+            sendJSON(ws, { type: 'guided_prompt', prompt });
 
-          // Now wait for student response (may already be resolved if they clicked during TTS)
-          const raceResult = await Promise.race([responsePromise, timeoutPromise]);
+            // Now wait for student response (may already be resolved if they clicked during TTS)
+            const raceCandidates = [responsePromise, timeoutPromise];
 
-          session.guidedResponseResolver = null;
+            // Only allow skip to break out of the wait for Socratic questions, not sub-problem selection
+            if (!block.input.multiSelect) {
+              const skipPromise = new Promise((resolve) => {
+                const interval = setInterval(() => {
+                  if (session.skipFlag) {
+                    clearInterval(interval);
+                    resolve('__skipped__');
+                  }
+                }, 50);
+                responsePromise.then(() => clearInterval(interval));
+                timeoutPromise.then(() => clearInterval(interval));
+              });
+              raceCandidates.push(skipPromise);
+            }
+            const raceResult = await Promise.race(raceCandidates);
 
-          if (raceResult === '__end_session__' || session.endSessionFlag) {
-            throw new Error('__end_session__');
-          } else if (raceResult === '__timeout__') {
-            sendJSON(ws, { type: 'clear_guided_options' });
-            result = {
-              student_response: null,
-              timed_out: true,
-              message: 'Student did not respond within 2 minutes. Give them a hint and reveal the answer.',
-            };
-          } else if (raceResult === '__interrupted__') {
-            sendJSON(ws, { type: 'clear_guided_options' });
-            result = {
-              student_response: null,
-              interrupted: true,
-              message: 'Student interrupted with a question. The interrupt will be handled next.',
-            };
-          } else {
-            const studentResponse = session.guidedResponse;
-            session.guidedResponse = null;
-            sendJSON(ws, { type: 'clear_guided_options' });
-            const answerText = studentResponse?.text || studentResponse?.labels?.join(', ') || studentResponse?.optionId || '';
-            result = {
-              student_response: studentResponse,
-              timed_out: false,
-              selected_option_id: studentResponse?.optionId || null,
-              selected_option_ids: studentResponse?.optionIds || null,
-              selected_labels: studentResponse?.labels || null,
-              freeform_text: studentResponse?.text || null,
-              message: `The student answered: "${answerText}". STOP and evaluate this answer BEFORE doing anything else. If their answer is WRONG: you must say "Not quite — [their answer] doesn't work because [reason]" and give a hint. Do NOT silently proceed with the correct answer as if they agreed. Do NOT say "Okay" and then use a different answer. The student must hear explicit feedback on what they said. If CORRECT: give brief praise (1 sentence) via conversational_reply with wait_for_response: false, then continue advancing in the SAME turn. Do NOT ask follow-up probing questions on the same concept.`,
-            };
+            session.guidedResponseResolver = null;
+
+            if (raceResult === '__skipped__' || (!block.input.multiSelect && session.skipFlag)) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              sendJSON(ws, { type: 'clear_guided_options' });
+              result = {
+                student_response: null,
+                skipped: true,
+                message: 'The student skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+              };
+            } else if (raceResult === '__end_session__' || session.endSessionFlag) {
+              throw new Error('__end_session__');
+            } else if (raceResult === '__timeout__') {
+              sendJSON(ws, { type: 'clear_guided_options' });
+              result = {
+                student_response: null,
+                timed_out: true,
+                message: 'Student did not respond within 2 minutes. Give them a hint and reveal the answer.',
+              };
+            } else if (raceResult === '__interrupted__') {
+              sendJSON(ws, { type: 'clear_guided_options' });
+              result = {
+                student_response: null,
+                interrupted: true,
+                message: 'Student interrupted with a question. The interrupt will be handled next.',
+              };
+            } else {
+              const studentResponse = session.guidedResponse;
+              session.guidedResponse = null;
+              sendJSON(ws, { type: 'clear_guided_options' });
+              const answerText = studentResponse?.text || studentResponse?.labels?.join(', ') || studentResponse?.optionId || '';
+              result = {
+                student_response: studentResponse,
+                timed_out: false,
+                selected_option_id: studentResponse?.optionId || null,
+                selected_option_ids: studentResponse?.optionIds || null,
+                selected_labels: studentResponse?.labels || null,
+                freeform_text: studentResponse?.text || null,
+                message: `The student answered: "${answerText}". STOP and evaluate this answer BEFORE doing anything else. If their answer is WRONG: you must say "Not quite — [their answer] doesn't work because [reason]" and give a hint. Do NOT silently proceed with the correct answer as if they agreed. Do NOT say "Okay" and then use a different answer. The student must hear explicit feedback on what they said. If CORRECT: give brief praise (1 sentence) via conversational_reply with wait_for_response: false, then continue advancing in the SAME turn. Do NOT ask follow-up probing questions on the same concept.`,
+              };
+            }
           }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };

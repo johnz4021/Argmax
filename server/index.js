@@ -118,6 +118,7 @@ function attachHandlers(ws, session) {
           session.active = false;
           session.endSessionFlag = false;
           session.pauseFlag = false;
+          session.skipFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -167,6 +168,7 @@ function attachHandlers(ws, session) {
           session.active = false;
           session.endSessionFlag = false;
           session.pauseFlag = false;
+          session.skipFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -226,6 +228,7 @@ function attachHandlers(ws, session) {
           session.active = false;
           session.endSessionFlag = false;
           session.pauseFlag = false;
+          session.skipFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -370,6 +373,13 @@ function attachHandlers(ws, session) {
           break;
         }
 
+        case 'skip': {
+          if (!session.active) return;
+          session.skipFlag = true;
+          console.log(`[WS] Skip requested`);
+          break;
+        }
+
         case 'set_speed': {
           session.speedMultiplier = msg.multiplier || 1;
           break;
@@ -405,6 +415,7 @@ function attachHandlers(ws, session) {
           session.active = false;
           session.endSessionFlag = false;
           session.pauseFlag = false;
+          session.skipFlag = false;
           session.runGeneration++;
           session.currentGraph = null;
           session.currentTrace = null;
@@ -591,6 +602,7 @@ wss.on('connection', (ws, req) => {
     userEmail: user?.email || null,
     interruptFlag: null,
     pauseFlag: false,
+    skipFlag: false,
     pauseResolver: null,
     endSessionFlag: false,
     active: false,

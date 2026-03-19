@@ -6,7 +6,7 @@ import { posthog, POSTHOG_KEY } from '../lib/posthog';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
-export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
+export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onSkip, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
   const [question, setQuestion] = useState('');
   const [pausePending, setPausePending] = useState(false);
   const { isListening, transcript, isSupported, start, stop, clearTranscript } = useSpeechToText();
@@ -227,6 +227,12 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
             ) : (
               'Pause'
             )}
+          </button>
+          <button
+            onClick={onSkip}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-surface-2 text-text-secondary hover:text-text-primary hover:bg-surface-3 border border-border"
+          >
+            Skip
           </button>
         </div>
       )}

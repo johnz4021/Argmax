@@ -124,7 +124,7 @@ export default function VizLayout({ panels, explanationMode, segmentCount, algor
   return (
     <div className={layoutClass}>
       {panels.map((panel) => (
-        <div key={panel.id} className="bg-gray-950 overflow-hidden">
+        <div key={panel.id} className="bg-gray-950 overflow-hidden h-full">
           <RendererSwitch
             type={panel.renderer}
             rendererId={panel.renderer}

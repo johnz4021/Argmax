@@ -373,7 +373,7 @@ export default function RecursionTreeRenderer({
     const hierarchy = d3.hierarchy(rootData, d => d.children.length > 0 ? d.children : null);
     const treeLayout = d3.tree().size([
       innerWidth,
-      Math.min(innerHeight, hierarchy.height * LEVEL_HEIGHT + 60),
+      innerHeight,
     ]);
     treeLayout(hierarchy);
 

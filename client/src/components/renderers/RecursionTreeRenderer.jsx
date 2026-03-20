@@ -8,7 +8,7 @@ const NODE_HEIGHT = 32;
 const LEVEL_HEIGHT = 72;
 // Fixed-width annotation column on the right; tree gets all remaining space
 const ANNOT_WIDTH = 170;
-const TREE_PAD = { top: 40, bottom: 60, left: 36, right: 12 };
+const TREE_PAD = { top: 40, bottom: 100, left: 36, right: 12 };
 
 const SPRING = { type: 'spring', stiffness: 200, damping: 25 };
 const FAST_SPRING = { type: 'spring', stiffness: 300, damping: 30 };
@@ -422,7 +422,7 @@ export default function RecursionTreeRenderer({
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 w-full" style={{ minHeight: '300px' }}>
+      <div ref={containerRef} className="flex-1 w-full pb-3" style={{ minHeight: '300px' }}>
         {!treeData || treeData.nodes.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-gray-500">Waiting for recursion tree...</p>

@@ -120,8 +120,16 @@ function mapGraphStep(algo, step, state) {
           style: 'queue',
         }));
         c.push(ctxUpdate('visited', { items: [], style: 'set' }));
+        if (step.distance) {
+          c.push(ctxUpdate('distances', {
+            entries: Object.entries(step.distance).map(([k, d]) => ({
+              key: k, value: d, status: 'default',
+            })),
+          }));
+        }
       } else if (algo === 'dfs') {
         c.push(ctxUpdate('visited', { items: [], style: 'set' }));
+        c.push(ctxUpdate('stack', { items: [], style: 'stack' }));
       } else if (algo === 'kruskal') {
         c.push(ctxUpdate('mst_weight', { entries: [{ key: 'Total weight', value: 0 }] }));
       } else if (algo === 'prim' && step.keys) {
@@ -219,6 +227,12 @@ function mapGraphStep(algo, step, state) {
             style: 'set',
           }));
         }
+        if (step.stack) {
+          c.push(ctxUpdate('stack', {
+            items: step.stack.map((n) => ({ value: n })),
+            style: 'stack',
+          }));
+        }
       } else if (algo === 'prim') {
         if (step.parent) {
           v.push(viz('graph', 'highlight_edge', { from: step.parent, to: step.node, className: 'mst-edge' }));
@@ -290,11 +304,27 @@ function mapGraphStep(algo, step, state) {
           style: 'set',
         }));
       }
+      if (step.distance) {
+        c.push(ctxUpdate('distances', {
+          entries: Object.entries(step.distance).map(([k, d]) => ({
+            key: k, value: d, status: k === step.node ? 'highlight' : 'default',
+          })),
+        }));
+      }
+      if (step.level !== undefined) {
+        v.push(viz('graph', 'set_label', { node: step.node, label: `d=${step.level}` }));
+      }
       break;
     }
 
     case 'backtrack': {
       v.push(viz('graph', 'mark_visited', { node: step.node }));
+      if (step.stack) {
+        c.push(ctxUpdate('stack', {
+          items: step.stack.map((n) => ({ value: n })),
+          style: 'stack',
+        }));
+      }
       break;
     }
 
@@ -791,6 +821,11 @@ function mapArrayStep(algo, step, state) {
       if (step.indices) {
         v.push(viz('array', 'compare', { i: step.indices[0], j: step.indices[1] }));
       }
+      if (step.pointers) {
+        for (const [name, idx] of Object.entries(step.pointers)) {
+          if (idx >= 0) v.push(viz('array', 'set_pointer', { name, index: idx }));
+        }
+      }
       if (algo !== 'binary_search') {
         c.push(ctxUpdate('stats', {
           entries: [
@@ -805,12 +840,23 @@ function mapArrayStep(algo, step, state) {
     case 'swap': {
       state.swaps = (state.swaps || 0) + 1;
       v.push(viz('array', 'swap', { i: step.i, j: step.j }));
+      if (step.pointers) {
+        for (const [name, idx] of Object.entries(step.pointers)) {
+          if (idx >= 0) v.push(viz('array', 'set_pointer', { name, index: idx }));
+        }
+      }
       c.push(ctxUpdate('stats', {
         entries: [
           { key: 'Comparisons', value: state.comparisons || 0 },
           { key: 'Swaps', value: state.swaps },
         ],
       }));
+      break;
+    }
+
+    case 'shift': {
+      v.push(viz('array', 'place', { index: step.to, value: step.value }));
+      v.push(viz('array', 'highlight', { indices: [step.to], className: 'swapping' }));
       break;
     }
 
@@ -857,6 +903,14 @@ function mapArrayStep(algo, step, state) {
         indices: Array.from({ length: step.range[1] - step.range[0] + 1 }, (_, i) => step.range[0] + i),
         className: 'active',
       }));
+      if (step.depth !== undefined) {
+        v.push(viz('array', 'mark_subarrays', {
+          ranges: [
+            { left: step.range[0], right: step.mid, depth: step.depth },
+            { left: step.mid + 1, right: step.range[1], depth: step.depth },
+          ],
+        }));
+      }
       break;
     }
 
@@ -1425,6 +1479,12 @@ function mapLinkedStep(algo, step, state) {
           { key: 'next', value: step.next ?? 'null', status: 'highlight' },
         ],
       }));
+      break;
+    }
+
+    case 'reverse_pointer': {
+      v.push(viz('linked', 'reverse_pointer', { from: step.from, to: step.to }));
+      v.push(viz('linked', 'highlight_node', { index: step.from, className: 'reversed' }));
       break;
     }
 

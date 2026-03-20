@@ -34,6 +34,13 @@ export function linkedListReversal(values) {
       description: `At node ${list[i]} (index ${i}). Save next = ${nextIdx >= 0 ? list[nextIdx] : 'null'}. Reverse pointer: ${list[i]}.next = ${i > 0 ? list[i - 1] : 'null'}`,
     });
 
+    trace.push({
+      type: 'reverse_pointer',
+      from: i,
+      to: i > 0 ? i - 1 : null,
+      description: `Reverse pointer: node ${list[i]} now points to ${i > 0 ? list[i - 1] : 'null'}`,
+    });
+
     reversed.unshift(list[i]);
 
     trace.push({

@@ -32,6 +32,13 @@ export function insertionSort(arr) {
         values: [data[j], key],
         description: `Compare ${data[j]} > ${key}: shift ${data[j]} right`,
       });
+      trace.push({
+        type: 'shift',
+        from: j,
+        to: j + 1,
+        value: data[j],
+        description: `Shift ${data[j]} from position ${j} to ${j + 1}`,
+      });
       data[j + 1] = data[j];
       j--;
     }

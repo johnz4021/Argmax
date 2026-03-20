@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LazyMotion, domAnimation } from 'motion/react';
 import VizLayout from './components/VizLayout';
 import GraphRenderer from './components/renderers/GraphRenderer';
 import Transcript from './components/Transcript';
@@ -16,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -99,7 +100,12 @@ export default function App() {
           dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
         }
 
-        applyActions(normalized);
+        // Use sequenced application for multi-action segments
+        if (normalized.length > 2) {
+          applyActionsSequenced(normalized, { staggerMs: 120 });
+        } else {
+          applyActions(normalized);
+        }
       } else if (msg.type === 'segment_start') {
         console.log('[App] segment_start with NO viz_actions');
       }
@@ -358,6 +364,7 @@ export default function App() {
   const transcriptOnly = noVis && state.contextPanels.length === 0 && !showSelector;
 
   return (
+    <LazyMotion features={domAnimation}>
     <>
     <div className="h-screen flex flex-col bg-surface-0 font-body">
       {/* Header */}
@@ -592,5 +599,6 @@ export default function App() {
       </div>
     )}
     </>
+    </LazyMotion>
   );
 }

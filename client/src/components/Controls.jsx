@@ -3,6 +3,7 @@ import { useSpeechToText } from '../hooks/useSpeechToText';
 import GuidedOptions from './GuidedOptions';
 import MathText from './MathText';
 import { posthog, POSTHOG_KEY } from '../lib/posthog';
+import { setTimelineSpeed } from '../lib/rendererRegistry';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
@@ -293,7 +294,11 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
               max="1.2"
               step="0.1"
               defaultValue="1"
-              onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
+              onChange={(e) => {
+                const newSpeed = parseFloat(e.target.value);
+                onSpeedChange(newSpeed);
+                setTimelineSpeed(newSpeed);
+              }}
               className="w-24 accent-accent"
             />
           </div>

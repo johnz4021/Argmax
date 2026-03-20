@@ -24,6 +24,7 @@ export function quicksort(arr) {
         type: 'compare',
         indices: [j, high],
         values: [data[j], pivot],
+        pointers: { i: i, j: j, pivot: high },
         description: `Compare ${data[j]} with pivot ${pivot}`,
       });
 
@@ -35,6 +36,7 @@ export function quicksort(arr) {
             i,
             j,
             values: [data[i], data[j]],
+            pointers: { i: i, j: j, pivot: high },
             description: `Swap ${data[i]} and ${data[j]}`,
           });
           [data[i], data[j]] = [data[j], data[i]];

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { m, AnimatePresence } from 'motion/react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
 
 const CLASS_COLORS = {
@@ -10,6 +11,13 @@ const CLASS_COLORS = {
   active: 'bg-blue-500/80 border-blue-400',
   window: 'bg-cyan-600/80 border-cyan-500',
 };
+
+const DEPTH_COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#eab308'];
+
+const barSpring = { type: 'spring', stiffness: 300, damping: 25 };
+const pointerSpring = { type: 'spring', stiffness: 200, damping: 20 };
+
+let nextStableId = 0;
 
 export default function ArrayRenderer({
   rendererId = 'array',
@@ -24,6 +32,9 @@ export default function ArrayRenderer({
   const [windowRange, setWindowRange] = useState(null);
   const [overlayState, setOverlayState] = useState(null);
   const [ghostState, setGhostState] = useState(null);
+  const [stableIds, setStableIds] = useState([]);
+  const [partitionRange, setPartitionRange] = useState(null);
+  const [subarrayRanges, setSubarrayRanges] = useState([]);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
 
@@ -34,8 +45,11 @@ export default function ArrayRenderer({
       labels: [...labels],
       pointers: { ...pointers },
       windowRange: windowRange ? { ...windowRange } : null,
+      stableIds: [...stableIds],
+      partitionRange: partitionRange ? { ...partitionRange } : null,
+      subarrayRanges: subarrayRanges.map(r => ({ ...r })),
     };
-  }, [data, classes, labels, pointers, windowRange]);
+  }, [data, classes, labels, pointers, windowRange, stableIds, partitionRange, subarrayRanges]);
 
   const restoreArraySnapshot = useCallback((snap) => {
     if (!snap) return;
@@ -44,6 +58,9 @@ export default function ArrayRenderer({
     setLabels(snap.labels);
     setPointers(snap.pointers);
     setWindowRange(snap.windowRange);
+    setStableIds(snap.stableIds || []);
+    setPartitionRange(snap.partitionRange || null);
+    setSubarrayRanges(snap.subarrayRanges || []);
   }, []);
 
   const applyArrayAction = useCallback((action, params) => {
@@ -56,6 +73,10 @@ export default function ArrayRenderer({
         setLabels(params.labels || new Array(values.length).fill(''));
         setPointers({});
         setWindowRange(null);
+        const ids = values.map(() => nextStableId++);
+        setStableIds(ids);
+        setPartitionRange(null);
+        setSubarrayRanges([]);
         break;
       }
       case 'highlight': {
@@ -83,6 +104,11 @@ export default function ArrayRenderer({
           next[j] = 'swapping';
           return next;
         });
+        setStableIds((prev) => {
+          const next = [...prev];
+          [next[i], next[j]] = [next[j], next[i]];
+          return next;
+        });
         break;
       }
       case 'compare': {
@@ -106,9 +132,11 @@ export default function ArrayRenderer({
           }
           return next;
         });
+        setPartitionRange({ left, right });
         break;
       }
-      case 'place': {
+      case 'place':
+      case 'shift': {
         const { index, value } = params;
         setData((prev) => {
           const next = [...prev];
@@ -166,11 +194,21 @@ export default function ArrayRenderer({
         });
         break;
       }
+      case 'mark_subarrays': {
+        setSubarrayRanges(params.ranges || []);
+        break;
+      }
+      case 'clear_subarrays': {
+        setSubarrayRanges([]);
+        break;
+      }
       case 'reset': {
         setClasses((prev) => prev.map(() => 'default'));
         setPointers({});
         setWindowRange(null);
         setLabels((prev) => prev.map(() => ''));
+        setPartitionRange(null);
+        setSubarrayRanges([]);
         break;
       }
     }
@@ -186,6 +224,8 @@ export default function ArrayRenderer({
         setClasses((prev) => prev.map(() => 'default'));
         setPointers({});
         setWindowRange(null);
+        setPartitionRange(null);
+        setSubarrayRanges([]);
       },
     });
     return () => unregisterRenderer(rendererId);
@@ -259,43 +299,64 @@ export default function ArrayRenderer({
         <div className="w-full max-w-3xl">
           {/* Bar chart visualization */}
           <div className="relative flex items-end justify-center gap-1.5" style={{ height: '250px' }}>
-            {data.map((value, idx) => {
-              const barHeight = Math.max((Math.abs(value) / maxVal) * 200, 20);
-              const colorClass = CLASS_COLORS[classes[idx]] || CLASS_COLORS.default;
-              const isDimmed = (overlayState && !overlayState.spotlit.has(idx)) || (ghostState && !ghostState.ghost.has(idx) && !ghostState.actual.has(idx));
-              const isSpotlit = overlayState?.spotlit.has(idx);
-              const isGhost = ghostState?.ghost.has(idx);
-              const isActual = ghostState?.actual.has(idx);
-              return (
-                <div key={idx} className="flex flex-col items-center gap-1" style={{ flex: '1 1 0', maxWidth: '60px' }}>
-                  {labels[idx] && (
-                    <span className="text-[10px] text-purple-400 truncate max-w-full">
-                      {labels[idx]}
-                    </span>
-                  )}
-                  {isActual && ghostState?.actualLabel && (
-                    <span className="text-[9px] text-blue-400 font-mono truncate max-w-full">{ghostState.actualLabel}</span>
-                  )}
-                  {isGhost && ghostState?.ghostLabel && (
-                    <span className="text-[9px] text-red-400 font-mono truncate max-w-full">{ghostState.ghostLabel}</span>
-                  )}
-                  <div
-                    className={`w-full rounded-t border-2 flex items-center justify-center transition-all duration-300 ${colorClass}`}
-                    style={{
-                      height: `${barHeight}px`,
-                      minWidth: '28px',
-                      ...(isDimmed ? { opacity: 0.15 } : {}),
-                      ...(isSpotlit ? { boxShadow: '0 0 0 3px #60a5fa' } : {}),
-                      ...(isActual ? { boxShadow: '0 0 0 3px #60a5fa' } : {}),
-                      ...(isGhost ? { opacity: 0.4, borderStyle: 'dashed', borderColor: '#ef4444' } : {}),
-                    }}
-                  >
-                    <span className="text-xs font-mono text-white font-bold">{value}</span>
+            {/* Partition range overlay */}
+            {partitionRange && data.length > 0 && (
+              <div
+                className="absolute bottom-0 rounded pointer-events-none"
+                style={{
+                  left: `${(partitionRange.left / data.length) * 100}%`,
+                  width: `${((partitionRange.right - partitionRange.left + 1) / data.length) * 100}%`,
+                  height: '100%',
+                  backgroundColor: 'rgba(147, 51, 234, 0.15)',
+                  border: '1px solid rgba(147, 51, 234, 0.3)',
+                  zIndex: 0,
+                }}
+              />
+            )}
+
+            <AnimatePresence>
+              {data.map((value, idx) => {
+                const barHeight = Math.max((Math.abs(value) / maxVal) * 200, 20);
+                const colorClass = CLASS_COLORS[classes[idx]] || CLASS_COLORS.default;
+                const isDimmed = (overlayState && !overlayState.spotlit.has(idx)) || (ghostState && !ghostState.ghost.has(idx) && !ghostState.actual.has(idx));
+                const isSpotlit = overlayState?.spotlit.has(idx);
+                const isGhost = ghostState?.ghost.has(idx);
+                const isActual = ghostState?.actual.has(idx);
+                return (
+                  <div key={idx} className="flex flex-col items-center gap-1" style={{ flex: '1 1 0', maxWidth: '60px' }}>
+                    {labels[idx] && (
+                      <span className="text-[10px] text-purple-400 truncate max-w-full">
+                        {labels[idx]}
+                      </span>
+                    )}
+                    {isActual && ghostState?.actualLabel && (
+                      <span className="text-[9px] text-blue-400 font-mono truncate max-w-full">{ghostState.actualLabel}</span>
+                    )}
+                    {isGhost && ghostState?.ghostLabel && (
+                      <span className="text-[9px] text-red-400 font-mono truncate max-w-full">{ghostState.ghostLabel}</span>
+                    )}
+                    <m.div
+                      layout
+                      layoutId={`bar-${stableIds[idx]}`}
+                      initial={false}
+                      transition={barSpring}
+                      className={`w-full rounded-t border-2 flex items-center justify-center ${colorClass}`}
+                      style={{
+                        height: `${barHeight}px`,
+                        minWidth: '28px',
+                        ...(isDimmed ? { opacity: 0.15 } : {}),
+                        ...(isSpotlit ? { boxShadow: '0 0 0 3px #60a5fa' } : {}),
+                        ...(isActual ? { boxShadow: '0 0 0 3px #60a5fa' } : {}),
+                        ...(isGhost ? { opacity: 0.4, borderStyle: 'dashed', borderColor: '#ef4444' } : {}),
+                      }}
+                    >
+                      <span className="text-xs font-mono text-white font-bold">{value}</span>
+                    </m.div>
+                    <span className="text-[10px] text-gray-500 font-mono">{idx}</span>
                   </div>
-                  <span className="text-[10px] text-gray-500 font-mono">{idx}</span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </AnimatePresence>
             {/* Overlay annotations */}
             {overlayState?.annotations?.map((ann, i) => {
               const leftPct = ((ann.index + 0.5) / data.length) * 100;
@@ -312,6 +373,30 @@ export default function ArrayRenderer({
             })}
           </div>
 
+          {/* Subarray level indicators */}
+          {subarrayRanges.length > 0 && (
+            <div className="relative mt-1" style={{ height: `${Math.max(...subarrayRanges.map(r => (r.depth || 0) + 1)) * 8 + 4}px` }}>
+              {subarrayRanges.map((range, i) => {
+                const depth = range.depth || 0;
+                const color = DEPTH_COLORS[depth % DEPTH_COLORS.length];
+                return (
+                  <div
+                    key={i}
+                    className="absolute rounded-sm"
+                    style={{
+                      left: `${(range.left / data.length) * 100}%`,
+                      width: `${((range.right - range.left + 1) / data.length) * 100}%`,
+                      top: `${depth * 8}px`,
+                      height: '6px',
+                      backgroundColor: color,
+                      opacity: 0.6,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          )}
+
           {/* Pointers */}
           {Object.keys(pointers).length > 0 && (
             <div className="relative h-8 mt-2">
@@ -319,14 +404,17 @@ export default function ArrayRenderer({
                 if (idx < 0 || idx >= data.length) return null;
                 const leftPercent = ((idx + 0.5) / data.length) * 100;
                 return (
-                  <div
+                  <m.div
                     key={name}
-                    className="absolute text-center transition-all duration-300"
-                    style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}
+                    layout
+                    className="absolute text-center"
+                    animate={{ left: `${leftPercent}%` }}
+                    transition={pointerSpring}
+                    style={{ transform: 'translateX(-50%)' }}
                   >
                     <div className="text-red-400 text-[10px]">▲</div>
                     <div className="text-red-400 text-[10px] font-mono font-bold">{name}</div>
-                  </div>
+                  </m.div>
                 );
               })}
             </div>

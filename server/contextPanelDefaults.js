@@ -19,9 +19,11 @@ const PANEL_DEFAULTS = {
       initial_data: { lines: PSEUDOCODE.bfs } },
     { id: 'visited', type: 'collection', title: 'Visited' },
     { id: 'queue', type: 'collection', title: 'Queue' },
+    { id: 'distances', type: 'key_value', title: 'Distances' },
   ],
   dfs: [
     { id: 'visited', type: 'collection', title: 'Visited' },
+    { id: 'stack', type: 'collection', title: 'Call Stack' },
   ],
   kruskal: [
     { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',

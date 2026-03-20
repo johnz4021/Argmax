@@ -79,22 +79,25 @@ export function mergesort(arr) {
     });
   }
 
-  function ms(left, right) {
+  let depth = 0;
+
+  function ms(left, right, currentDepth) {
     if (left < right) {
       const mid = Math.floor((left + right) / 2);
       trace.push({
         type: 'divide',
         range: [left, right],
         mid,
+        depth: currentDepth,
         description: `Divide [${left}..${right}] at midpoint ${mid}`,
       });
-      ms(left, mid);
-      ms(mid + 1, right);
+      ms(left, mid, currentDepth + 1);
+      ms(mid + 1, right, currentDepth + 1);
       merge(left, mid, right);
     }
   }
 
-  ms(0, data.length - 1);
+  ms(0, data.length - 1, 0);
 
   trace.push({
     type: 'result',

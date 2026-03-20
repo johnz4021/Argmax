@@ -189,6 +189,7 @@ export function bfs(graph, sourceId) {
   const visited = new Set();
   const parent = {};
   const queue = [];
+  const distance = {};
 
   const adj = {};
   for (const node of graph.nodes) {
@@ -204,6 +205,7 @@ export function bfs(graph, sourceId) {
 
   visited.add(sourceId);
   queue.push(sourceId);
+  distance[sourceId] = 0;
 
   trace.push({
     type: 'init',
@@ -211,6 +213,7 @@ export function bfs(graph, sourceId) {
     description: `BFS starting from node ${sourceId}. Add ${sourceId} to queue.`,
     queue: [...queue],
     visited: [...visited],
+    distance: { ...distance },
   });
 
   while (queue.length > 0) {
@@ -238,15 +241,18 @@ export function bfs(graph, sourceId) {
         visited.add(neighbor);
         parent[neighbor] = current;
         queue.push(neighbor);
+        distance[neighbor] = distance[current] + 1;
 
         trace.push({
           type: 'discover',
           pseudocode_line: 6,
           node: neighbor,
           from: current,
-          description: `Discover node ${neighbor} via ${current}. Add to queue.`,
+          description: `Discover node ${neighbor} at distance ${distance[neighbor]} from source`,
           queue: [...queue],
           visited: [...visited],
+          distance: { ...distance },
+          level: distance[neighbor],
         });
       }
     }
@@ -257,6 +263,7 @@ export function bfs(graph, sourceId) {
     pseudocode_line: 2,
     visited: [...visited],
     parent,
+    distance: { ...distance },
     description: 'BFS complete. All reachable nodes visited.',
   });
 
@@ -280,22 +287,28 @@ export function dfs(graph, sourceId) {
     }
   }
 
+  const stack = [];
+
   trace.push({
     type: 'init',
     description: `DFS starting from node ${sourceId}.`,
     visited: [],
+    stack: [],
   });
 
   function dfsVisit(node, from) {
     visited.add(node);
     if (from) parent[node] = from;
+    stack.push(node);
 
     trace.push({
       type: 'visit_node',
       node,
       from,
-      description: `Visit node ${node}${from ? ` (from ${from})` : ' (start)'}`,
+      description: `Visit node ${node} (depth ${stack.length})${from ? ` (from ${from})` : ' (start)'}`,
       visited: [...visited],
+      stack: [...stack],
+      depth: stack.length,
     });
 
     for (const neighbor of adj[node]) {
@@ -311,10 +324,12 @@ export function dfs(graph, sourceId) {
       }
     }
 
+    stack.pop();
     trace.push({
       type: 'backtrack',
       node,
       description: `Backtrack from node ${node}`,
+      stack: [...stack],
     });
   }
 

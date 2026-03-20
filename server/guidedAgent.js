@@ -194,22 +194,32 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
-  After classify_problem, a D&C Structure panel is auto-configured with placeholders
-  (Split, Subproblems, Combine, T(n)). Use emit_segment viz_actions to fill them.
+  After classify_problem, a D&C Structure panel and recursion_tree renderer are auto-configured.
+  The D&C Structure panel has placeholders (Split, Subproblems, Combine, T(n)).
+  A Recurrence panel is also available. Use emit_segment viz_actions to fill them.
 
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
-  4. RECURRENCE — Write T(n) = ... and solve it
+  4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it using the recursion tree:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree visualization
+     b. Walk through levels with reveal_level({level: 0}), reveal_level({level: 1}), ...
+     c. At each level, use highlight_level({level}) to show work distribution
+     d. Use show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"}) to reveal which MT case applies
+     e. Use set_cumulative({level}) to show the running total of work through that level
 
 RUNTIME / ASYMPTOTICS MODE:
-  After classify_problem, a Runtime Analysis panel is auto-configured.
-  Use emit_segment viz_actions (renderer:"context", action:"update") to fill it.
+  After classify_problem, a Runtime Analysis panel and recursion_tree renderer are auto-configured.
+  Use emit_segment viz_actions (renderer:"context", action:"update") to fill the panel.
 
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method applies (Master theorem, substitution, recursion tree)
-  3. Walk through the proof steps using the auto-configured expression panel.
-     Use emit_segment viz_actions with renderer:"context" to display recurrence steps.
+  3. If using recursion tree method or Master Theorem:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
+     b. Walk through levels progressively with reveal_level and highlight_level
+     c. Use show_master_case to apply the color gradient showing which levels dominate
+     d. Use set_cumulative to show the total work sum
+     e. Use add_level_annotation to annotate specific levels with custom formulas
   4. Use concrete values to build intuition
 
 HANDLING STUDENT MESSAGES:
@@ -666,7 +676,7 @@ const guidedTools = [
       properties: {
         renderers: {
           type: 'array',
-          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval'] },
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval', 'recursion_tree'] },
           description: 'Which renderer(s) to get docs for',
         },
       },
@@ -1105,8 +1115,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               : plan.reasoning_mode === 'dp_design'
               ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
               : plan.reasoning_mode === 'dc_design'
-              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime.`
-              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence.`;
+              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. A recursion_tree renderer is auto-configured. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime using set_recurrence_tree to visualize the recursion tree and Master Theorem case.`
+              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A recursion_tree renderer is auto-configured. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, use set_recurrence_tree to visualize the recursion tree.`;
 
             // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
             if (plan.reasoning_mode !== 'algorithm_execution') {

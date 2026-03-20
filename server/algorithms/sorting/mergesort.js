@@ -81,23 +81,27 @@ export function mergesort(arr) {
 
   let depth = 0;
 
-  function ms(left, right, currentDepth) {
+  function ms(left, right, currentDepth, parentCallId) {
     if (left < right) {
+      const callId = `${left}-${right}`;
       const mid = Math.floor((left + right) / 2);
       trace.push({
         type: 'divide',
         range: [left, right],
         mid,
         depth: currentDepth,
+        call_id: callId,
+        parent_call_id: parentCallId || null,
+        subarray: data.slice(left, right + 1),
         description: `Divide [${left}..${right}] at midpoint ${mid}`,
       });
-      ms(left, mid, currentDepth + 1);
-      ms(mid + 1, right, currentDepth + 1);
+      ms(left, mid, currentDepth + 1, callId);
+      ms(mid + 1, right, currentDepth + 1, callId);
       merge(left, mid, right);
     }
   }
 
-  ms(0, data.length - 1, 0);
+  ms(0, data.length - 1, 0, null);
 
   trace.push({
     type: 'result',

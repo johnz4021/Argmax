@@ -201,7 +201,7 @@ const MODE_DEFAULTS = {
     ],
   },
   dc_design: {
-    renderer: null,
+    renderer: 'recursion_tree',
     context_panels: [
       {
         id: 'dc_structure', type: 'expression', title: 'D&C Structure',
@@ -212,10 +212,17 @@ const MODE_DEFAULTS = {
           { label: '$T(n)$', text: '___' },
         ] },
       },
+      {
+        id: 'recurrence', type: 'expression', title: 'Recurrence',
+        initial_data: { label: 'Recurrence', lines: [
+          { label: 'T(n)', text: '___' },
+          { label: 'Case', text: '___' },
+        ] },
+      },
     ],
   },
   runtime: {
-    renderer: null,
+    renderer: 'recursion_tree',
     context_panels: [
       {
         id: 'runtime_analysis', type: 'expression', title: 'Runtime Analysis',

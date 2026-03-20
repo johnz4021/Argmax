@@ -124,16 +124,25 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
+  A recursion_tree renderer is auto-configured for D&C problems.
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
-  4. RECURRENCE — Write T(n) = ... and solve it
+  4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree visualization
+     b. Walk through levels with reveal_level and highlight_level
+     c. Use show_master_case to reveal which MT case applies
+     d. Use set_cumulative to show the total work
 
 RUNTIME / ASYMPTOTICS MODE:
+  A recursion_tree renderer is auto-configured for runtime analysis.
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method (Master theorem, substitution, recursion tree)
-  3. Walk through the proof steps using expression panels
-  4. Use concrete values to build intuition
+  3. If using recursion tree / Master Theorem:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
+     b. Use highlight_level, show_master_case, set_cumulative for step-by-step analysis
+  4. Walk through the proof steps using expression panels
+  5. Use concrete values to build intuition
 
 SEGMENT BUDGET:
 - Introduction: 1-2 segments
@@ -299,7 +308,7 @@ const explainTools = [
       properties: {
         renderers: {
           type: 'array',
-          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval'] },
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval', 'recursion_tree'] },
           description: 'Which renderer(s) to get docs for',
         },
       },

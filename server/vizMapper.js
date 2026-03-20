@@ -911,6 +911,22 @@ function mapArrayStep(algo, step, state) {
           ],
         }));
       }
+      // Emit recursion tree node for mergesort divide steps
+      if (step.call_id) {
+        const nodeLabel = `[${step.range[0]}..${step.range[1]}]`;
+        if (!state._rtNodes) { state._rtNodes = []; state._rtEdges = []; state._rtRoot = null; }
+        state._rtNodes.push({ id: step.call_id, label: nodeLabel, depth: step.depth });
+        if (step.parent_call_id) {
+          state._rtEdges.push({ from: step.parent_call_id, to: step.call_id });
+        }
+        if (!state._rtRoot) state._rtRoot = step.call_id;
+        v.push(viz('recursion_tree', 'set_concrete_tree', {
+          nodes: [...state._rtNodes],
+          edges: [...state._rtEdges],
+          root: state._rtRoot,
+        }));
+        v.push(viz('recursion_tree', 'highlight_node', { id: step.call_id }));
+      }
       break;
     }
 

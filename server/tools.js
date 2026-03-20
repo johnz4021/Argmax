@@ -82,7 +82,7 @@ export const tools = [
             properties: {
               renderer: {
                 type: 'string',
-                enum: ['graph', 'array', 'table', 'tree', 'linked'],
+                enum: ['graph', 'array', 'table', 'tree', 'linked', 'recursion_tree'],
               },
               config: {
                 type: 'object',
@@ -170,7 +170,7 @@ export const tools = [
             properties: {
               renderer: {
                 type: 'string',
-                enum: ['graph', 'array', 'table', 'tree', 'linked', 'context'],
+                enum: ['graph', 'array', 'table', 'tree', 'linked', 'recursion_tree', 'context'],
                 description: 'Which renderer to target. REQUIRED for all viz actions.',
               },
               action: {

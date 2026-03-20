@@ -213,6 +213,43 @@ export const RENDERER_MANIFEST = {
   ]
 })`,
   },
+  recursion_tree: {
+    actions: [
+      { name: 'set_recurrence_tree', params: { a: 'int', b: 'int', d: 'number', n: 'int' },
+        description: 'Build abstract tree from T(n)=aT(n/b)+O(n^d). Computes all nodes, edges, level annotations, and Master Theorem case automatically.' },
+      { name: 'set_concrete_tree', params: { nodes: 'array', edges: 'array', root: 'string' },
+        description: 'Set explicit tree from algorithm trace (e.g. mergesort calls with real data)' },
+      { name: 'highlight_level', params: { level: 'int' },
+        description: 'Highlight all nodes at depth level and show work annotation' },
+      { name: 'highlight_node', params: { id: 'string', className: 'string?' },
+        description: 'Highlight a single node' },
+      { name: 'set_cumulative', params: { level: 'int' },
+        description: 'Show cumulative work sum through given level' },
+      { name: 'show_master_case', params: { case: "'root_heavy'|'balanced'|'leaf_heavy'" },
+        description: 'Apply color gradient for Master Theorem case (root_heavy=dark top, balanced=uniform, leaf_heavy=dark bottom)' },
+      { name: 'add_level_annotation', params: { level: 'int', text: 'string' },
+        description: 'Add custom text annotation at a level' },
+      { name: 'reveal_level', params: { level: 'int' },
+        description: 'Progressively reveal tree up through given depth (animate in)' },
+      { name: 'reset', params: {},
+        description: 'Clear all highlights and annotations (keep tree)' },
+      { name: 'clear', params: {},
+        description: 'Full reset including tree data' },
+    ],
+    classNames: [
+      { name: 'current', color: 'blue' },
+      { name: 'highlighted', color: 'amber' },
+    ],
+    setup: 'create_visualization({ panels: [{ renderer: "recursion_tree" }], context_panels: [...] })',
+    example: `emit_segment({
+  narration: "Let's build the recursion tree for T(n) = 2T(n/2) + O(n)...",
+  viz_actions: [
+    { renderer: "recursion_tree", action: "set_recurrence_tree", params: { a: 2, b: 2, d: 1, n: 16 } },
+    { renderer: "recursion_tree", action: "highlight_level", params: { level: 0 } },
+    { renderer: "recursion_tree", action: "show_master_case", params: { case: "balanced" } }
+  ]
+})`,
+  },
 };
 
 /**

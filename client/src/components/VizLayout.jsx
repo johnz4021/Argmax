@@ -6,6 +6,7 @@ const TableRenderer = lazy(() => import('./renderers/TableRenderer'));
 const TreeRenderer = lazy(() => import('./renderers/TreeRenderer'));
 const LinkedRenderer = lazy(() => import('./renderers/LinkedRenderer'));
 const IntervalRenderer = lazy(() => import('./renderers/IntervalRenderer'));
+const RecursionTreeRenderer = lazy(() => import('./renderers/RecursionTreeRenderer'));
 
 /**
  * Error boundary that catches renderer crashes and shows a fallback.
@@ -75,6 +76,9 @@ function RendererSwitch({ type, ...props }) {
       break;
     case 'interval':
       Renderer = IntervalRenderer;
+      break;
+    case 'recursion_tree':
+      Renderer = RecursionTreeRenderer;
       break;
     default:
       return (

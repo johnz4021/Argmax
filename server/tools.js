@@ -80,9 +80,17 @@ export const tools = [
           items: {
             type: 'object',
             properties: {
+              id: {
+                type: 'string',
+                description: 'Unique panel ID (e.g., "graph_left", "graph_right"). Auto-generated if omitted.',
+              },
               renderer: {
                 type: 'string',
                 enum: ['graph', 'array', 'table', 'tree', 'linked', 'recursion_tree'],
+              },
+              title: {
+                type: 'string',
+                description: 'Display title shown at the top of the panel (e.g., "Original Graph G", "Transformed G\'")',
               },
               config: {
                 type: 'object',
@@ -92,7 +100,7 @@ export const tools = [
             required: ['renderer'],
           },
           description:
-            'Visualization panels to display. Usually one, but some algorithms need two (e.g., heapsort needs array + tree).',
+            'Visualization panels to display. Usually one, but some algorithms need two (e.g., heapsort needs array + tree, or side-by-side graphs for comparison).',
         },
         context_panels: {
           type: 'array',
@@ -141,6 +149,10 @@ export const tools = [
           description:
             'Algorithm-specific input. For sorting: { array: [5,3,8,1] }. For search: { array: [...], target: 23 }. Omit to use default sample data.',
         },
+        graph_id: {
+          type: 'string',
+          description: 'Panel ID of the graph to run on (e.g., "graph_left"). Uses default graph if omitted.',
+        },
       },
       required: ['algorithm'],
     },
@@ -163,6 +175,10 @@ export const tools = [
           description:
             'Indices into the algorithm trace (from run_algorithm) to animate in this segment. The system automatically generates the correct viz_actions and context panel updates. You can reference multiple steps to batch them into one segment. PREFER this over manual viz_actions.',
         },
+        graph_id: {
+          type: 'string',
+          description: 'Which graph panel\'s trace to use for trace_step_indices (e.g., "graph_left"). Uses default trace if omitted.',
+        },
         viz_actions: {
           type: 'array',
           items: {
@@ -170,8 +186,7 @@ export const tools = [
             properties: {
               renderer: {
                 type: 'string',
-                enum: ['graph', 'array', 'table', 'tree', 'linked', 'recursion_tree', 'context'],
-                description: 'Which renderer to target. REQUIRED for all viz actions.',
+                description: 'Which renderer to target. REQUIRED for all viz actions. Use panel IDs (e.g., "graph_left") for multi-panel layouts, or standard names ("graph", "array", "context") for single-panel.',
               },
               action: {
                 type: 'string',

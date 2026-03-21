@@ -292,9 +292,9 @@ export function useTutorState() {
         break;
       case 'create_visualization': {
         const panels = (msg.panels || []).map((p, i) => ({
-          id: p.renderer + '_' + i,
+          id: p.id || p.renderer + '_' + i,
           renderer: p.renderer,
-          props: p.config || {},
+          props: { ...(p.config || {}), title: p.title },
         }));
         console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
         dispatch({ type: 'SET_VIZ_PANELS', panels });

@@ -124,10 +124,15 @@ export default function VizLayout({ panels, explanationMode, segmentCount, algor
   return (
     <div className={layoutClass}>
       {panels.map((panel) => (
-        <div key={panel.id} className="bg-gray-950 overflow-hidden h-full">
+        <div key={panel.id} className="bg-gray-950 overflow-hidden h-full relative">
+          {panel.props?.title && (
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 text-xs font-medium text-text-secondary bg-surface-1 border border-border rounded">
+              {panel.props.title}
+            </div>
+          )}
           <RendererSwitch
             type={panel.renderer}
-            rendererId={panel.renderer}
+            rendererId={panel.id}
             explanationMode={explanationMode}
             segmentCount={segmentCount}
             {...(panel.renderer === 'graph' ? { algorithm, residualEdges, onElementClick } : {})}

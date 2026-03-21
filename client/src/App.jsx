@@ -358,7 +358,9 @@ export default function App() {
   }
 
   const showSelector = state.status === 'idle' || state.status === 'error';
-  const useVizLayout = state.vizPanels && state.vizPanels.some((p) => p.renderer !== 'graph');
+  const useVizLayout = state.vizPanels && (
+    state.vizPanels.length > 1 || state.vizPanels.some((p) => p.renderer !== 'graph')
+  );
   const noVis = !state.graph && (!state.vizPanels || state.vizPanels.length === 0);
   const contextOnly = noVis && state.contextPanels.length > 0;
   const transcriptOnly = noVis && state.contextPanels.length === 0 && !showSelector;

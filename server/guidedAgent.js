@@ -11,6 +11,7 @@ import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDef
 import { layoutGrid } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
+import { planVisualization } from './vizPlanner.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
 const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
@@ -549,6 +550,24 @@ CONFIDENCE CALIBRATION:
 - Revised model → teach the revision: "I initially thought X, but that misses Y."
 - Unverified assumptions → use hedged language.
 
+VISUALIZATION PLANNING (problem flow only):
+After run_solver succeeds, call plan_visualization with the problem text.
+The planner returns a visualization layout (single or multi-graph) with pre-built
+graph objects and planned algorithm runs. Use the plan:
+1. Call create_visualization with the planner's panels and context_panels
+2. Call run_algorithm for each entry in algorithm_runs (use graph_id to target specific panels)
+3. Narrate using trace_step_indices — the deterministic mapper handles viz_actions
+4. Adapt pacing and explanation based on student responses
+
+If plan_visualization fails, fall back to constructing the visualization manually.
+
+MULTI-GRAPH COMPARISON (when the planner returns multiple graph panels):
+- Each panel has a unique ID (e.g., "graph_left", "graph_right")
+- Target viz_actions by panel ID: { renderer: "graph_left", action: "highlight_node", ... }
+- Use run_algorithm with graph_id to run on a specific panel's graph
+- Use emit_segment with graph_id to reference the correct trace for trace_step_indices
+- Narrate across panels: "On the left, notice... now on the right..."
+
 ENDING THE LESSON:
 - When all stages are complete and the student has demonstrated understanding, call the lesson_complete tool.
 - Do NOT stop responding without calling lesson_complete — the system cannot detect end-of-lesson from stop_reason alone.
@@ -753,6 +772,20 @@ const guidedTools = [
       required: ['part_label'],
     },
   },
+  {
+    name: 'plan_visualization',
+    description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        problem_text: {
+          type: 'string',
+          description: 'The problem text being explained',
+        },
+      },
+      required: ['problem_text'],
+    },
+  },
 ];
 
 // Input size validation
@@ -842,6 +875,9 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   session.currentRenderer = null;
   session.currentAlgorithm = null;
   session.mapperState = {};
+  session.graphs = {};
+  session.traces = {};
+  session.mapperStates = {};
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
 
@@ -1078,6 +1114,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         run_solver: 'Analyzing sub-problem...',
         run_solver_batch: 'Analyzing problems...',
         switch_part: 'Switching to next part...',
+        plan_visualization: 'Planning visualization',
       };
 
       for (const block of response.content) {
@@ -1559,6 +1596,35 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               };
             }
           }
+        } else if (block.name === 'plan_visualization') {
+          const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+          const plan = await planVisualization(
+            block.input.problem_text,
+            solverResult,
+            statusCb,
+            session.imageBase64,
+            session.imageMimeType,
+            session.anthropicClient,
+          );
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (plan.success) {
+            for (const panel of plan.panels) {
+              if (panel.renderer === 'graph' && panel.graph) {
+                if (!session.graphs) session.graphs = {};
+                session.graphs[panel.id] = panel.graph;
+              }
+            }
+          }
+          result = {
+            success: plan.success,
+            panels: plan.panels,
+            algorithm_runs: plan.algorithm_runs,
+            context_panels: plan.context_panels,
+            teaching_notes: plan.teaching_notes,
+            message: plan.success
+              ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run.`
+              : 'Viz planning failed. Construct visualization manually.',
+          };
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
         } else if (block.name === 'lesson_complete') {

@@ -127,7 +127,7 @@ export default function VizLayout({ panels, explanationMode, segmentCount, algor
         <div key={panel.id} className="bg-gray-950 overflow-hidden h-full relative">
           {panel.props?.title && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 text-xs font-medium text-text-secondary bg-surface-1 border border-border rounded">
-              {panel.props.title}
+              {typeof panel.props.title === 'string' ? panel.props.title : panel.props.title?.text || String(panel.props.title)}
             </div>
           )}
           <RendererSwitch

@@ -3,6 +3,55 @@
  */
 
 /**
+ * Smart auto-layout — picks the best layout strategy based on graph structure.
+ * Use this instead of calling layoutGrid/layoutCircle/layoutHierarchical directly.
+ * @param {Array<{id: string}>} nodes
+ * @param {Array<{source: string, target: string}>} edges
+ * @param {Object} existingPositions - { nodeId: { x, y } }
+ * @returns {Object} positions - { nodeId: { x, y } }
+ */
+export function autoLayout(nodes, edges = [], existingPositions = {}) {
+  if (!nodes || nodes.length === 0) return existingPositions;
+
+  // If some nodes already have positions, use incremental grid for the rest
+  const unpositioned = nodes.filter((n) => !existingPositions[n.id]);
+  if (unpositioned.length === 0) return { ...existingPositions };
+  if (unpositioned.length < nodes.length) {
+    return layoutGrid(nodes, existingPositions);
+  }
+
+  // All nodes need positioning — pick strategy based on structure
+  const n = nodes.length;
+  const m = edges.length;
+
+  // Compute edge density: ratio of actual edges to max possible edges
+  const maxEdges = n * (n - 1); // directed
+  const density = maxEdges > 0 ? m / maxEdges : 0;
+
+  // Check if it's a DAG (has clear roots with no incoming edges)
+  const inDegree = {};
+  for (const node of nodes) inDegree[node.id] = 0;
+  for (const e of edges) {
+    if (inDegree[e.target] !== undefined) inDegree[e.target]++;
+  }
+  const roots = Object.entries(inDegree).filter(([, deg]) => deg === 0);
+  const hasRoots = roots.length > 0 && roots.length < n;
+
+  // Dense graph or small complete-ish graph → circle (avoids edge overlaps)
+  if (density > 0.3 || (n <= 6 && m > n)) {
+    return layoutCircle(nodes);
+  }
+
+  // DAG-like structure with clear roots → hierarchical
+  if (hasRoots && m >= n - 1) {
+    return layoutHierarchical(nodes, edges);
+  }
+
+  // Sparse graph → grid is fine
+  return layoutGrid(nodes, {});
+}
+
+/**
  * Incremental grid layout — places new nodes in a grid pattern,
  * preserving positions for nodes that already have them.
  * @param {Array<{id: string}>} nodes

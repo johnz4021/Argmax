@@ -9,7 +9,7 @@ import { adaptAlgorithmInput } from './algorithms/adaptInput.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
-import { layoutGrid } from './graphLayout.js';
+import { layoutGrid, autoLayout } from './graphLayout.js';
 
 // Proxy that always reads session.ws dynamically, so agent loops survive WS reconnects
 export function liveWs(session) {
@@ -939,19 +939,39 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
   switch (name) {
     case 'create_graph': {
-      const graphData = {
-        nodes: input.nodes || graph?.nodes || [],
-        edges: input.edges || graph?.edges || [],
-        positions: input.positions || graph?.positions,
-        directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
-      };
+      let graphData;
+      if (input.variant_id && session.graphVariants?.[input.variant_id]) {
+        const variant = session.graphVariants[input.variant_id];
+        graphData = variant.graph;
+        // Update panel title if variant has one
+        if (variant.title) {
+          sendJSON(ws, { type: 'update_panel_title', panel_id: Object.keys(session.graphs || {})[0] || 'graph_main', title: variant.title });
+        }
+      } else {
+        graphData = {
+          nodes: input.nodes || graph?.nodes || [],
+          edges: input.edges || graph?.edges || [],
+          positions: input.positions || graph?.positions,
+          directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
+        };
+      }
       // Auto-layout if no positions provided
       if (!graphData.positions || Object.keys(graphData.positions).length === 0) {
-        graphData.positions = layoutGrid(graphData.nodes, {});
+        graphData.positions = autoLayout(graphData.nodes, graphData.edges, {});
       }
       sendJSON(ws, { type: 'create_graph', graph: graphData });
       session.currentGraph = graphData;
-      return { success: true, message: 'Graph created and displayed to learner.' };
+      // Also update in session.graphs for graph_id lookups
+      if (session.graphs) {
+        const panelId = Object.keys(session.graphs)[0] || 'graph';
+        session.graphs[panelId] = graphData;
+      }
+      return {
+        success: true,
+        message: input.variant_id
+          ? `Graph swapped to variant "${input.variant_id}". ${session.graphVariants[input.variant_id]?.title || ''}`
+          : 'Graph created and displayed to learner.',
+      };
     }
 
     case 'update_graph': {
@@ -992,7 +1012,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
       if (input.directed !== undefined) g.directed = input.directed;
 
-      g.positions = layoutGrid(g.nodes, g.positions);
+      g.positions = autoLayout(g.nodes, g.edges, g.positions);
       sendJSON(ws, { type: 'create_graph', graph: g });
 
       return {
@@ -1015,7 +1035,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         if (panel.renderer === 'graph' && panel.config?.graph) {
           const g = panel.config.graph;
           if (!g.positions || Object.keys(g.positions).length === 0) {
-            g.positions = layoutGrid(g.nodes || [], {});
+            g.positions = autoLayout(g.nodes || [], g.edges || [], {});
           }
           const panelId = panel.id || 'graph';
           session.graphs[panelId] = g;

@@ -289,12 +289,27 @@ VISUALIZATION SETUP:
 
 VISUALIZATION PLANNING (problem flow only):
 After run_solver succeeds, call plan_visualization with the problem text.
-The planner returns a visualization layout (single or multi-graph) with pre-built
-graph objects and planned algorithm runs. Use the plan:
+The planner returns:
+- panels: initial visualization layout with pre-built graphs
+- algorithm_runs: algorithms to run on the initial graph
+- graph_variants: pre-built transformed graphs for mid-lesson swapping
+- teaching_notes: guidance on when to swap and what to narrate
+
+Workflow:
 1. Call create_visualization with the planner's panels and context_panels
-2. Call run_algorithm for each entry in algorithm_runs (use graph_id to target specific panels)
-3. Narrate using trace_step_indices — the deterministic mapper handles viz_actions
-4. Adapt pacing and explanation based on student responses
+2. Call run_algorithm for each entry in algorithm_runs
+3. Narrate the initial graph using trace_step_indices
+4. When it's time to show a transformation, call create_graph(variant_id: "variant_key")
+5. Call run_algorithm for each algorithm_run in that variant
+6. Continue narrating the transformed graph
+
+GRAPH VARIANTS (transformation problems):
+When plan_visualization returns graph_variants, the planner has pre-built transformed
+graphs. Do NOT construct these graphs manually. Instead:
+- Narrate the transformation conceptually first ("Now we transform G into G' where...")
+- Call create_graph with variant_id to swap the visualization
+- Run the variant's algorithm_runs
+- Continue narrating on the new graph
 
 If plan_visualization fails, fall back to constructing the visualization manually.
 
@@ -741,6 +756,10 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
                 session.graphs[panel.id] = panel.graph;
               }
             }
+            // Store graph variants on session
+            if (plan.graph_variants) {
+              session.graphVariants = plan.graph_variants;
+            }
           }
           result = {
             success: plan.success,
@@ -748,8 +767,13 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
             algorithm_runs: plan.algorithm_runs,
             context_panels: plan.context_panels,
             teaching_notes: plan.teaching_notes,
+            graph_variants: plan.graph_variants ? Object.keys(plan.graph_variants).map(k => ({
+              id: k,
+              title: plan.graph_variants[k].title,
+              algorithm_runs: plan.graph_variants[k].algorithm_runs,
+            })) : [],
             message: plan.success
-              ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run.`
+              ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.graph_variants ? Object.keys(plan.graph_variants).length + ' graph variant(s) available.' : ''} ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run. To swap graphs mid-lesson, call create_graph with variant_id.`
               : 'Viz planning failed. Construct visualization manually.',
           };
         } else if (block.name === 'get_renderer_docs') {

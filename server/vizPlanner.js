@@ -44,6 +44,35 @@ ALGORITHM RUNS:
 - Order matters — runs execute sequentially
 - Common: { algorithm: "dijkstra", graph_id: "graph_main", source: "A" }
 
+GRAPH VARIANTS (for transformation problems):
+When the problem involves transforming a graph (e.g., road graph → time graph, G → G'),
+pre-build ALL graph versions as variants. The teaching agent will swap between them
+at the right narrative moment.
+
+- The initial graph goes in panels[0].graph as usual
+- Transformed versions go in graph_variants with descriptive keys
+- Each variant includes: graph data, display title, and algorithm_runs to execute after swapping
+- The teaching agent calls create_graph(variant_id: "time_graph") to swap — no inline construction needed
+
+Example for "shortest travel time" problem:
+  panels: [{ id: "graph_main", renderer: "graph", title: "Road Network", graph: roadGraph }]
+  algorithm_runs: []  // no algo on initial graph
+  graph_variants: {
+    "time_graph": {
+      graph: { nodes: [...], edges: [...with time weights...], positions: {...}, directed: true },
+      title: "Time Graph (weight = distance/speed)",
+      algorithm_runs: [{ algorithm: "dijkstra", graph_id: "graph_main", source: "1" }]
+    }
+  }
+  teaching_notes: "Start with road network, explain the transformation (time = dist/speed),
+    then call create_graph with variant_id 'time_graph'. Run Dijkstra on the time graph."
+
+WHEN TO USE VARIANTS vs just having one graph:
+- USE VARIANTS: problem explicitly transforms G into G' with different edges/weights
+- USE VARIANTS: problem requires showing a reduction (e.g., vertex cover → independent set)
+- DON'T USE: standard algorithm on one graph — just use the initial panel graph
+- DON'T USE: problems where the graph structure doesn't change (just highlighting changes)
+
 You MUST call submit_viz_plan with your complete plan. Do NOT respond with plain text.`;
 
 const SUBMIT_VIZ_PLAN_TOOL = {
@@ -131,6 +160,41 @@ const SUBMIT_VIZ_PLAN_TOOL = {
         type: 'string',
         description: 'Guidance for the teaching agent on how to use this layout',
       },
+      graph_variants: {
+        type: 'object',
+        description: 'Pre-built graph variants for transformation steps. Keys are variant IDs (e.g., "time_graph", "residual_graph"). The teaching agent swaps to these at the right narrative moment using create_graph with variant_id.',
+        additionalProperties: {
+          type: 'object',
+          properties: {
+            graph: {
+              type: 'object',
+              description: 'The transformed graph data',
+              properties: {
+                nodes: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, label: { type: 'string' } }, required: ['id', 'label'] } },
+                edges: { type: 'array', items: { type: 'object', properties: { source: { type: 'string' }, target: { type: 'string' }, weight: { type: 'number' } }, required: ['source', 'target'] } },
+                positions: { type: 'object' },
+                directed: { type: 'boolean' },
+              },
+            },
+            title: { type: 'string', description: 'Display title (e.g., "Time Graph (weight = distance/speed)")' },
+            algorithm_runs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  algorithm: { type: 'string' },
+                  graph_id: { type: 'string' },
+                  source: { type: 'string' },
+                  sink: { type: 'string' },
+                },
+                required: ['algorithm', 'graph_id'],
+              },
+              description: 'Algorithms to run AFTER swapping to this variant.',
+            },
+          },
+          required: ['graph', 'title'],
+        },
+      },
     },
     required: ['reasoning', 'panels', 'algorithm_runs'],
   },
@@ -197,6 +261,7 @@ export async function planVisualization(problemText, solverResult, statusCallbac
       algorithm_runs: plan.algorithm_runs || [],
       context_panels: plan.context_panels || [],
       teaching_notes: plan.teaching_notes || '',
+      graph_variants: plan.graph_variants || null,
     };
   } catch (err) {
     console.error('[VizPlanner] Failed:', err.message);

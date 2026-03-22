@@ -46,6 +46,10 @@ export const tools = [
           type: 'boolean',
           description: 'Whether edges are directed (default true). Set false for undirected graphs (MST, etc).',
         },
+        variant_id: {
+          type: 'string',
+          description: 'Load a pre-built graph variant from the visualization plan (e.g., "time_graph"). When specified, nodes/edges/positions/directed are ignored — the variant data is used instead.',
+        },
         context_panels: {
           type: 'array',
           items: {

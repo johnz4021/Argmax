@@ -1,14 +1,36 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { m, AnimatePresence } from 'motion/react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
 
-const CELL_COLORS = {
-  empty: 'bg-gray-800 text-gray-500',
-  filled: 'bg-gray-700 text-gray-100',
-  current: 'bg-blue-600 text-white ring-2 ring-blue-400',
-  highlighted: 'bg-yellow-500/60 text-white',
-  optimal: 'bg-green-600/70 text-white',
-  'dep-skip': 'bg-orange-500/40 text-white ring-2 ring-orange-400',
-  'dep-take': 'bg-cyan-500/40 text-white ring-2 ring-cyan-400',
+const CELL_BG_COLORS = {
+  empty: 'rgba(31, 41, 55, 1)',         // gray-800
+  filled: 'rgba(55, 65, 81, 1)',         // gray-700
+  current: 'rgba(37, 99, 235, 1)',       // blue-600
+  highlighted: 'rgba(234, 179, 8, 0.6)', // yellow-500/60
+  optimal: 'rgba(22, 163, 74, 0.7)',     // green-600/70
+  'dep-skip': 'rgba(249, 115, 22, 0.4)', // orange-500/40
+  'dep-take': 'rgba(6, 182, 212, 0.4)',  // cyan-500/40
+};
+
+const CELL_TEXT_COLORS = {
+  empty: 'text-gray-500',
+  filled: 'text-gray-100',
+  current: 'text-white',
+  highlighted: 'text-white',
+  optimal: 'text-white',
+  'dep-skip': 'text-white',
+  'dep-take': 'text-white',
+};
+
+const RING_CLASSES = {
+  current: 'ring-2 ring-blue-400',
+  'dep-skip': 'ring-2 ring-orange-400',
+  'dep-take': 'ring-2 ring-cyan-400',
+};
+
+const ARROW_COLORS = {
+  skip: '#f97316',  // orange-500
+  take: '#06b6d4',  // cyan-500
 };
 
 export default function TableRenderer({
@@ -25,6 +47,7 @@ export default function TableRenderer({
   const [overlayState, setOverlayState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const tableRef = useRef(null);
 
   const takeTableSnapshot = useCallback(() => {
     return {
@@ -190,7 +213,7 @@ export default function TableRenderer({
     }
   }, [explanationMode, takeTableSnapshot, restoreTableSnapshot]);
 
-  // Build a lookup for dependency arrow source cells → role
+  // Build a lookup for dependency arrow source cells -> role
   const depSourceMap = useMemo(() => {
     const map = {};
     for (const arrow of depArrows) {
@@ -199,6 +222,23 @@ export default function TableRenderer({
     }
     return map;
   }, [depArrows]);
+
+  // Compute arrow coordinates as percentages of the table grid area
+  // Each cell center is at ((col + 1.5) / (totalCols + 1), (row + 1.5) / (totalRows + 1))
+  // +1 accounts for the header row/col
+  const arrowLines = useMemo(() => {
+    if (depArrows.length === 0 || grid.length === 0) return [];
+    const totalRows = grid.length + 1;     // +1 for header row
+    const totalCols = (grid[0]?.length || 0) + 1; // +1 for header col
+    return depArrows.map((arrow, i) => {
+      const x1Pct = ((arrow.from.col + 1.5) / totalCols) * 100;
+      const y1Pct = ((arrow.from.row + 1.5) / totalRows) * 100;
+      const x2Pct = ((arrow.to.col + 1.5) / totalCols) * 100;
+      const y2Pct = ((arrow.to.row + 1.5) / totalRows) * 100;
+      const color = ARROW_COLORS[arrow.role] || ARROW_COLORS.skip;
+      return { x1Pct, y1Pct, x2Pct, y2Pct, color, key: `arrow-${i}` };
+    });
+  }, [depArrows, grid]);
 
   return (
     <div className="relative h-full flex flex-col items-center justify-center p-8 overflow-auto">
@@ -245,7 +285,59 @@ export default function TableRenderer({
               </div>
             );
           })}
-          <table className="border-collapse w-full max-w-4xl">
+
+          {/* Dependency arrows SVG overlay */}
+          {arrowLines.length > 0 && (
+            <svg
+              className="absolute inset-0 w-full h-full z-10 pointer-events-none"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <marker
+                  id="arrowhead-skip"
+                  markerWidth="8"
+                  markerHeight="6"
+                  refX="7"
+                  refY="3"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 8 3, 0 6" fill={ARROW_COLORS.skip} />
+                </marker>
+                <marker
+                  id="arrowhead-take"
+                  markerWidth="8"
+                  markerHeight="6"
+                  refX="7"
+                  refY="3"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 8 3, 0 6" fill={ARROW_COLORS.take} />
+                </marker>
+              </defs>
+              <AnimatePresence>
+                {arrowLines.map((line) => (
+                  <m.line
+                    key={line.key}
+                    x1={line.x1Pct}
+                    y1={line.y1Pct}
+                    x2={line.x2Pct}
+                    y2={line.y2Pct}
+                    stroke={line.color}
+                    strokeWidth="0.4"
+                    strokeLinecap="round"
+                    markerEnd={`url(#arrowhead-${line.color === ARROW_COLORS.take ? 'take' : 'skip'})`}
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.5 }}
+                  />
+                ))}
+              </AnimatePresence>
+            </svg>
+          )}
+
+          <table ref={tableRef} className="border-collapse w-full max-w-4xl">
             <thead>
               <tr>
                 <th className="p-1" />
@@ -273,16 +365,35 @@ export default function TableRenderer({
                     const effectiveCls = depRole && (cls === 'filled' || cls === 'empty')
                       ? `dep-${depRole}`
                       : cls;
-                    const colorClass = CELL_COLORS[effectiveCls] || CELL_COLORS.empty;
+                    const cellBgColor = CELL_BG_COLORS[effectiveCls] || CELL_BG_COLORS.empty;
+                    const textColorClass = CELL_TEXT_COLORS[effectiveCls] || CELL_TEXT_COLORS.empty;
+                    const ringClass = RING_CLASSES[effectiveCls] || '';
                     const isDimmed = overlayState && !overlayState.spotlit.has(cellKey);
                     const isSpotlit = overlayState?.spotlit.has(cellKey);
                     return (
-                      <td
-                        key={ci}
-                        className={`px-5 py-4 text-center text-base font-mono border border-gray-700 transition-all duration-300 ${colorClass} ${isDimmed ? 'opacity-[0.15]' : ''} ${isSpotlit ? 'ring-2 ring-blue-400' : ''}`}
+                      <m.td
+                        key={`${ri}-${ci}`}
+                        initial={{ backgroundColor: 'transparent' }}
+                        animate={{
+                          backgroundColor: cellBgColor,
+                          scale: effectiveCls === 'current' ? [1, 1.1, 1] : 1,
+                        }}
+                        transition={{ duration: 0.3 }}
+                        className={`px-5 py-4 text-center text-base font-mono border border-gray-700 ${textColorClass} ${ringClass} ${isDimmed ? 'opacity-[0.15]' : ''} ${isSpotlit ? 'ring-2 ring-blue-400' : ''}`}
                       >
-                        {cell !== null ? cell : ''}
-                      </td>
+                        <AnimatePresence mode="wait">
+                          {cell !== null && (
+                            <m.span
+                              key={cell}
+                              initial={{ opacity: 0, scale: 0.5 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              transition={{ type: 'spring', stiffness: 300 }}
+                            >
+                              {cell}
+                            </m.span>
+                          )}
+                        </AnimatePresence>
+                      </m.td>
                     );
                   })}
                 </tr>

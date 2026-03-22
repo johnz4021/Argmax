@@ -1,18 +1,21 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
+import { m, AnimatePresence } from 'motion/react';
 import * as d3 from 'd3';
 
 const NODE_RADIUS = 22;
 const LEVEL_HEIGHT = 70;
+const MARGIN = { top: 40, right: 40, bottom: 60, left: 40 };
+
 const NODE_COLORS = {
-  default: { fill: '#374151', stroke: '#6B7280' },        // gray-700/500
-  current: { fill: '#3B82F6', stroke: '#60A5FA' },        // blue-500/400
-  comparing: { fill: '#EAB308', stroke: '#FACC15' },      // yellow-500/400
-  inserted: { fill: '#22C55E', stroke: '#4ADE80' },       // green-500/400
-  deleted: { fill: '#EF4444', stroke: '#F87171' },        // red-500/400
-  rotated: { fill: '#A855F7', stroke: '#C084FC' },        // purple-500/400
-  highlighted: { fill: '#F59E0B', stroke: '#FBBF24' },    // amber-500/400
-  sifting: { fill: '#06B6D4', stroke: '#22D3EE' },        // cyan-500/400
+  default: { fill: '#374151', stroke: '#6B7280' },
+  current: { fill: '#3B82F6', stroke: '#60A5FA' },
+  comparing: { fill: '#EAB308', stroke: '#FACC15' },
+  inserted: { fill: '#22C55E', stroke: '#4ADE80' },
+  deleted: { fill: '#EF4444', stroke: '#F87171' },
+  rotated: { fill: '#A855F7', stroke: '#C084FC' },
+  highlighted: { fill: '#F59E0B', stroke: '#FBBF24' },
+  sifting: { fill: '#06B6D4', stroke: '#22D3EE' },
 };
 
 const EDGE_COLORS = {
@@ -21,9 +24,11 @@ const EDGE_COLORS = {
   sifting: '#22D3EE',
 };
 
+const SPRING_TRANSITION = { type: 'spring', stiffness: 200, damping: 25 };
+const FAST_SPRING = { type: 'spring', stiffness: 300, damping: 30 };
+
 /**
  * Builds a D3 hierarchy from a flat node/edge list.
- * Returns { hierarchy, nodeMap } where nodeMap maps id -> node data.
  */
 function buildHierarchy(nodes, edges, rootId) {
   if (!nodes || nodes.length === 0) return null;
@@ -37,7 +42,6 @@ function buildHierarchy(nodes, edges, rootId) {
     const parent = nodeMap[e.from];
     const child = nodeMap[e.to];
     if (parent && child) {
-      // Maintain left/right ordering: left child first
       if (e.side === 'right') {
         parent.children.push(child);
       } else {
@@ -49,16 +53,12 @@ function buildHierarchy(nodes, edges, rootId) {
   const root = nodeMap[rootId];
   if (!root) return null;
 
-  // For binary trees, ensure placeholder nulls for missing children
-  // so the layout positions left vs right correctly
   function ensureBinarySlots(node) {
     if (!node) return node;
-    // Check if this node should have children based on edges
     const hasLeft = edges.some(e => e.from === node.id && e.side === 'left');
     const hasRight = edges.some(e => e.from === node.id && e.side === 'right');
 
     if (hasLeft || hasRight) {
-      // Rebuild children array with proper ordering
       const leftChild = node.children.find(c =>
         edges.some(e => e.from === node.id && e.to === c.id && e.side === 'left')
       );
@@ -102,16 +102,37 @@ export default function TreeRenderer({
   segmentCount,
 }) {
   const svgRef = useRef(null);
-  const [treeData, setTreeData] = useState(null); // { nodes, edges, root }
-  const [nodeClasses, setNodeClasses] = useState({}); // id -> className
-  const [edgeClasses, setEdgeClasses] = useState({}); // 'from-to' -> className
-  const [nodeColors, setNodeColors] = useState({}); // id -> 'red'|'black' for RB trees
-  const [heapArray, setHeapArray] = useState(null); // array representation for heaps
+  const containerRef = useRef(null);
+  const [treeData, setTreeData] = useState(null);
+  const [nodeClasses, setNodeClasses] = useState({});
+  const [edgeClasses, setEdgeClasses] = useState({});
+  const [nodeColors, setNodeColors] = useState({});
+  const [heapArray, setHeapArray] = useState(null);
   const [levelHighlight, setLevelHighlight] = useState(null);
   const [overlayState, setOverlayState] = useState(null);
   const [ghostState, setGhostState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+
+  // Track container dimensions with ResizeObserver
+  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setDimensions({ width, height });
+        }
+      }
+    });
+
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const takeTreeSnapshot = useCallback(() => {
     return {
@@ -167,7 +188,6 @@ export default function TreeRenderer({
       case 'insert_node': {
         setTreeData(prev => {
           if (!prev) {
-            // First node becomes root
             return {
               nodes: [{ id: params.id, value: params.value }],
               edges: [],
@@ -204,9 +224,6 @@ export default function TreeRenderer({
       }
       case 'rotate_left':
       case 'rotate_right': {
-        // Rotation: restructure edges
-        // For rotate_left on pivot P: P's right child R becomes parent, P becomes R's left child
-        // For rotate_right on pivot P: P's left child L becomes parent, P becomes L's right child
         const pivotId = params.pivot;
         setNodeClasses(prev => ({ ...prev, [pivotId]: 'rotated' }));
         setTreeData(prev => {
@@ -214,35 +231,28 @@ export default function TreeRenderer({
           const edges = [...prev.edges];
           const isLeft = action === 'rotate_left';
 
-          // Find the child that will become the new parent
           const childEdge = edges.find(e =>
             e.from === pivotId && e.side === (isLeft ? 'right' : 'left')
           );
           if (!childEdge) return prev;
           const childId = childEdge.to;
 
-          // Find pivot's parent edge
           const parentEdge = edges.find(e => e.to === pivotId);
 
-          // Find child's inner subtree (left for rotate_left, right for rotate_right)
           const innerSide = isLeft ? 'left' : 'right';
           const innerEdgeIdx = edges.findIndex(e => e.from === childId && e.side === innerSide);
 
-          // Remove the edge from pivot to child
           const pivotChildIdx = edges.findIndex(e => e.from === pivotId && e.to === childId);
           if (pivotChildIdx >= 0) edges.splice(pivotChildIdx, 1);
 
-          // Move child's inner subtree to pivot
           if (innerEdgeIdx >= 0) {
             const innerEdge = edges[innerEdgeIdx > pivotChildIdx ? innerEdgeIdx - 1 : innerEdgeIdx];
             innerEdge.from = pivotId;
             innerEdge.side = isLeft ? 'right' : 'left';
           }
 
-          // Make pivot a child of the child node
           edges.push({ from: childId, to: pivotId, side: innerSide });
 
-          // Update parent to point to child instead of pivot
           if (parentEdge) {
             parentEdge.to = childId;
           }
@@ -341,206 +351,123 @@ export default function TreeRenderer({
     }
   }, [explanationMode, takeTreeSnapshot, restoreTreeSnapshot]);
 
-  // D3 tree layout rendering
-  useEffect(() => {
-    if (!svgRef.current || !treeData || !treeData.nodes.length) return;
+  // Compute D3 tree layout positions via useMemo (no DOM mutation)
+  const layout = useMemo(() => {
+    if (!treeData || !treeData.nodes.length) return null;
 
-    const svg = d3.select(svgRef.current);
-    const width = svgRef.current.clientWidth || 600;
-    const height = svgRef.current.clientHeight || 400;
-    const margin = { top: 40, right: 40, bottom: 60, left: 40 };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
+    const innerWidth = dimensions.width - MARGIN.left - MARGIN.right;
+    const innerHeight = dimensions.height - MARGIN.top - MARGIN.bottom;
 
-    // Build hierarchy
     const rootData = buildHierarchy(treeData.nodes, treeData.edges, treeData.root);
-    if (!rootData) {
-      svg.selectAll('*').remove();
-      return;
-    }
+    if (!rootData) return null;
 
     const hierarchy = d3.hierarchy(rootData, d => d.children.length > 0 ? d.children : null);
-    const treeLayout = d3.tree().size([innerWidth, Math.min(innerHeight, hierarchy.height * LEVEL_HEIGHT + 60)]);
+    const treeLayout = d3.tree().size([
+      innerWidth,
+      Math.min(innerHeight, hierarchy.height * LEVEL_HEIGHT + 60),
+    ]);
     treeLayout(hierarchy);
 
-    // Clear and set up
-    svg.selectAll('*').remove();
-    const g = svg.append('g')
-      .attr('transform', `translate(${margin.left}, ${margin.top})`);
+    return hierarchy;
+  }, [treeData, dimensions.width, dimensions.height]);
 
-    // Draw edges
-    const links = hierarchy.links();
-    g.selectAll('.tree-link')
-      .data(links)
-      .join('line')
-      .attr('class', 'tree-link')
-      .attr('x1', d => d.source.x)
-      .attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x)
-      .attr('y2', d => d.target.y)
-      .attr('stroke', d => {
-        const key = `${d.source.data.id}-${d.target.data.id}`;
-        if (ghostState?.actualEdges.has(key)) return '#60a5fa';
-        if (ghostState?.ghostEdges.has(key)) return '#ef4444';
-        if (overlayState?.spotlitEdges.has(key)) return '#60a5fa';
-        const cls = edgeClasses[key] || 'default';
-        return EDGE_COLORS[cls] || EDGE_COLORS.default;
-      })
-      .attr('stroke-width', d => {
-        const key = `${d.source.data.id}-${d.target.data.id}`;
-        if (ghostState?.actualEdges.has(key) || ghostState?.ghostEdges.has(key)) return 3;
-        if (overlayState?.spotlitEdges.has(key)) return 3;
-        return edgeClasses[key] ? 3 : 2;
-      })
-      .attr('stroke-dasharray', d => {
-        const key = `${d.source.data.id}-${d.target.data.id}`;
-        if (ghostState?.ghostEdges.has(key)) return '6,3';
-        return null;
-      })
-      .attr('opacity', d => {
-        const key = `${d.source.data.id}-${d.target.data.id}`;
-        const nodeId = d.target.data.id;
-        if (ghostState) {
-          if (ghostState.ghostEdges.has(key)) return 0.4;
-          if (ghostState.actualEdges.has(key)) return 1;
-          return 0.15;
-        }
-        if (overlayState) {
-          if (overlayState.spotlitEdges.has(key)) return 1;
-          return 0.15;
-        }
-        return 0.8;
-      });
-
-    // Draw nodes
-    const nodeGroups = g.selectAll('.tree-node')
-      .data(hierarchy.descendants())
-      .join('g')
-      .attr('class', 'tree-node')
-      .attr('transform', d => `translate(${d.x}, ${d.y})`);
-
-    // Node circles
-    nodeGroups.append('circle')
-      .attr('r', NODE_RADIUS)
-      .attr('fill', d => {
-        const cls = nodeClasses[d.data.id] || 'default';
-        return (NODE_COLORS[cls] || NODE_COLORS.default).fill;
-      })
-      .attr('stroke', d => {
-        const id = d.data.id;
-        if (ghostState?.actualPath.has(id)) return '#60a5fa';
-        if (ghostState?.ghostPath.has(id)) return '#ef4444';
-        if (overlayState?.spotlitNodes.has(id)) return '#60a5fa';
-        const cls = nodeClasses[id] || 'default';
-        return (NODE_COLORS[cls] || NODE_COLORS.default).stroke;
-      })
-      .attr('stroke-width', d => {
-        const id = d.data.id;
-        if (overlayState?.spotlitNodes.has(id) || ghostState?.actualPath.has(id) || ghostState?.ghostPath.has(id)) return 4;
-        return 2.5;
-      })
-      .attr('stroke-dasharray', d => {
-        if (ghostState?.ghostPath.has(d.data.id)) return '6,3';
-        return null;
-      })
-      .attr('opacity', d => {
-        const id = d.data.id;
-        if (ghostState) {
-          if (ghostState.ghostPath.has(id)) return 0.4;
-          if (ghostState.actualPath.has(id)) return 1;
-          return 0.15;
-        }
-        if (overlayState) {
-          return overlayState.spotlitNodes.has(id) ? 1 : 0.15;
-        }
-        return 1;
-      })
-      .style('transition', 'fill 0.3s, stroke 0.3s');
-
-    // Red-black tree color indicators
-    nodeGroups.each(function(d) {
-      const rbColor = nodeColors[d.data.id];
-      if (rbColor) {
-        d3.select(this).append('circle')
-          .attr('r', 6)
-          .attr('cx', NODE_RADIUS - 4)
-          .attr('cy', -(NODE_RADIUS - 4))
-          .attr('fill', rbColor === 'red' ? '#EF4444' : '#1F2937')
-          .attr('stroke', rbColor === 'red' ? '#FCA5A5' : '#6B7280')
-          .attr('stroke-width', 1.5);
-      }
+  // Derive node positions map for overlay annotations
+  const nodePositions = useMemo(() => {
+    if (!layout) return {};
+    const map = {};
+    layout.descendants().forEach(d => {
+      map[d.data.id] = { x: d.x, y: d.y };
     });
+    return map;
+  }, [layout]);
 
-    // Node value text
-    nodeGroups.append('text')
-      .attr('text-anchor', 'middle')
-      .attr('dy', '0.35em')
-      .attr('fill', 'white')
-      .attr('font-size', '14px')
-      .attr('font-weight', 'bold')
-      .attr('font-family', 'monospace')
-      .attr('opacity', d => {
-        const id = d.data.id;
-        if (ghostState) {
-          if (ghostState.ghostPath.has(id)) return 0.4;
-          if (ghostState.actualPath.has(id)) return 1;
-          return 0.15;
-        }
-        if (overlayState) {
-          return overlayState.spotlitNodes.has(id) ? 1 : 0.15;
-        }
-        return 1;
-      })
-      .text(d => d.data.value);
+  // Compute level highlight rect bounds
+  const levelRect = useMemo(() => {
+    if (levelHighlight === null || !layout) return null;
+    const levelNodes = layout.descendants().filter(d => d.depth === levelHighlight);
+    if (levelNodes.length === 0) return null;
+    const minX = Math.min(...levelNodes.map(d => d.x)) - NODE_RADIUS - 10;
+    const maxX = Math.max(...levelNodes.map(d => d.x)) + NODE_RADIUS + 10;
+    const y = levelNodes[0].y;
+    return {
+      x: minX,
+      y: y - NODE_RADIUS - 8,
+      width: maxX - minX,
+      height: NODE_RADIUS * 2 + 16,
+    };
+  }, [layout, levelHighlight]);
 
-    // Overlay annotations
-    if (overlayState?.annotations?.length) {
-      const nodePositions = {};
-      hierarchy.descendants().forEach(d => { nodePositions[d.data.id] = { x: d.x, y: d.y }; });
-      for (const ann of overlayState.annotations) {
-        const pos = nodePositions[ann.target];
-        if (!pos) continue;
-        const offsetX = ann.position === 'left' ? -80 : ann.position === 'right' ? 40 : 0;
-        const offsetY = ann.position === 'top' ? -(NODE_RADIUS + 30) : ann.position === 'bottom' ? (NODE_RADIUS + 10) : -(NODE_RADIUS + 30);
-        g.append('foreignObject')
-          .attr('x', pos.x + offsetX - 60)
-          .attr('y', pos.y + offsetY)
-          .attr('width', 140)
-          .attr('height', 40)
-          .append('xhtml:div')
-          .style('background', 'rgba(17,24,39,0.95)')
-          .style('border', '1px solid #3b82f6')
-          .style('color', '#93c5fd')
-          .style('font-size', '11px')
-          .style('padding', '2px 6px')
-          .style('border-radius', '4px')
-          .style('text-align', 'center')
-          .style('pointer-events', 'none')
-          .style('white-space', 'nowrap')
-          .text(ann.text);
-      }
+  // Helper functions for computing visual properties
+  const getNodeFill = useCallback((id) => {
+    const cls = nodeClasses[id] || 'default';
+    return (NODE_COLORS[cls] || NODE_COLORS.default).fill;
+  }, [nodeClasses]);
+
+  const getNodeStroke = useCallback((id) => {
+    if (ghostState?.actualPath.has(id)) return '#60a5fa';
+    if (ghostState?.ghostPath.has(id)) return '#ef4444';
+    if (overlayState?.spotlitNodes.has(id)) return '#60a5fa';
+    const cls = nodeClasses[id] || 'default';
+    return (NODE_COLORS[cls] || NODE_COLORS.default).stroke;
+  }, [nodeClasses, ghostState, overlayState]);
+
+  const getNodeStrokeWidth = useCallback((id) => {
+    if (overlayState?.spotlitNodes.has(id) || ghostState?.actualPath.has(id) || ghostState?.ghostPath.has(id)) return 4;
+    return 2.5;
+  }, [overlayState, ghostState]);
+
+  const getNodeStrokeDasharray = useCallback((id) => {
+    if (ghostState?.ghostPath.has(id)) return '6,3';
+    return 'none';
+  }, [ghostState]);
+
+  const getNodeOpacity = useCallback((id) => {
+    if (ghostState) {
+      if (ghostState.ghostPath.has(id)) return 0.4;
+      if (ghostState.actualPath.has(id)) return 1;
+      return 0.15;
     }
-
-    // Level highlight
-    if (levelHighlight !== null) {
-      const levelNodes = hierarchy.descendants().filter(d => d.depth === levelHighlight);
-      if (levelNodes.length > 0) {
-        const minX = Math.min(...levelNodes.map(d => d.x)) - NODE_RADIUS - 10;
-        const maxX = Math.max(...levelNodes.map(d => d.x)) + NODE_RADIUS + 10;
-        const y = levelNodes[0].y;
-        g.insert('rect', '.tree-node')
-          .attr('x', minX)
-          .attr('y', y - NODE_RADIUS - 8)
-          .attr('width', maxX - minX)
-          .attr('height', NODE_RADIUS * 2 + 16)
-          .attr('rx', 8)
-          .attr('fill', 'rgba(59, 130, 246, 0.15)')
-          .attr('stroke', 'rgba(59, 130, 246, 0.3)')
-          .attr('stroke-width', 1);
-      }
+    if (overlayState) {
+      return overlayState.spotlitNodes.has(id) ? 1 : 0.15;
     }
+    return 1;
+  }, [ghostState, overlayState]);
 
-  }, [treeData, nodeClasses, edgeClasses, nodeColors, levelHighlight, overlayState, ghostState]);
+  const getEdgeStroke = useCallback((sourceId, targetId) => {
+    const key = `${sourceId}-${targetId}`;
+    if (ghostState?.actualEdges.has(key)) return '#60a5fa';
+    if (ghostState?.ghostEdges.has(key)) return '#ef4444';
+    if (overlayState?.spotlitEdges.has(key)) return '#60a5fa';
+    const cls = edgeClasses[key] || 'default';
+    return EDGE_COLORS[cls] || EDGE_COLORS.default;
+  }, [edgeClasses, ghostState, overlayState]);
+
+  const getEdgeStrokeWidth = useCallback((sourceId, targetId) => {
+    const key = `${sourceId}-${targetId}`;
+    if (ghostState?.actualEdges.has(key) || ghostState?.ghostEdges.has(key)) return 3;
+    if (overlayState?.spotlitEdges.has(key)) return 3;
+    return edgeClasses[key] ? 3 : 2;
+  }, [edgeClasses, ghostState, overlayState]);
+
+  const getEdgeDasharray = useCallback((sourceId, targetId) => {
+    const key = `${sourceId}-${targetId}`;
+    if (ghostState?.ghostEdges.has(key)) return '6,3';
+    return 'none';
+  }, [ghostState]);
+
+  const getEdgeOpacity = useCallback((sourceId, targetId) => {
+    const key = `${sourceId}-${targetId}`;
+    if (ghostState) {
+      if (ghostState.ghostEdges.has(key)) return 0.4;
+      if (ghostState.actualEdges.has(key)) return 1;
+      return 0.15;
+    }
+    if (overlayState) {
+      if (overlayState.spotlitEdges.has(key)) return 1;
+      return 0.15;
+    }
+    return 0.8;
+  }, [ghostState, overlayState]);
 
   return (
     <div className="relative h-full flex flex-col">
@@ -563,11 +490,176 @@ export default function TreeRenderer({
         </div>
       ) : (
         <>
-          <svg
-            ref={svgRef}
-            className="flex-1 w-full"
-            style={{ minHeight: '300px' }}
-          />
+          <div ref={containerRef} className="flex-1 w-full" style={{ minHeight: '300px' }}>
+            <svg
+              ref={svgRef}
+              width={dimensions.width}
+              height={dimensions.height}
+              className="w-full h-full"
+            >
+              <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
+                {/* Level highlight rectangle */}
+                {levelRect && (
+                  <m.rect
+                    initial={{ opacity: 0 }}
+                    animate={{
+                      x: levelRect.x,
+                      y: levelRect.y,
+                      width: levelRect.width,
+                      height: levelRect.height,
+                      opacity: 1,
+                    }}
+                    exit={{ opacity: 0 }}
+                    transition={SPRING_TRANSITION}
+                    rx={8}
+                    fill="rgba(59, 130, 246, 0.15)"
+                    stroke="rgba(59, 130, 246, 0.3)"
+                    strokeWidth={1}
+                  />
+                )}
+
+                {/* Edges */}
+                {layout && (
+                  <AnimatePresence>
+                    {layout.links().map(link => {
+                      const sourceId = link.source.data.id;
+                      const targetId = link.target.data.id;
+                      const edgeKey = `${sourceId}-${targetId}`;
+                      return (
+                        <m.line
+                          key={edgeKey}
+                          initial={{
+                            x1: link.source.x,
+                            y1: link.source.y,
+                            x2: link.source.x,
+                            y2: link.source.y,
+                            opacity: 0,
+                          }}
+                          animate={{
+                            x1: link.source.x,
+                            y1: link.source.y,
+                            x2: link.target.x,
+                            y2: link.target.y,
+                            opacity: getEdgeOpacity(sourceId, targetId),
+                          }}
+                          exit={{
+                            opacity: 0,
+                          }}
+                          transition={SPRING_TRANSITION}
+                          stroke={getEdgeStroke(sourceId, targetId)}
+                          strokeWidth={getEdgeStrokeWidth(sourceId, targetId)}
+                          strokeDasharray={getEdgeDasharray(sourceId, targetId)}
+                        />
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
+
+                {/* Nodes */}
+                {layout && (
+                  <AnimatePresence>
+                    {layout.descendants().map(node => {
+                      const id = node.data.id;
+                      const rbColor = nodeColors[id];
+                      const nodeOpacity = getNodeOpacity(id);
+
+                      return (
+                        <m.g
+                          key={id}
+                          initial={{ x: node.x, y: node.y, opacity: 0, scale: 0 }}
+                          animate={{
+                            x: node.x,
+                            y: node.y,
+                            opacity: 1,
+                            scale: 1,
+                          }}
+                          exit={{ opacity: 0, scale: 0 }}
+                          transition={SPRING_TRANSITION}
+                        >
+                          {/* Node circle */}
+                          <m.circle
+                            r={NODE_RADIUS}
+                            animate={{
+                              fill: getNodeFill(id),
+                              stroke: getNodeStroke(id),
+                              strokeWidth: getNodeStrokeWidth(id),
+                              opacity: nodeOpacity,
+                            }}
+                            transition={FAST_SPRING}
+                            strokeDasharray={getNodeStrokeDasharray(id)}
+                          />
+
+                          {/* Red-black tree color indicator */}
+                          {rbColor && (
+                            <circle
+                              r={6}
+                              cx={NODE_RADIUS - 4}
+                              cy={-(NODE_RADIUS - 4)}
+                              fill={rbColor === 'red' ? '#EF4444' : '#1F2937'}
+                              stroke={rbColor === 'red' ? '#FCA5A5' : '#6B7280'}
+                              strokeWidth={1.5}
+                            />
+                          )}
+
+                          {/* Node value text */}
+                          <m.text
+                            textAnchor="middle"
+                            dy="0.35em"
+                            fill="white"
+                            fontSize="14px"
+                            fontWeight="bold"
+                            fontFamily="monospace"
+                            animate={{ opacity: nodeOpacity }}
+                            transition={FAST_SPRING}
+                            style={{ pointerEvents: 'none', userSelect: 'none' }}
+                          >
+                            {node.data.value}
+                          </m.text>
+                        </m.g>
+                      );
+                    })}
+                  </AnimatePresence>
+                )}
+
+                {/* Overlay annotations */}
+                {overlayState?.annotations?.length > 0 && layout && (
+                  overlayState.annotations.map((ann, i) => {
+                    const pos = nodePositions[ann.target];
+                    if (!pos) return null;
+                    const offsetX = ann.position === 'left' ? -80 : ann.position === 'right' ? 40 : 0;
+                    const offsetY = ann.position === 'top' ? -(NODE_RADIUS + 30) : ann.position === 'bottom' ? (NODE_RADIUS + 10) : -(NODE_RADIUS + 30);
+                    return (
+                      <foreignObject
+                        key={`ann-${i}`}
+                        x={pos.x + offsetX - 60}
+                        y={pos.y + offsetY}
+                        width={140}
+                        height={40}
+                      >
+                        <div
+                          xmlns="http://www.w3.org/1999/xhtml"
+                          style={{
+                            background: 'rgba(17,24,39,0.95)',
+                            border: '1px solid #3b82f6',
+                            color: '#93c5fd',
+                            fontSize: '11px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            textAlign: 'center',
+                            pointerEvents: 'none',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {ann.text}
+                        </div>
+                      </foreignObject>
+                    );
+                  })
+                )}
+              </g>
+            </svg>
+          </div>
+
           {/* Heap array representation */}
           {heapArray && (
             <div className="px-4 pb-3">

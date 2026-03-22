@@ -9,7 +9,7 @@ import { adaptAlgorithmInput } from './algorithms/adaptInput.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { mapTraceStep } from './vizMapper.js';
 import { getDefaultContextPanels } from './contextPanelDefaults.js';
-import { layoutGrid } from './graphLayout.js';
+import { layoutGrid, autoLayout } from './graphLayout.js';
 
 // Proxy that always reads session.ws dynamically, so agent loops survive WS reconnects
 export function liveWs(session) {
@@ -939,19 +939,39 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
   switch (name) {
     case 'create_graph': {
-      const graphData = {
-        nodes: input.nodes || graph?.nodes || [],
-        edges: input.edges || graph?.edges || [],
-        positions: input.positions || graph?.positions,
-        directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
-      };
+      let graphData;
+      if (input.variant_id && session.graphVariants?.[input.variant_id]) {
+        const variant = session.graphVariants[input.variant_id];
+        graphData = variant.graph;
+        // Update panel title if variant has one
+        if (variant.title) {
+          sendJSON(ws, { type: 'update_panel_title', panel_id: Object.keys(session.graphs || {})[0] || 'graph_main', title: variant.title });
+        }
+      } else {
+        graphData = {
+          nodes: input.nodes || graph?.nodes || [],
+          edges: input.edges || graph?.edges || [],
+          positions: input.positions || graph?.positions,
+          directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
+        };
+      }
       // Auto-layout if no positions provided
       if (!graphData.positions || Object.keys(graphData.positions).length === 0) {
-        graphData.positions = layoutGrid(graphData.nodes, {});
+        graphData.positions = autoLayout(graphData.nodes, graphData.edges, {});
       }
       sendJSON(ws, { type: 'create_graph', graph: graphData });
       session.currentGraph = graphData;
-      return { success: true, message: 'Graph created and displayed to learner.' };
+      // Also update in session.graphs for graph_id lookups
+      if (session.graphs) {
+        const panelId = Object.keys(session.graphs)[0] || 'graph';
+        session.graphs[panelId] = graphData;
+      }
+      return {
+        success: true,
+        message: input.variant_id
+          ? `Graph swapped to variant "${input.variant_id}". ${session.graphVariants[input.variant_id]?.title || ''}`
+          : 'Graph created and displayed to learner.',
+      };
     }
 
     case 'update_graph': {
@@ -992,7 +1012,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
       if (input.directed !== undefined) g.directed = input.directed;
 
-      g.positions = layoutGrid(g.nodes, g.positions);
+      g.positions = autoLayout(g.nodes, g.edges, g.positions);
       sendJSON(ws, { type: 'create_graph', graph: g });
 
       return {
@@ -1008,9 +1028,24 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       if (input.context_panels) {
         console.log('[Agent] context_panels:', JSON.stringify(input.context_panels));
       }
+      const panels = input.panels || [];
+      // Store graphs by panel ID and auto-layout positions if missing
+      if (!session.graphs) session.graphs = {};
+      for (const panel of panels) {
+        if (panel.renderer === 'graph' && panel.config?.graph) {
+          const g = panel.config.graph;
+          if (!g.positions || Object.keys(g.positions).length === 0) {
+            g.positions = autoLayout(g.nodes || [], g.edges || [], {});
+          }
+          const panelId = panel.id || 'graph';
+          session.graphs[panelId] = g;
+          // Keep backward compat: first graph panel is also currentGraph
+          if (!session.currentGraph) session.currentGraph = g;
+        }
+      }
       sendJSON(ws, {
         type: 'create_visualization',
-        panels: input.panels || [],
+        panels: panels.map(p => ({ ...p, id: p.id, title: p.title })),
         context_panels: input.context_panels || [],
       });
       return { success: true, message: 'Visualization and context panels created and displayed to learner.' };
@@ -1019,6 +1054,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
     case 'run_algorithm': {
       const algo = input.algorithm || algorithm;
       const algoInfo = ALGORITHMS[algo];
+      const graphId = input.graph_id || null;
 
       if (algoInfo) {
         // Use the registry for all registered algorithms
@@ -1027,8 +1063,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           // For graph algorithms, only inject session/tool-call overrides when present.
           // Otherwise let the registry's defaultInput provide the correct graph/source/sink.
           if (algoInfo.renderer === 'graph') {
-            if (session.currentGraph && !registryInput.graph) {
-              registryInput.graph = session.currentGraph;
+            // Use graph_id-specific graph if available, else fall back to currentGraph
+            const targetGraph = (graphId && session.graphs?.[graphId]) || session.currentGraph;
+            if (targetGraph && !registryInput.graph) {
+              registryInput.graph = targetGraph;
             }
             if (input.source && !registryInput.source) {
               registryInput.source = input.source;
@@ -1054,6 +1092,13 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           session.currentRenderer = result.renderer;
           session.currentAlgorithm = algo;
           session.mapperState = {};
+          // Multi-graph: also store trace/mapper keyed by graph_id
+          if (graphId) {
+            if (!session.traces) session.traces = {};
+            if (!session.mapperStates) session.mapperStates = {};
+            session.traces[graphId] = result.trace;
+            session.mapperStates[graphId] = {};
+          }
 
           // ── Auto-configure visualization + context panels ──
           const contextPanels = getDefaultContextPanels(algo);
@@ -1124,6 +1169,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
     case 'emit_segment': {
       const segmentId = Math.random().toString(36).slice(2, 8);
+      const emitGraphId = input.graph_id || null;
 
       // ── Track emitted trace steps for graph state replay on restore ──
       if (input.trace_step_indices && input.trace_step_indices.length > 0) {
@@ -1131,25 +1177,35 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         session._emittedTraceSteps.push(...input.trace_step_indices);
       }
 
+      // ── Resolve trace and mapper state (graph_id-specific or default) ──
+      const activeTrace = (emitGraphId && session.traces?.[emitGraphId]) || session.currentTrace;
+      const activeMapperState = (emitGraphId && session.mapperStates?.[emitGraphId]) || session.mapperState;
+
       // ── Build viz_actions from trace_step_indices (deterministic mapper) ──
       let allVizActions = [];
-      if (input.trace_step_indices && input.trace_step_indices.length > 0 && session.currentTrace) {
+      if (input.trace_step_indices && input.trace_step_indices.length > 0 && activeTrace) {
         for (const idx of input.trace_step_indices) {
-          const step = session.currentTrace[idx];
+          const step = activeTrace[idx];
           if (!step) {
-            console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${session.currentTrace.length} steps)`);
+            console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
             continue;
           }
           const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
             session.currentAlgorithm,
             session.currentRenderer,
             step,
-            session.mapperState
+            activeMapperState
           );
+          // Rewrite renderer targets for multi-graph: 'graph' → graph_id
+          if (emitGraphId) {
+            for (const act of vizActs) {
+              if (act.renderer === 'graph') act.renderer = emitGraphId;
+            }
+          }
           allVizActions.push(...vizActs, ...ctxActs);
         }
-      } else if (input.trace_step_indices && !session.currentTrace) {
-        console.warn('[Agent] trace_step_indices provided but no currentTrace on session — was run_algorithm called?');
+      } else if (input.trace_step_indices && !activeTrace) {
+        console.warn('[Agent] trace_step_indices provided but no trace on session — was run_algorithm called?');
       }
       // Merge any explicit viz_actions from agent (rare overrides / backward compat)
       if (input.viz_actions && input.viz_actions.length > 0) {

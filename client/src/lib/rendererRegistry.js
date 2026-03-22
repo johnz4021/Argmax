@@ -8,8 +8,13 @@
  * If actions arrive before a renderer registers (e.g. due to lazy loading),
  * they are buffered and flushed when the renderer mounts.
  */
+import gsap from 'gsap';
+
 const renderers = {};
 const pendingActions = {}; // renderer name -> queued actions
+
+let activeTimeline = null;
+let timelineSpeed = 1;
 
 export function registerRenderer(name, handler) {
   console.log(`[Registry] Registering renderer: ${name}`);
@@ -51,6 +56,34 @@ export function applyActions(actions) {
   for (const action of actions) {
     applyAction(action);
   }
+}
+
+/**
+ * Apply actions with GSAP-based staggered timing.
+ * Actions within a segment are sequenced instead of firing simultaneously.
+ */
+export function applyActionsSequenced(actions, { staggerMs = 150 } = {}) {
+  // Kill any active timeline
+  if (activeTimeline) activeTimeline.kill();
+
+  activeTimeline = gsap.timeline({
+    defaults: { duration: 0.3 },
+    timeScale: timelineSpeed,
+  });
+
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    activeTimeline.call(() => {
+      applyAction(action);
+    }, [], i * (staggerMs / 1000));
+  }
+
+  return activeTimeline;
+}
+
+export function setTimelineSpeed(speed) {
+  timelineSpeed = speed;
+  if (activeTimeline) activeTimeline.timeScale(speed);
 }
 
 export function takeSnapshot(rendererName) {

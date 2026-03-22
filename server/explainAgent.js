@@ -7,6 +7,7 @@ import { handleToolCall, sendJSON, sendBinary, liveWs } from './agent.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
+import { planVisualization } from './vizPlanner.js';
 
 const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
 function getClient(session) {
@@ -124,16 +125,25 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
+  A recursion_tree renderer is auto-configured for D&C problems.
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
-  4. RECURRENCE — Write T(n) = ... and solve it
+  4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree visualization
+     b. Walk through levels with reveal_level and highlight_level
+     c. Use show_master_case to reveal which MT case applies
+     d. Use set_cumulative to show the total work
 
 RUNTIME / ASYMPTOTICS MODE:
+  A recursion_tree renderer is auto-configured for runtime analysis.
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method (Master theorem, substitution, recursion tree)
-  3. Walk through the proof steps using expression panels
-  4. Use concrete values to build intuition
+  3. If using recursion tree / Master Theorem:
+     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
+     b. Use highlight_level, show_master_case, set_cumulative for step-by-step analysis
+  4. Walk through the proof steps using expression panels
+  5. Use concrete values to build intuition
 
 SEGMENT BUDGET:
 - Introduction: 1-2 segments
@@ -277,6 +287,39 @@ VISUALIZATION SETUP:
 - Use create_visualization for non-graph problems (arrays, DP tables, trees)
 - For graph algorithms with a trace, prefer trace_step_indices over manual viz_actions
 
+VISUALIZATION PLANNING (problem flow only):
+After run_solver succeeds, call plan_visualization with the problem text.
+The planner returns:
+- panels: initial visualization layout with pre-built graphs
+- algorithm_runs: algorithms to run on the initial graph
+- graph_variants: pre-built transformed graphs for mid-lesson swapping
+- teaching_notes: guidance on when to swap and what to narrate
+
+Workflow:
+1. Call create_visualization with the planner's panels and context_panels
+2. Call run_algorithm for each entry in algorithm_runs
+3. Narrate the initial graph using trace_step_indices
+4. When it's time to show a transformation, call create_graph(variant_id: "variant_key")
+5. Call run_algorithm for each algorithm_run in that variant
+6. Continue narrating the transformed graph
+
+GRAPH VARIANTS (transformation problems):
+When plan_visualization returns graph_variants, the planner has pre-built transformed
+graphs. Do NOT construct these graphs manually. Instead:
+- Narrate the transformation conceptually first ("Now we transform G into G' where...")
+- Call create_graph with variant_id to swap the visualization
+- Run the variant's algorithm_runs
+- Continue narrating on the new graph
+
+If plan_visualization fails, fall back to constructing the visualization manually.
+
+MULTI-GRAPH COMPARISON (when the planner returns multiple graph panels):
+- Each panel has a unique ID (e.g., "graph_left", "graph_right")
+- Target viz_actions by panel ID: { renderer: "graph_left", action: "highlight_node", ... }
+- Use run_algorithm with graph_id to run on a specific panel's graph
+- Use emit_segment with graph_id to reference the correct trace for trace_step_indices
+- Narrate across panels: "On the left, notice... now on the right..."
+
 ENDING THE EXPLANATION:
 - When the full explanation is complete, call the lesson_complete tool.
 - Do NOT stop responding without calling lesson_complete.
@@ -299,7 +342,7 @@ const explainTools = [
       properties: {
         renderers: {
           type: 'array',
-          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval'] },
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval', 'recursion_tree'] },
           description: 'Which renderer(s) to get docs for',
         },
       },
@@ -362,6 +405,20 @@ const explainTools = [
       required: ['subproblems'],
     },
   },
+  {
+    name: 'plan_visualization',
+    description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        problem_text: {
+          type: 'string',
+          description: 'The problem text being explained',
+        },
+      },
+      required: ['problem_text'],
+    },
+  },
 ];
 
 function buildSolverContext(result) {
@@ -383,6 +440,9 @@ export async function startExplainSession(session, problemText, imageBase64, ima
   session.currentRenderer = null;
   session.currentAlgorithm = null;
   session.mapperState = {};
+  session.graphs = {};
+  session.traces = {};
+  session.mapperStates = {};
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
 
@@ -532,6 +592,7 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
         send_options: null,
         run_solver: 'Solving problem',
         run_solver_batch: 'Solving problems',
+        plan_visualization: 'Planning visualization',
       };
 
       for (const block of response.content) {
@@ -675,6 +736,45 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
             message: batchResult.success
               ? `All parts solved. Starting with Part ${activePart}. Explain each part sequentially. After finishing one part, switch context and explain the next.`
               : 'Batch solver failed. Proceed with your own analysis.',
+          };
+        } else if (block.name === 'plan_visualization') {
+          const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+          const plan = await planVisualization(
+            block.input.problem_text,
+            solverResult,
+            statusCb,
+            session.imageBase64,
+            session.imageMimeType,
+            session.anthropicClient,
+          );
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (plan.success) {
+            // Pre-store graphs on session
+            for (const panel of plan.panels) {
+              if (panel.renderer === 'graph' && panel.graph) {
+                if (!session.graphs) session.graphs = {};
+                session.graphs[panel.id] = panel.graph;
+              }
+            }
+            // Store graph variants on session
+            if (plan.graph_variants) {
+              session.graphVariants = plan.graph_variants;
+            }
+          }
+          result = {
+            success: plan.success,
+            panels: plan.panels,
+            algorithm_runs: plan.algorithm_runs,
+            context_panels: plan.context_panels,
+            teaching_notes: plan.teaching_notes,
+            graph_variants: plan.graph_variants ? Object.keys(plan.graph_variants).map(k => ({
+              id: k,
+              title: plan.graph_variants[k].title,
+              algorithm_runs: plan.graph_variants[k].algorithm_runs,
+            })) : [],
+            message: plan.success
+              ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.graph_variants ? Object.keys(plan.graph_variants).length + ' graph variant(s) available.' : ''} ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run. To swap graphs mid-lesson, call create_graph with variant_id.`
+              : 'Viz planning failed. Construct visualization manually.',
           };
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };

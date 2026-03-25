@@ -17,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced, killActiveTimeline } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -63,6 +63,13 @@ export default function App() {
   const onMessage = useCallback(
     (msg) => {
       console.log('[App] WS message:', msg.type, msg);
+
+      // Kill any in-flight staggered action timeline before the graph is replaced,
+      // otherwise GSAP callbacks fire against a destroyed/different cytoscape instance.
+      if (msg.type === 'create_graph' || msg.type === 'create_visualization') {
+        killActiveTimeline();
+      }
+
       processMessage(msg);
 
       // Route all viz actions through the renderer registry.

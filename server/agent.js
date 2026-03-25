@@ -310,6 +310,23 @@ When a learner interrupts with a question, choose the right explanation_mode:
   For arrays/linked lists: use ghost_indices/actual_indices (index arrays).
   Include ghost_label and actual_label to explain the comparison.
 
+- "illustrate" — for conceptual "why does X work?" questions where the current graph
+  CANNOT show the concept. Builds a temporary small example graph (3-6 nodes) and
+  animates through it step-by-step. Each step has narration + optional viz_actions
+  (highlight_node, highlight_edge, add_edge, show_path, reset_highlights, etc.).
+  The lesson graph auto-restores after.
+  IMPORTANT: When using illustrate, you MUST provide the "illustrate" property with:
+    - "graph": { nodes: [{id, label}], edges: [{source, target, weight?}], directed? }
+    - "steps": [{narration: "...", viz_actions?: [{action, ...}]}]
+  The "answer" field should be a SHORT intro (1 sentence, e.g. "Let me show you with
+  a small example."). The detailed explanation goes in each step's "narration" field —
+  do NOT put the full explanation in "answer".
+  Use when:
+  - The question is about a PROCESS or TRANSFORMATION (before/after, step-by-step)
+  - The current graph doesn't contain the elements needed to show the concept
+  - A concrete visual example would be clearer than verbal-only explanation
+  Keep examples small (3-6 nodes) and brief (2-5 steps).
+
 - "none" — simple factual questions with no visual needs.
 
 When answering interrupts, check the relevant trace steps' conceptual_state for
@@ -338,19 +355,21 @@ When using rewind mode, your re-narration should use DIFFERENT words than the or
 When using ghost_alternative mode, always include both the ghost (rejected) choice and the actual (chosen) choice so the learner can visually compare.
 
 CONSTRUCTING EXAMPLE GRAPHS:
-When a learner asks "show me another example" or describes a hypothetical that the
-current graph does NOT demonstrate, you can construct a temporary example:
-1. Call create_graph with a small example graph (4-6 nodes) that illustrates the concept
-2. Call run_algorithm to get a trace on the example
-3. Use emit_segment to narrate the key steps (2-4 segments max — keep it brief)
-4. Call respond_to_interrupt with a verbal summary wrapping up the example
+PREFER illustrate mode over the multi-tool sequence (create_graph → run_algorithm →
+emit_segment → respond_to_interrupt). illustrate does everything in one tool call —
+builds the graph, animates steps, narrates each step, and auto-restores the lesson graph.
 
-The original lesson graph is automatically restored after your explanation.
+Only use the multi-tool sequence when you need run_algorithm to compute a full algorithmic
+trace (rare during interrupts). For conceptual explanations where you control the
+narrative, always use illustrate.
 
-IMPORTANT: Only construct example graphs when the current visualization genuinely
-cannot show the concept. For questions about the current state ("why did we pick
-this path?", "what would happen with a different weight?"), prefer overlay or
-ghost_alternative modes — they're faster and more focused.
+Example: Student asks "Why do we need backward edges in residual graphs?"
+→ Use illustrate with a 3-node graph (s, M, t), steps:
+  1. "Here's a tiny network..." — highlight edges s→M, M→t, s→t
+  2. "The algorithm greedily sends flow through s→M→t..." — show_path [s, M, t]
+  3. "Now M→t is saturated. Without backward edges, we're stuck at flow 1." — mark M→t visited
+  4. "But with a backward edge..." — add_edge t→M (dashed), highlight it
+  5. "The algorithm reroutes: send flow s→t directly, undo M→t." — show_path [s, t]
 
 ALGORITHM-SPECIFIC TEACHING NOTES:
 
@@ -1283,6 +1302,16 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
     }
 
     case 'respond_to_interrupt': {
+      // Validate illustrate mode has required data before committing
+      if (input.explanation_mode === 'illustrate') {
+        if (!input.illustrate?.graph?.nodes?.length || !input.illustrate?.steps?.length) {
+          return {
+            success: false,
+            message: 'illustrate mode requires the "illustrate" property with "graph" (containing nodes and edges) and "steps" (array of {narration, viz_actions}). Please retry with the full illustrate object, or use explanation_mode "none" with a verbal explanation.',
+          };
+        }
+      }
+
       sendJSON(ws, {
         type: 'interrupt_response',
         answer: input.answer,
@@ -1290,6 +1319,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         overlay: input.overlay || null,
         rewind: input.rewind || null,
         ghost_alternative: input.ghost_alternative || null,
+        illustrate: input.illustrate || null,
         viz_actions: input.viz_actions || [],
       });
 
@@ -1355,6 +1385,64 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
               sendJSON(ws, { type: 'resumed' });
             }
           }
+        }
+      }
+
+      // If illustrate mode, build example graph and step through it
+      if (input.explanation_mode === 'illustrate' && input.illustrate) {
+        const { graph: illGraph, steps } = input.illustrate;
+
+        // Build graph with auto-layout
+        const graphData = {
+          nodes: illGraph.nodes || [],
+          edges: illGraph.edges || [],
+          directed: illGraph.directed !== undefined ? illGraph.directed : true,
+        };
+        graphData.positions = autoLayout(graphData.nodes, graphData.edges, {});
+
+        // Swap to the example graph
+        sendJSON(ws, { type: 'create_graph', graph: graphData });
+        await new Promise((r) => setTimeout(r, 600));
+
+        // Step through with narration + viz actions
+        for (const step of steps) {
+          if (session.pauseFlag || session.skipFlag) break;
+
+          // Apply viz actions for this step
+          if (step.viz_actions?.length) {
+            sendJSON(ws, { type: 'illustrate_step', viz_actions: step.viz_actions });
+          }
+          await new Promise((r) => setTimeout(r, 300));
+
+          // TTS the step narration
+          const stepTts = await synthesizeAndStream(
+            sendBinaryFn, step.narration, session.speedMultiplier,
+            sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted
+          );
+          if (stepTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+            session._ttsDisabledNotified = true;
+            sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable.' });
+          }
+
+          if (stepTts?.aborted || session.pauseFlag || session.skipFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              break;
+            }
+            session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            if (!session.interruptFlag) sendJSON(ws, { type: 'resumed' });
+          }
+
+          // Inter-step gap
+          await new Promise((r) => setTimeout(r, 400 / session.speedMultiplier));
         }
       }
 

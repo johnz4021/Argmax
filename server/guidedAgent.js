@@ -365,6 +365,21 @@ SCOPE BOUNDARY HANDLING:
 - Pure runtime analysis → reasoning_mode: 'runtime'.
 - If completely out of scope, say so honestly.
 
+HANDLING INTERRUPTS (respond_to_interrupt):
+When a learner interrupts with a question, pick the right explanation_mode:
+- "overlay" — spotlight relevant elements for "why this element?" questions
+- "rewind" — replay recent steps for "what just happened?" questions
+- "ghost_alternative" — compare actual vs alternative for "what if?" questions
+- "illustrate" — for conceptual "why does X work?" questions where the current graph
+  CANNOT show the concept. Builds a temporary small example graph (3-6 nodes) and
+  animates through it step-by-step. IMPORTANT: You MUST provide the "illustrate"
+  property with "graph" (containing nodes and edges) and "steps" (array of
+  {narration, viz_actions}). The "answer" field should be a SHORT intro (1 sentence).
+  The detailed explanation goes in each step's "narration" field.
+  Prefer illustrate over the multi-tool sequence (create_graph → run_algorithm →
+  emit_segment). illustrate does everything in one tool call.
+- "none" — simple factual questions with no visual needs
+
 GUARDRAILS:
 - Never make up an algorithm trace. Always use run_algorithm.
 - Keep classification phase concise — 2-4 questions max.
@@ -1816,6 +1831,17 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           const interruptData = session.interruptFlag;
           session.interruptFlag = null;
           interrupted = true;
+
+          // Snapshot current graph state so we can restore after the interrupt
+          // (in case the agent constructs a temporary example graph via illustrate mode)
+          session._savedGraphState = {
+            graph: session.currentGraph,
+            trace: session.currentTrace,
+            algorithm: session.currentAlgorithm,
+            renderer: session.currentRenderer,
+            mapperState: { ...session.mapperState },
+            emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+          };
 
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;

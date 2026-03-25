@@ -113,6 +113,10 @@ export default function App() {
         const normalized = normalizeVizActions(msg.viz_actions);
         applyActions(normalized);
       }
+      if (msg.type === 'illustrate_step' && msg.viz_actions?.length > 0) {
+        const normalized = normalizeVizActions(msg.viz_actions);
+        applyActions(normalized);
+      }
       if (msg.type === 'rewind_step_narration') {
         processMessage({
           type: 'segment_start',

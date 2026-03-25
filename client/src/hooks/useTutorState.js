@@ -322,6 +322,7 @@ export function useTutorState() {
           overlay: msg.overlay,
           rewind: msg.rewind,
           ghost_alternative: msg.ghost_alternative,
+          illustrate: msg.illustrate,
         });
         break;
       case 'explanation_complete':

@@ -244,7 +244,7 @@ export const tools = [
         },
         explanation_mode: {
           type: 'string',
-          enum: ['overlay', 'rewind', 'ghost_alternative', 'none'],
+          enum: ['overlay', 'rewind', 'ghost_alternative', 'illustrate', 'none'],
           description: 'Visual explanation mode. Use "none" for simple verbal answers.',
         },
         overlay: {
@@ -350,6 +350,70 @@ export const tools = [
               description: 'Label for the actual choice (e.g., "cost: 6")',
             },
           },
+        },
+        illustrate: {
+          type: 'object',
+          description: 'Build a temporary small example graph and animate through it step-by-step. Use for conceptual "why?" questions where the current graph cannot demonstrate the concept. The lesson graph auto-restores after. Required when explanation_mode is "illustrate".',
+          properties: {
+            graph: {
+              type: 'object',
+              description: 'Small example graph (3-6 nodes). Same format as create_graph.',
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { id: { type: 'string' }, label: { type: 'string' } },
+                    required: ['id'],
+                  },
+                },
+                edges: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      source: { type: 'string' },
+                      target: { type: 'string' },
+                      weight: { type: 'number' },
+                    },
+                    required: ['source', 'target'],
+                  },
+                },
+                directed: { type: 'boolean' },
+              },
+              required: ['nodes', 'edges'],
+            },
+            steps: {
+              type: 'array',
+              description: 'Ordered animation steps (2-6). Each has narration + optional viz_actions.',
+              items: {
+                type: 'object',
+                properties: {
+                  narration: { type: 'string', description: 'Spoken narration for this step' },
+                  viz_actions: {
+                    type: 'array',
+                    description: 'Graph actions to apply before narration (highlight_node, highlight_edge, add_edge, show_path, reset_highlights, etc.)',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        action: { type: 'string' },
+                        node: { type: 'string' },
+                        from: { type: 'string' },
+                        to: { type: 'string' },
+                        label: { type: 'string' },
+                        weight: { type: 'number' },
+                        path: { type: 'array', items: { type: 'string' } },
+                        className: { type: 'string' },
+                      },
+                      required: ['action'],
+                    },
+                  },
+                },
+                required: ['narration'],
+              },
+            },
+          },
+          required: ['graph', 'steps'],
         },
         viz_actions: {
           type: 'array',

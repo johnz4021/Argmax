@@ -477,6 +477,8 @@ export default function GraphRenderer({
       if (snapshotsRef.current[idx]) {
         restoreSnapshot(cy, snapshotsRef.current[idx]);
       }
+    } else if (explanationMode?.mode === 'illustrate') {
+      // No snapshot needed — server restores lesson graph via create_graph after explanation_complete
     } else if (explanationMode === null && preExplanationSnapshotRef.current) {
       removeOverlay(cy);
       removeGhostAlternative(cy);

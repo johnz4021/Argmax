@@ -156,7 +156,19 @@ OUTPUT RULES:
 - NEVER respond with plain text. ALWAYS use the emit_segment tool for ALL narration.
 - Explain DIRECTLY — no questions, no MCQs, no "what do you think?" prompts
 - Keep explanations clear and educational but move at a steady pace
-- Use respond_to_interrupt if the student asks a question mid-explanation
+- Use respond_to_interrupt if the student asks a question mid-explanation.
+  Pick the right explanation_mode:
+  - "overlay" — spotlight relevant elements for "why this element?" questions
+  - "rewind" — replay recent steps for "what just happened?" questions
+  - "ghost_alternative" — compare actual vs alternative for "what if?" questions
+  - "illustrate" — for conceptual "why does X work?" questions where the current graph
+    CANNOT show the concept. Builds a temporary small example graph (3-6 nodes) and
+    animates step-by-step. You MUST provide the "illustrate" property with "graph"
+    ({nodes, edges, directed?}) and "steps" ([{narration, viz_actions?}]). The "answer"
+    field should be a SHORT intro (1 sentence). Detailed explanation goes in each step's
+    "narration". Prefer illustrate over the multi-tool sequence (create_graph →
+    run_algorithm → emit_segment).
+  - "none" — simple factual questions with no visual needs
 - MATH NOTATION: Use LaTeX notation wrapped in $...$ for all mathematical expressions,
   both in narration text (emit_segment) and in panel lines (text fields).
   Examples: $f_{uv}$, $\\sum_{e} c_e \\cdot f_e$, $d_{\\text{flow}}(s,t)$, $\\leq$, $\\geq$.
@@ -838,6 +850,17 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
           const interruptData = session.interruptFlag;
           session.interruptFlag = null;
           interrupted = true;
+
+          // Snapshot current graph state so we can restore after the interrupt
+          // (in case the agent constructs a temporary example graph via illustrate mode)
+          session._savedGraphState = {
+            graph: session.currentGraph,
+            trace: session.currentTrace,
+            algorithm: session.currentAlgorithm,
+            renderer: session.currentRenderer,
+            mapperState: { ...session.mapperState },
+            emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+          };
 
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;

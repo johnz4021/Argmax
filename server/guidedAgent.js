@@ -1150,6 +1150,10 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue;
 
+        if (interrupted) {
+          console.log(`[GuidedAgent] Post-interrupt tool call: ${block.name}`, block.name === 'respond_to_interrupt' ? `mode=${block.input?.explanation_mode}` : '');
+        }
+
         const toolLabel = TOOL_LABELS[block.name];
         if (toolLabel) {
           sendJSON(ws, { type: 'agent_status', status: 'tool', tool: toolLabel });

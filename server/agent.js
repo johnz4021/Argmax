@@ -600,8 +600,12 @@ function buildInitialPrompt(algorithm, source) {
  * doesn't appear blank.
  */
 function restoreGraphState(session, ws) {
-  if (!session._savedGraphState) return;
+  if (!session._savedGraphState) {
+    console.log('[Agent] restoreGraphState: no saved state, skipping');
+    return;
+  }
   const saved = session._savedGraphState;
+  console.log(`[Agent] restoreGraphState: restoring graph with ${saved.graph?.nodes?.length || 0} nodes, ${saved.emittedTraceSteps?.length || 0} emitted steps`);
   session.currentGraph = saved.graph;
   session.currentTrace = saved.trace;
   session.currentAlgorithm = saved.algorithm;
@@ -1451,6 +1455,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       sendJSON(ws, { type: 'explanation_complete' });
 
       // Restore original graph state if we saved one (mid-lesson interrupt or Q&A)
+      console.log('[Agent] respond_to_interrupt done, restoring graph. _savedGraphState:', session._savedGraphState ? `graph with ${session._savedGraphState.graph?.nodes?.length} nodes` : 'null');
       restoreGraphState(session, ws);
 
       return {

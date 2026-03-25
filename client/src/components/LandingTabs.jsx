@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import AlgoSelector from './AlgoSelector';
 import ProblemSolver from './ProblemSolver';
 import ConversationHistory from './ConversationHistory';
 import ConversationTranscript from './ConversationTranscript';
@@ -9,7 +8,7 @@ import { posthog, POSTHOG_KEY } from '../lib/posthog';
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
 export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage, onResumeConversation }) {
-  const [activeTab, setActiveTab] = useState('tutorials');
+  const [activeTab, setActiveTab] = useState('solver');
 
   const handleViewTranscript = (conversationId) => {
     send({ type: 'load_conversation', conversationId });
@@ -24,7 +23,6 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
   };
 
   const tabs = [
-    { id: 'tutorials', label: 'Tutorials' },
     { id: 'solver', label: 'Problem Help' },
     { id: 'history', label: 'History' },
     { id: 'help', label: 'Help Center' },
@@ -54,9 +52,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
         ))}
       </div>
       <div className="flex-1 overflow-auto">
-        {activeTab === 'tutorials' ? (
-          <AlgoSelector onSelect={onSelect} disabled={disabled} />
-        ) : activeTab === 'solver' ? (
+        {activeTab === 'solver' ? (
           <ProblemSolver onSelect={onSelect} disabled={disabled} />
         ) : activeTab === 'help' ? (
           <HelpCenter />

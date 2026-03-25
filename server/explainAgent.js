@@ -1,18 +1,12 @@
 // Explain mode agent — direct solution walkthrough with visualization, no Socratic dialogue
 
-import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary, liveWs } from './agent.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
 import { planVisualization } from './vizPlanner.js';
-
-const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
-function getClient(session) {
-  return session?.anthropicClient || defaultAnthropicClient;
-}
 
 function buildAlgorithmList() {
   return Object.entries(ALGORITHMS)

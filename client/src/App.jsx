@@ -113,9 +113,20 @@ export default function App() {
         const normalized = normalizeVizActions(msg.viz_actions);
         applyActions(normalized);
       }
-      if (msg.type === 'illustrate_step' && msg.viz_actions?.length > 0) {
-        const normalized = normalizeVizActions(msg.viz_actions);
-        applyActions(normalized);
+      if (msg.type === 'illustrate_step') {
+        if (msg.viz_actions?.length > 0) {
+          const normalized = normalizeVizActions(msg.viz_actions);
+          applyActions(normalized);
+        }
+        if (msg.narration) {
+          processMessage({
+            type: 'segment_start',
+            segment_id: 'illustrate_' + Date.now(),
+            narration: msg.narration,
+            phase: '',
+            viz_actions: [],
+          });
+        }
       }
       if (msg.type === 'rewind_step_narration') {
         processMessage({
@@ -194,22 +205,18 @@ export default function App() {
       reset();
       sessionStartRef.current = Date.now();
       track('session_started', {
-        mode: algorithm === 'guided' ? 'guided' : algorithm === 'explain' ? 'explain' : 'tutorial',
+        mode: algorithm === 'guided' ? 'guided' : 'explain',
         algorithm,
       });
-      if (algorithm === 'guided' || algorithm === 'explain') {
-        const msg = {
-          type: algorithm === 'explain' ? 'start_explain' : 'start_guided',
-          problemText: data.problemText,
-        };
-        if (data.imageBase64) {
-          msg.imageBase64 = data.imageBase64;
-          msg.imageMimeType = data.imageMimeType;
-        }
-        send(msg);
-      } else {
-        send({ type: 'start_lesson', algorithm, source: 'A' });
+      const msg = {
+        type: algorithm === 'explain' ? 'start_explain' : 'start_guided',
+        problemText: data.problemText,
+      };
+      if (data.imageBase64) {
+        msg.imageBase64 = data.imageBase64;
+        msg.imageMimeType = data.imageMimeType;
       }
+      send(msg);
     },
     [send, reset, audioPlayer]
   );

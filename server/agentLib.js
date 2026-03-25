@@ -1,0 +1,819 @@
+// Shared agent utilities — used by agent.js, guidedAgent.js, and explainAgent.js
+
+import Anthropic from '@anthropic-ai/sdk';
+import { tools } from './tools.js';
+import { runAlgorithm } from './algorithms.js';
+import { runRegisteredAlgorithm, runAlgorithmWithFallback, ALGORITHMS } from './algorithms/registry.js';
+import { validateAlgorithmInput } from './algorithms/validateInput.js';
+import { adaptAlgorithmInput } from './algorithms/adaptInput.js';
+import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
+import { mapTraceStep } from './vizMapper.js';
+import { getDefaultContextPanels } from './contextPanelDefaults.js';
+import { layoutGrid, autoLayout } from './graphLayout.js';
+
+// Proxy that always reads session.ws dynamically, so agent loops survive WS reconnects
+export function liveWs(session) {
+  return new Proxy({}, {
+    get(_, prop) {
+      const target = session.ws;
+      return typeof target[prop] === 'function' ? target[prop].bind(target) : target[prop];
+    }
+  });
+}
+
+const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
+export function getClient(session) {
+  return session?.anthropicClient || defaultAnthropicClient;
+}
+
+export function sendJSON(ws, obj) {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+export function sendBinary(ws, buffer) {
+  if (ws.readyState === ws.OPEN) {
+    ws.send(buffer, { binary: true });
+  }
+}
+
+/**
+ * Restore saved graph state (original lesson graph) after an interrupt or Q&A example.
+ * Replays all viz_actions that were emitted before the interrupt so the graph
+ * doesn't appear blank.
+ */
+export function restoreGraphState(session, ws) {
+  if (!session._savedGraphState) {
+    console.log('[Agent] restoreGraphState: no saved state, skipping');
+    return;
+  }
+  const saved = session._savedGraphState;
+  console.log(`[Agent] restoreGraphState: restoring graph with ${saved.graph?.nodes?.length || 0} nodes, ${saved.emittedTraceSteps?.length || 0} emitted steps`);
+  session.currentGraph = saved.graph;
+  session.currentTrace = saved.trace;
+  session.currentAlgorithm = saved.algorithm;
+  session.currentRenderer = saved.renderer;
+  session.mapperState = saved.mapperState;
+  session._emittedTraceSteps = saved.emittedTraceSteps || [];
+  if (saved.graph) {
+    sendJSON(ws, { type: 'create_graph', graph: saved.graph });
+
+    // Replay viz_actions for all trace steps emitted before the interrupt
+    if (saved.emittedTraceSteps?.length > 0 && saved.trace) {
+      const replayState = {};
+      const replayActions = [];
+      for (const idx of saved.emittedTraceSteps) {
+        const step = saved.trace[idx];
+        if (!step) continue;
+        const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
+          saved.algorithm,
+          saved.renderer,
+          step,
+          replayState
+        );
+        replayActions.push(...vizActs, ...ctxActs);
+      }
+      if (replayActions.length > 0) {
+        sendJSON(ws, {
+          type: 'segment_start',
+          segment_id: 'restore_' + Math.random().toString(36).slice(2, 8),
+          narration: '',
+          viz_actions: replayActions,
+          phase: '',
+        });
+        sendJSON(ws, { type: 'segment_end', segment_id: 'restore' });
+      }
+    }
+  }
+  session._savedGraphState = null;
+}
+
+export async function handleToolCall(session, toolCall, graph, algorithm, source) {
+  if (session.endSessionFlag) {
+    throw new Error('__end_session__');
+  }
+  const ws = liveWs(session);
+  const { name, input } = toolCall;
+
+  switch (name) {
+    case 'create_graph': {
+      let graphData;
+      if (input.variant_id && session.graphVariants?.[input.variant_id]) {
+        const variant = session.graphVariants[input.variant_id];
+        graphData = variant.graph;
+        // Update panel title if variant has one
+        if (variant.title) {
+          sendJSON(ws, { type: 'update_panel_title', panel_id: Object.keys(session.graphs || {})[0] || 'graph_main', title: variant.title });
+        }
+      } else {
+        graphData = {
+          nodes: input.nodes || graph?.nodes || [],
+          edges: input.edges || graph?.edges || [],
+          positions: input.positions || graph?.positions,
+          directed: input.directed !== undefined ? input.directed : (graph?.directed !== undefined ? graph?.directed : true),
+        };
+      }
+      // Auto-layout if no positions provided
+      if (!graphData.positions || Object.keys(graphData.positions).length === 0) {
+        graphData.positions = autoLayout(graphData.nodes, graphData.edges, {});
+      }
+      sendJSON(ws, { type: 'create_graph', graph: graphData });
+      session.currentGraph = graphData;
+      // Also update in session.graphs for graph_id lookups
+      if (session.graphs) {
+        const panelId = Object.keys(session.graphs)[0] || 'graph';
+        session.graphs[panelId] = graphData;
+      }
+      return {
+        success: true,
+        message: input.variant_id
+          ? `Graph swapped to variant "${input.variant_id}". ${session.graphVariants[input.variant_id]?.title || ''}`
+          : 'Graph created and displayed to learner.',
+      };
+    }
+
+    case 'update_graph': {
+      if (!session.currentGraph) {
+        session.currentGraph = {
+          nodes: [],
+          edges: [],
+          positions: {},
+          directed: input.directed !== undefined ? input.directed : true,
+        };
+      }
+      const g = session.currentGraph;
+
+      if (input.remove_nodes) {
+        const removeSet = new Set(input.remove_nodes);
+        g.nodes = g.nodes.filter((n) => !removeSet.has(n.id));
+        g.edges = g.edges.filter((e) => !removeSet.has(e.source) && !removeSet.has(e.target));
+        for (const id of input.remove_nodes) delete g.positions[id];
+      }
+      if (input.remove_edges) {
+        for (const re of input.remove_edges) {
+          g.edges = g.edges.filter((e) => !(e.source === re.source && e.target === re.target));
+        }
+      }
+      if (input.add_nodes) {
+        for (const node of input.add_nodes) {
+          if (!g.nodes.some((n) => n.id === node.id)) {
+            g.nodes.push({ id: node.id, label: node.label || node.id });
+          }
+        }
+      }
+      if (input.add_edges) {
+        for (const edge of input.add_edges) {
+          if (!g.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
+            g.edges.push(edge);
+          }
+        }
+      }
+      if (input.directed !== undefined) g.directed = input.directed;
+
+      g.positions = autoLayout(g.nodes, g.edges, g.positions);
+      sendJSON(ws, { type: 'create_graph', graph: g });
+
+      return {
+        success: true,
+        node_count: g.nodes.length,
+        edge_count: g.edges.length,
+        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges.`,
+      };
+    }
+
+    case 'create_visualization': {
+      console.log('[Agent] create_visualization panels:', JSON.stringify(input.panels));
+      if (input.context_panels) {
+        console.log('[Agent] context_panels:', JSON.stringify(input.context_panels));
+      }
+      const panels = input.panels || [];
+      // Store graphs by panel ID and auto-layout positions if missing
+      if (!session.graphs) session.graphs = {};
+      for (const panel of panels) {
+        if (panel.renderer === 'graph' && panel.config?.graph) {
+          const g = panel.config.graph;
+          if (!g.positions || Object.keys(g.positions).length === 0) {
+            g.positions = autoLayout(g.nodes || [], g.edges || [], {});
+          }
+          const panelId = panel.id || 'graph';
+          session.graphs[panelId] = g;
+          // Keep backward compat: first graph panel is also currentGraph
+          if (!session.currentGraph) session.currentGraph = g;
+        }
+      }
+      sendJSON(ws, {
+        type: 'create_visualization',
+        panels: panels.map(p => ({ ...p, id: p.id, title: p.title })),
+        context_panels: input.context_panels || [],
+      });
+      return { success: true, message: 'Visualization and context panels created and displayed to learner.' };
+    }
+
+    case 'run_algorithm': {
+      const algo = input.algorithm || algorithm;
+      const algoInfo = ALGORITHMS[algo];
+      const graphId = input.graph_id || null;
+
+      if (algoInfo) {
+        // Use the registry for all registered algorithms
+        try {
+          const registryInput = { ...input.input };
+          // For graph algorithms, only inject session/tool-call overrides when present.
+          // Otherwise let the registry's defaultInput provide the correct graph/source/sink.
+          if (algoInfo.renderer === 'graph') {
+            // Use graph_id-specific graph if available, else fall back to currentGraph
+            const targetGraph = (graphId && session.graphs?.[graphId]) || session.currentGraph;
+            if (targetGraph && !registryInput.graph) {
+              registryInput.graph = targetGraph;
+            }
+            if (input.source && !registryInput.source) {
+              registryInput.source = input.source;
+            }
+            if (input.sink) {
+              registryInput.sink = input.sink;
+            }
+          }
+          // Validate and adapt input against algorithm capabilities
+          const validation = validateAlgorithmInput(algo, registryInput, session.modelContract);
+          if (!validation.valid) {
+            return { error: validation.errors.join('; '), warnings: validation.warnings };
+          }
+          if (validation.adaptations.length > 0) {
+            adaptAlgorithmInput(algo, registryInput, validation.adaptations);
+          }
+
+          const result = await runAlgorithmWithFallback(algo, registryInput);
+          console.log(`[Agent] run_algorithm '${algo}' returned ${result.trace.length} steps, renderer: ${result.renderer}, tier: ${result.tier}`);
+
+          // ── Store trace on session for deterministic mapping ──
+          session.currentTrace = result.trace;
+          session.currentRenderer = result.renderer;
+          session.currentAlgorithm = algo;
+          session.mapperState = {};
+          // Multi-graph: also store trace/mapper keyed by graph_id
+          if (graphId) {
+            if (!session.traces) session.traces = {};
+            if (!session.mapperStates) session.mapperStates = {};
+            session.traces[graphId] = result.trace;
+            session.mapperStates[graphId] = {};
+          }
+
+          // ── Auto-configure visualization + context panels ──
+          const contextPanels = getDefaultContextPanels(algo);
+          console.log(`[Agent] Auto-setup for '${algo}': renderer=${algoInfo.renderer}, contextPanels=${contextPanels.map(p => p.id).join(',')}, sessionGraph=${!!session.currentGraph}`);
+
+          if (algoInfo.renderer === 'graph') {
+            // Always send the graph for the current algorithm run
+            const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
+            if (graphData) {
+              const directed = graphData.directed !== undefined ? graphData.directed : true;
+              console.log(`[Agent] Auto-creating graph: ${graphData.nodes?.length} nodes, directed=${directed}`);
+              sendJSON(ws, { type: 'create_graph', graph: { ...graphData, directed } });
+              session.currentGraph = graphData;
+            }
+            // Send context panels via create_visualization
+            if (contextPanels.length > 0) {
+              sendJSON(ws, {
+                type: 'create_visualization',
+                panels: [],
+                context_panels: contextPanels,
+              });
+            }
+          } else {
+            // Non-graph: auto-send create_visualization with renderer + context panels
+            sendJSON(ws, {
+              type: 'create_visualization',
+              panels: [{ renderer: algoInfo.renderer, config: {} }],
+              context_panels: contextPanels,
+            });
+          }
+
+          const panelNames = contextPanels.map((p) => p.id);
+          return {
+            success: true,
+            algorithm: algo,
+            renderer: result.renderer,
+            trace: result.trace,
+            step_count: result.trace.length,
+            source: registryInput.source,
+            visualization_auto_configured: true,
+            context_panels: panelNames,
+            tier: result.tier,
+            capabilities: algoInfo.capabilities,
+            adaptations_applied: validation.adaptations,
+            warnings: validation.warnings,
+            message: `Algorithm executed. Visualization and context panels auto-configured. Use emit_segment with trace_step_indices to teach. You have ${result.trace.length} trace steps available (indices 0 to ${result.trace.length - 1}).`,
+          };
+        } catch (err) {
+          return { error: err.message };
+        }
+      }
+
+      // Fallback: legacy path for unregistered algorithms
+      const src = input.source || source;
+      const trace = runAlgorithm(algo, session.currentGraph || graph, src);
+      session.currentTrace = trace;
+      session.currentAlgorithm = algo;
+      session.mapperState = {};
+      return {
+        success: true,
+        algorithm: algo,
+        source: src,
+        trace,
+        step_count: trace.length,
+        message: `Algorithm executed successfully. ${trace.length} steps in trace. Use emit_segment with trace_step_indices to narrate each step.`,
+      };
+    }
+
+    case 'emit_segment': {
+      const segmentId = Math.random().toString(36).slice(2, 8);
+      const emitGraphId = input.graph_id || null;
+
+      // ── Track emitted trace steps for graph state replay on restore ──
+      if (input.trace_step_indices && input.trace_step_indices.length > 0) {
+        if (!session._emittedTraceSteps) session._emittedTraceSteps = [];
+        session._emittedTraceSteps.push(...input.trace_step_indices);
+      }
+
+      // ── Resolve trace and mapper state (graph_id-specific or default) ──
+      const activeTrace = (emitGraphId && session.traces?.[emitGraphId]) || session.currentTrace;
+      const activeMapperState = (emitGraphId && session.mapperStates?.[emitGraphId]) || session.mapperState;
+
+      // ── Build viz_actions from trace_step_indices (deterministic mapper) ──
+      let allVizActions = [];
+      if (input.trace_step_indices && input.trace_step_indices.length > 0 && activeTrace) {
+        for (const idx of input.trace_step_indices) {
+          const step = activeTrace[idx];
+          if (!step) {
+            console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
+            continue;
+          }
+          const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
+            session.currentAlgorithm,
+            session.currentRenderer,
+            step,
+            activeMapperState
+          );
+          // Rewrite renderer targets for multi-graph: 'graph' → graph_id
+          if (emitGraphId) {
+            for (const act of vizActs) {
+              if (act.renderer === 'graph') act.renderer = emitGraphId;
+            }
+          }
+          allVizActions.push(...vizActs, ...ctxActs);
+        }
+      } else if (input.trace_step_indices && !activeTrace) {
+        console.warn('[Agent] trace_step_indices provided but no trace on session — was run_algorithm called?');
+      }
+      // Merge any explicit viz_actions from agent (rare overrides / backward compat)
+      if (input.viz_actions && input.viz_actions.length > 0) {
+        allVizActions.push(...input.viz_actions);
+      }
+
+      if (allVizActions.length === 0 && input.narration) {
+        console.warn(`[Agent] emit_segment has narration but NO viz_actions (trace_step_indices: ${JSON.stringify(input.trace_step_indices)}, viz_actions: ${input.viz_actions?.length || 0})`);
+      }
+      console.log(`[Agent] emit_segment viz_actions (${allVizActions.length}, trace_steps: ${input.trace_step_indices?.length || 0}):`, JSON.stringify(allVizActions).slice(0, 500));
+
+      sendJSON(ws, {
+        type: 'segment_start',
+        segment_id: segmentId,
+        narration: input.narration,
+        viz_actions: allVizActions,
+        phase: input.phase || '',
+      });
+
+      // TTS or simulated delay (synthesizeAndStream waits for playback to finish)
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
+
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+        sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+
+        // Skip takes priority over pause — advance immediately without pausing
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          return {
+            success: true,
+            message: 'Segment skipped. Continue with the next segment.',
+          };
+        }
+
+        // Pause was pressed during or after TTS
+        session.pauseFlag = false;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        sendJSON(ws, { type: 'paused' });
+        await new Promise((resolve) => { session.pauseResolver = resolve; });
+        session.pauseResolver = null;
+        if (session.endSessionFlag) throw new Error('__end_session__');
+        if (!session.interruptFlag) {
+          sendJSON(ws, { type: 'resumed' });
+        }
+        return {
+          success: true,
+          message: 'Segment interrupted by pause. Resumed.',
+        };
+      }
+
+      // Small buffer between segments for natural pacing (skippable)
+      if (session.skipFlag) {
+        session.skipFlag = false;
+        sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+        return { success: true, message: 'Segment skipped during gap. Continue with the next segment.' };
+      }
+      const gapMs = 300 / session.speedMultiplier;
+      await new Promise((resolve) => setTimeout(resolve, gapMs));
+
+      sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
+
+      return {
+        success: true,
+        message: 'Segment delivered. Narration played and animations applied.',
+      };
+    }
+
+    case 'respond_to_interrupt': {
+      // Validate illustrate mode has required data before committing
+      if (input.explanation_mode === 'illustrate') {
+        if (!input.illustrate?.graph?.nodes?.length || !input.illustrate?.steps?.length) {
+          return {
+            success: false,
+            message: 'illustrate mode requires the "illustrate" property with "graph" (containing nodes and edges) and "steps" (array of {narration, viz_actions}). Please retry with the full illustrate object, or use explanation_mode "none" with a verbal explanation.',
+          };
+        }
+      }
+
+      sendJSON(ws, {
+        type: 'interrupt_response',
+        answer: input.answer,
+        explanation_mode: input.explanation_mode || 'none',
+        overlay: input.overlay || null,
+        rewind: input.rewind || null,
+        ghost_alternative: input.ghost_alternative || null,
+        illustrate: input.illustrate || null,
+        viz_actions: input.viz_actions || [],
+      });
+
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.answer, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
+
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip past the rest of this interrupt response
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
+        }
+      }
+
+      // If rewind mode, also narrate each replayed step
+      if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
+        for (const stepNarration of input.rewind.narration_per_step) {
+          if (session.pauseFlag || session.skipFlag) break;
+          await new Promise((r) => setTimeout(r, 800));
+          sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
+          const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+          if (rewindTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+            session._ttsDisabledNotified = true;
+            sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+          }
+
+          if (rewindTts?.aborted || session.pauseFlag || session.skipFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              break; // Skip remaining rewind steps
+            }
+
+            session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            if (!session.interruptFlag) {
+              sendJSON(ws, { type: 'resumed' });
+            }
+          }
+        }
+      }
+
+      // If illustrate mode, build example graph and step through it
+      if (input.explanation_mode === 'illustrate' && input.illustrate) {
+        const { graph: illGraph, steps } = input.illustrate;
+
+        // Build graph with auto-layout
+        const graphData = {
+          nodes: illGraph.nodes || [],
+          edges: illGraph.edges || [],
+          directed: illGraph.directed !== undefined ? illGraph.directed : true,
+        };
+        graphData.positions = autoLayout(graphData.nodes, graphData.edges, {});
+
+        // Swap to the example graph
+        sendJSON(ws, { type: 'create_graph', graph: graphData });
+        await new Promise((r) => setTimeout(r, 600));
+
+        // Step through with narration + viz actions
+        for (const step of steps) {
+          if (session.pauseFlag || session.skipFlag) break;
+
+          // Apply viz actions for this step and send narration text for transcript
+          sendJSON(ws, { type: 'illustrate_step', viz_actions: step.viz_actions || [], narration: step.narration });
+          await new Promise((r) => setTimeout(r, 300));
+
+          // TTS the step narration
+          const stepTts = await synthesizeAndStream(
+            sendBinaryFn, step.narration, session.speedMultiplier,
+            sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted
+          );
+          if (stepTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+            session._ttsDisabledNotified = true;
+            sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable.' });
+          }
+
+          if (stepTts?.aborted || session.pauseFlag || session.skipFlag) {
+            sendJSON(ws, { type: 'audio_flush' });
+            if (session.skipFlag) {
+              session.skipFlag = false;
+              session.pauseFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              break;
+            }
+            session.pauseFlag = false;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            sendJSON(ws, { type: 'paused' });
+            await new Promise((resolve) => { session.pauseResolver = resolve; });
+            session.pauseResolver = null;
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            if (!session.interruptFlag) sendJSON(ws, { type: 'resumed' });
+          }
+
+          // Inter-step gap
+          await new Promise((r) => setTimeout(r, 400 / session.speedMultiplier));
+        }
+      }
+
+      // Signal explanation complete so frontend can clean up
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      sendJSON(ws, { type: 'explanation_complete' });
+
+      // Restore original graph state if we saved one (mid-lesson interrupt or Q&A)
+      console.log('[Agent] respond_to_interrupt done, restoring graph. _savedGraphState:', session._savedGraphState ? `graph with ${session._savedGraphState.graph?.nodes?.length} nodes` : 'null');
+      restoreGraphState(session, ws);
+
+      return {
+        success: true,
+        message: 'Interrupt response delivered with explanation. Continue teaching.',
+      };
+    }
+
+    case 'send_options': {
+      const { prompt, options } = input;
+
+      sendJSON(ws, { type: 'guided_options', prompt, options: input.options || [], mode: input.mode || 'mc', input_placeholder: input.input_placeholder });
+
+      // Set up resolver BEFORE TTS so early responses are captured
+      const responsePromise = new Promise((resolve) => {
+        if (session.guidedResponse) { resolve(); return; }
+        session.guidedResponseResolver = resolve;
+      });
+      const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => resolve('__timeout__'), 600000);
+      });
+
+      // TTS the prompt (abortable on pause/skip) — learner can respond during this
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
+
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip bypasses the question entirely — clear options and advance
+          session.guidedResponseResolver = null;
+          sendJSON(ws, { type: 'clear_guided_options' });
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
+        }
+      }
+
+      // Now wait for learner response (may already be resolved if they clicked during TTS)
+      // Also allow skip to break out of the wait
+      const skipPromise = new Promise((resolve) => {
+        const interval = setInterval(() => {
+          if (session.skipFlag) {
+            clearInterval(interval);
+            resolve('__skipped__');
+          }
+        }, 50);
+        // Clean up when other promises win the race
+        responsePromise.then(() => clearInterval(interval));
+        timeoutPromise.then(() => clearInterval(interval));
+      });
+      const raceResult = await Promise.race([responsePromise, timeoutPromise, skipPromise]);
+
+      session.guidedResponseResolver = null;
+
+      if (raceResult === '__skipped__' || session.skipFlag) {
+        session.skipFlag = false;
+        session.pauseFlag = false;
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          skipped: true,
+          message: 'The learner skipped this question. Do NOT re-ask it. Move on to the next part of the lesson immediately using emit_segment.',
+        };
+      } else if (raceResult === '__end_session__' || session.endSessionFlag) {
+        throw new Error('__end_session__');
+      } else if (raceResult === '__timeout__') {
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          timed_out: true,
+          message: 'Learner did not respond within 2 minutes. Give a brief clarification and move on.',
+        };
+      } else if (raceResult === '__interrupted__') {
+        sendJSON(ws, { type: 'clear_guided_options' });
+        return {
+          student_response: null,
+          interrupted: true,
+          message: 'Learner interrupted with a question. The interrupt will be handled next.',
+        };
+      } else {
+        const studentResponse = session.guidedResponse;
+        session.guidedResponse = null;
+        sendJSON(ws, { type: 'clear_guided_options' });
+        const answerText = studentResponse?.text || studentResponse?.labels?.join(', ') || studentResponse?.optionId || '';
+        return {
+          student_response: studentResponse,
+          timed_out: false,
+          selected_option_id: studentResponse?.optionId || null,
+          selected_option_ids: studentResponse?.optionIds || null,
+          selected_labels: studentResponse?.labels || null,
+          freeform_text: studentResponse?.text || null,
+          message: `The learner answered: "${answerText}". STOP and evaluate this answer BEFORE continuing. If CORRECT: give brief praise (1 sentence) via conversational_reply with wait_for_response: false, then continue the lesson in the SAME turn. Do NOT ask follow-up probing questions on the same concept. If WRONG: explain why and give a hint (first attempt) or the correct answer (second attempt).`,
+        };
+      }
+    }
+
+    case 'conversational_reply': {
+      const { text, wait_for_response } = input;
+
+      sendJSON(ws, { type: 'interrupt_response', answer: text, explanation_mode: 'none' });
+
+      // Set up resolver BEFORE TTS so early responses are captured
+      let responsePromise, timeoutPromise;
+      if (wait_for_response !== false) {
+        sendJSON(ws, { type: 'guided_prompt', prompt: text });
+        responsePromise = new Promise((resolve) => {
+          if (session.guidedResponse) { resolve(); return; }
+          session.guidedResponseResolver = resolve;
+        });
+        timeoutPromise = new Promise((resolve) => {
+          setTimeout(() => resolve('__timeout__'), 600000);
+        });
+      }
+
+      // TTS for the reply (abortable on pause/skip) — learner can respond during this
+      const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
+      const sendJsonFn = (obj) => sendJSON(ws, obj);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+      if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
+        session._ttsDisabledNotified = true;
+        sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
+      }
+
+      // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+        sendJSON(ws, { type: 'audio_flush' });
+
+        if (session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          // Skip bypasses the response wait — clear prompt and advance
+          if (wait_for_response !== false) {
+            session.guidedResponseResolver = null;
+            sendJSON(ws, { type: 'clear_guided_options' });
+          }
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else {
+          session.pauseFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          sendJSON(ws, { type: 'paused' });
+          await new Promise((resolve) => { session.pauseResolver = resolve; });
+          session.pauseResolver = null;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          if (!session.interruptFlag) {
+            sendJSON(ws, { type: 'resumed' });
+          }
+        }
+      }
+
+      if (wait_for_response !== false) {
+        // Also allow skip to break out of the wait
+        const skipPromise = new Promise((resolve) => {
+          const interval = setInterval(() => {
+            if (session.skipFlag) {
+              clearInterval(interval);
+              resolve('__skipped__');
+            }
+          }, 50);
+          responsePromise.then(() => clearInterval(interval));
+          timeoutPromise.then(() => clearInterval(interval));
+        });
+        const raceResult = await Promise.race([responsePromise, timeoutPromise, skipPromise]);
+        session.guidedResponseResolver = null;
+        // Clear guided prompt so subsequent student messages route as interrupts, not guided_message
+        sendJSON(ws, { type: 'clear_guided_options' });
+
+        if (raceResult === '__skipped__' || session.skipFlag) {
+          session.skipFlag = false;
+          session.pauseFlag = false;
+          return {
+            student_response: null,
+            skipped: true,
+            message: 'The learner skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
+          };
+        } else if (raceResult === '__end_session__' || session.endSessionFlag) {
+          throw new Error('__end_session__');
+        } else if (raceResult === '__timeout__') {
+          return { student_response: null, timed_out: true, message: 'Learner did not respond. Move on.' };
+        } else if (raceResult === '__interrupted__') {
+          return { student_response: null, interrupted: true, message: 'Learner interrupted with a question.' };
+        } else {
+          const studentResponse = session.guidedResponse;
+          session.guidedResponse = null;
+          const answerText = studentResponse?.text || '';
+          return {
+            student_response: studentResponse,
+            timed_out: false,
+            freeform_text: answerText,
+            message: `The learner responded: "${answerText}". STOP and address this response BEFORE continuing. If the learner answered CORRECTLY or is signaling they want to move on (e.g., "I understand", "got it", "next", "skip", "let's move on") — give brief praise if correct via conversational_reply with wait_for_response: false, then continue the lesson in the SAME turn. Do NOT ask follow-up probing questions on a concept they just got right. If they are disagreeing, re-explain. If they expressed confusion, address it.`,
+          };
+        }
+      }
+      return { success: true, message: 'Reply sent.' };
+    }
+
+    default:
+      return { error: `Unknown tool: ${name}` };
+  }
+}

@@ -81,6 +81,13 @@ export function applyActionsSequenced(actions, { staggerMs = 150 } = {}) {
   return activeTimeline;
 }
 
+export function killActiveTimeline() {
+  if (activeTimeline) {
+    activeTimeline.kill();
+    activeTimeline = null;
+  }
+}
+
 export function setTimelineSpeed(speed) {
   timelineSpeed = speed;
   if (activeTimeline) activeTimeline.timeScale(speed);

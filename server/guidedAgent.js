@@ -1,9 +1,8 @@
 // Guided problem-solving agent — conversational flow for problem classification and solving
 
-import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary, liveWs } from './agent.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
@@ -13,11 +12,6 @@ import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
 import { planVisualization } from './vizPlanner.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
-
-const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
-function getClient(session) {
-  return session?.anthropicClient || defaultAnthropicClient;
-}
 
 // Build algorithm list dynamically from registry
 function buildAlgorithmList() {

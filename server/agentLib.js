@@ -43,13 +43,13 @@ export function sendBinary(ws, buffer) {
  * Replays all viz_actions that were emitted before the interrupt so the graph
  * doesn't appear blank.
  */
-export function restoreGraphState(session, ws) {
+export async function restoreGraphState(session, ws) {
   if (!session._savedGraphState) {
-    console.log('[Agent] restoreGraphState: no saved state, skipping');
+    console.log('[restoreGraphState] no saved state, skipping');
     return;
   }
   const saved = session._savedGraphState;
-  console.log(`[Agent] restoreGraphState: restoring graph with ${saved.graph?.nodes?.length || 0} nodes, ${saved.emittedTraceSteps?.length || 0} emitted steps`);
+  console.log(`[restoreGraphState] restoring graph: ${saved.graph?.nodes?.length || 0} nodes, ${saved.emittedTraceSteps?.length || 0} emitted steps, algorithm=${saved.algorithm}`);
   session.currentGraph = saved.graph;
   session.currentTrace = saved.trace;
   session.currentAlgorithm = saved.algorithm;
@@ -57,7 +57,12 @@ export function restoreGraphState(session, ws) {
   session.mapperState = saved.mapperState;
   session._emittedTraceSteps = saved.emittedTraceSteps || [];
   if (saved.graph) {
+    console.log('[restoreGraphState] sending create_graph with nodes:', saved.graph.nodes?.map(n => n.id));
     sendJSON(ws, { type: 'create_graph', graph: saved.graph });
+
+    // Wait for the frontend to process create_graph and rebuild cytoscape
+    // before replaying viz actions — React state updates are async.
+    await new Promise((r) => setTimeout(r, 300));
 
     // Replay viz_actions for all trace steps emitted before the interrupt
     if (saved.emittedTraceSteps?.length > 0 && saved.trace) {
@@ -75,6 +80,7 @@ export function restoreGraphState(session, ws) {
         replayActions.push(...vizActs, ...ctxActs);
       }
       if (replayActions.length > 0) {
+        console.log(`[restoreGraphState] replaying ${replayActions.length} viz actions for ${saved.emittedTraceSteps.length} trace steps`);
         sendJSON(ws, {
           type: 'segment_start',
           segment_id: 'restore_' + Math.random().toString(36).slice(2, 8),
@@ -85,8 +91,11 @@ export function restoreGraphState(session, ws) {
         sendJSON(ws, { type: 'segment_end', segment_id: 'restore' });
       }
     }
+  } else {
+    console.log('[restoreGraphState] no graph in saved state');
   }
   session._savedGraphState = null;
+  console.log('[restoreGraphState] done, _savedGraphState cleared');
 }
 
 export async function handleToolCall(session, toolCall, graph, algorithm, source) {
@@ -529,6 +538,18 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
 
       // If illustrate mode, build example graph and step through it
+      // Auto-save graph state if the caller didn't (e.g. guided message path vs interrupt path)
+      if (input.explanation_mode === 'illustrate' && input.illustrate && !session._savedGraphState) {
+        console.log('[respond_to_interrupt] auto-saving graph state before illustrate (caller did not snapshot)');
+        session._savedGraphState = {
+          graph: session.currentGraph,
+          trace: session.currentTrace,
+          algorithm: session.currentAlgorithm,
+          renderer: session.currentRenderer,
+          mapperState: session.mapperState ? { ...session.mapperState } : {},
+          emittedTraceSteps: session._emittedTraceSteps ? [...session._emittedTraceSteps] : [],
+        };
+      }
       if (input.explanation_mode === 'illustrate' && input.illustrate) {
         const { graph: illGraph, steps } = input.illustrate;
 
@@ -589,8 +610,8 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       sendJSON(ws, { type: 'explanation_complete' });
 
       // Restore original graph state if we saved one (mid-lesson interrupt or Q&A)
-      console.log('[Agent] respond_to_interrupt done, restoring graph. _savedGraphState:', session._savedGraphState ? `graph with ${session._savedGraphState.graph?.nodes?.length} nodes` : 'null');
-      restoreGraphState(session, ws);
+      console.log('[respond_to_interrupt] done, calling restoreGraphState. _savedGraphState:', session._savedGraphState ? `graph with ${session._savedGraphState.graph?.nodes?.length} nodes` : 'null');
+      await restoreGraphState(session, ws);
 
       return {
         success: true,

@@ -101,6 +101,11 @@ function applyAction(cy, action) {
       }
 
       for (const re of action.residual_edges) {
+        // Skip if source/target node doesn't exist (e.g. during graph transitions)
+        if (!cy.getElementById(re.from).nonempty() || !cy.getElementById(re.to).nonempty()) {
+          console.warn(`[vizActions] show_residual_overlay: skipping edge ${re.from}->${re.to}, node missing`);
+          continue;
+        }
         if (re.is_reverse && re.residual > 0) {
           // Reverse edge — add temporary dashed edge
           cy.add({

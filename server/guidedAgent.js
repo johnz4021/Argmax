@@ -1840,6 +1840,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             mapperState: { ...session.mapperState },
             emittedTraceSteps: [...(session._emittedTraceSteps || [])],
           };
+          console.log('[GuidedAgent] saved _savedGraphState:', session._savedGraphState.graph?.nodes?.length, 'nodes, algorithm:', session._savedGraphState.algorithm);
 
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;

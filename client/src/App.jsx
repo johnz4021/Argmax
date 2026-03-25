@@ -67,6 +67,7 @@ export default function App() {
       // Kill any in-flight staggered action timeline before the graph is replaced,
       // otherwise GSAP callbacks fire against a destroyed/different cytoscape instance.
       if (msg.type === 'create_graph' || msg.type === 'create_visualization') {
+        console.log('[App] killing active timeline for', msg.type, msg.graph?.nodes?.map(n => n.id));
         killActiveTimeline();
       }
 

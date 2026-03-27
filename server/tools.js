@@ -392,7 +392,7 @@ export const tools = [
                   narration: { type: 'string', description: 'Spoken narration for this step' },
                   viz_actions: {
                     type: 'array',
-                    description: 'Graph actions to apply before narration (highlight_node, highlight_edge, add_edge, show_path, reset_highlights, etc.)',
+                    description: 'Graph actions for this step. Available: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label, show_residual_overlay, hide_residual_overlay, add_node, add_edge',
                     items: {
                       type: 'object',
                       properties: {
@@ -404,6 +404,31 @@ export const tools = [
                         weight: { type: 'number' },
                         path: { type: 'array', items: { type: 'string' } },
                         className: { type: 'string' },
+                        residual_edges: {
+                          type: 'array',
+                          description: 'For show_residual_overlay: residual edge definitions',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              from: { type: 'string' },
+                              to: { type: 'string' },
+                              residual: { type: 'number' },
+                              is_reverse: { type: 'boolean' },
+                            },
+                          },
+                        },
+                        mode: { type: 'string', description: 'For show_residual_overlay: "overlay" or "full"' },
+                        directed_only: { type: 'boolean', description: 'For update_edge_label' },
+                        id: { type: 'string', description: 'For add_node or add_edge' },
+                        position: {
+                          type: 'object',
+                          description: 'For add_node: position coordinates',
+                          properties: {
+                            x: { type: 'number' },
+                            y: { type: 'number' },
+                          },
+                        },
+                        undirected: { type: 'boolean', description: 'For add_edge' },
                       },
                       required: ['action'],
                     },

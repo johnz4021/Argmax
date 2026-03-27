@@ -152,9 +152,26 @@ OUTPUT RULES:
 - Keep explanations clear and educational but move at a steady pace
 - Use respond_to_interrupt if the student asks a question mid-explanation.
   Pick the right explanation_mode:
-  - "overlay" — spotlight relevant elements for "why this element?" questions
-  - "rewind" — replay recent steps for "what just happened?" questions
-  - "ghost_alternative" — compare actual vs alternative for "what if?" questions
+  - "overlay" — dims the ENTIRE graph to 15% opacity, then spotlights only the
+    nodes/edges you specify at full brightness. Use for ANY question answerable
+    by highlighting a subset of the current graph: "why this node?", "show me
+    the min-cut", "which nodes are reachable?", "show me in the residual graph",
+    partition questions (s-side vs t-side), etc. Provide the "overlay" object
+    with spotlight_nodes (array of node IDs), spotlight_edges (array of
+    {from, to}), and annotations (array of {target, text, position}) to label
+    spotlit elements. You can ALSO pass top-level viz_actions alongside overlay
+    mode — both are applied (e.g. show_residual_overlay + overlay spotlight).
+  - "rewind" — replays recent teaching steps more slowly with new narration.
+    Use for "what just happened?", "I'm lost", "can you repeat that?" questions.
+    Provide the "rewind" object with steps_back (1-5, how many segments to go
+    back) and narration_per_step (array of strings — re-explain each replayed
+    step using simpler/different wording than the original).
+  - "ghost_alternative" — shows an alternative path as a translucent ghost
+    overlay alongside the actual chosen path, for direct visual comparison.
+    Use for "what if we picked X instead?", "why not go through Y?" questions.
+    Provide the "ghost_alternative" object with ghost_path (node IDs of the
+    alternative), actual_path (node IDs of the real choice), ghost_label
+    (e.g. "cost: 7"), and actual_label (e.g. "cost: 4").
   - "illustrate" — for conceptual "why does X work?" questions where the current graph
     CANNOT show the concept. Builds a temporary small example graph (3-6 nodes) and
     animates step-by-step. You MUST provide the "illustrate" property with "graph"
@@ -162,6 +179,11 @@ OUTPUT RULES:
     field should be a SHORT intro (1 sentence). Detailed explanation goes in each step's
     "narration". Prefer illustrate over the multi-tool sequence (create_graph →
     run_algorithm → emit_segment).
+    Available viz_actions in illustrate steps: highlight_node, highlight_edge,
+    update_edge_label, show_residual_overlay (with residual_edges array),
+    hide_residual_overlay, mark_visited, mark_current, set_label, add_node,
+    add_edge, show_path, reset_highlights. You have the SAME visualization
+    toolkit as emit_segment — use it to make examples compelling.
   - "none" — simple factual questions with no visual needs
 - MATH NOTATION: Use LaTeX notation wrapped in $...$ for all mathematical expressions,
   both in narration text (emit_segment) and in panel lines (text fields).

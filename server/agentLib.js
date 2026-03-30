@@ -524,7 +524,8 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // If rewind mode, also narrate each replayed step
       if (input.explanation_mode === 'rewind' && input.rewind?.narration_per_step) {
         for (const stepNarration of input.rewind.narration_per_step) {
-          if (session.pauseFlag || session.skipFlag) break;
+          if (session.pauseFlag) break;
+          if (session.skipFlag) { session.skipFlag = false; continue; }
           await new Promise((r) => setTimeout(r, 800));
           sendJSON(ws, { type: 'rewind_step_narration', narration: stepNarration });
           const rewindTts = await synthesizeAndStream(sendBinaryFn, stepNarration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
@@ -540,7 +541,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
               session.skipFlag = false;
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
-              break; // Skip remaining rewind steps
+              continue; // Skip this rewind step, advance to next
             }
 
             session.pauseFlag = false;
@@ -593,13 +594,12 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         };
       }
 
-      // Signal explanation complete so frontend can clean up (non-illustrate modes only)
+      // Signal explanation complete so frontend can clean up (non-illustrate modes only).
+      // The client restores from its pre-explanation snapshot — no server-side graph
+      // rebuild needed since overlay/ghost/rewind don't swap the graph.
       await new Promise((resolve) => setTimeout(resolve, 500));
       sendJSON(ws, { type: 'explanation_complete' });
-
-      // Restore original graph state if we saved one (mid-lesson interrupt or Q&A)
-      console.log('[respond_to_interrupt] done, calling restoreGraphState. _savedGraphState:', session._savedGraphState ? `graph with ${session._savedGraphState.graph?.nodes?.length} nodes` : 'null');
-      await restoreGraphState(session, ws);
+      session._savedGraphState = null;
 
       return {
         success: true,

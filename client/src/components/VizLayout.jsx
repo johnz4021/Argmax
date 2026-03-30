@@ -105,7 +105,7 @@ function RendererSwitch({ type, ...props }) {
  *   explanationMode — passed through to active renderers
  *   segmentCount — passed through for snapshot tracking
  */
-export default function VizLayout({ panels, explanationMode, segmentCount, algorithm, residualEdges, onElementClick }) {
+export default function VizLayout({ panels, explanationMode, segmentCount, algorithm, residualEdges, residualToggle, onElementClick }) {
   if (!panels || panels.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -135,7 +135,7 @@ export default function VizLayout({ panels, explanationMode, segmentCount, algor
             rendererId={panel.id}
             explanationMode={explanationMode}
             segmentCount={segmentCount}
-            {...(panel.renderer === 'graph' ? { algorithm, residualEdges, onElementClick } : {})}
+            {...(panel.renderer === 'graph' ? { algorithm, residualEdges, residualToggle, onElementClick } : {})}
             {...panel.props}
           />
         </div>

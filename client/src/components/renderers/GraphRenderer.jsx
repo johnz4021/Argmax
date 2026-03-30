@@ -299,6 +299,7 @@ export default function GraphRenderer({
   rendererId = 'graph',
   algorithm,
   residualEdges,
+  residualToggle,
   onElementClick,
 }) {
   const containerRef = useRef(null);
@@ -395,7 +396,7 @@ export default function GraphRenderer({
           source: edge.source,
           target: edge.target,
           weight: edge.weight ?? '',
-          color: edge.color || '',
+          ...(edge.color ? { color: edge.color } : {}),
         },
       });
     }
@@ -526,6 +527,28 @@ export default function GraphRenderer({
       setShowingResidual(false);
     }
   }, [showingResidual, residualEdges]);
+
+  // Agent-controlled residual toggle (via residual_toggle message from server)
+  useEffect(() => {
+    if (!residualToggle || !residualEdges) return;
+    const cy = cyRef.current;
+    if (!cy) return;
+
+    if (residualToggle.show && !showingResidual) {
+      applyVizActions(cy, [{ action: 'hide_residual_overlay' }]);
+      preToggleSnapshotRef.current = takeSnapshot(cy);
+      applyVizActions(cy, [{ action: 'show_residual_overlay', residual_edges: residualEdges, mode: 'full' }]);
+      setShowingResidual(true);
+    } else if (!residualToggle.show && showingResidual) {
+      applyVizActions(cy, [{ action: 'hide_residual_overlay' }]);
+      if (preToggleSnapshotRef.current) {
+        restoreSnapshot(cy, preToggleSnapshotRef.current);
+        preToggleSnapshotRef.current = null;
+      }
+      setShowingResidual(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [residualToggle]);
 
   return (
     <div className="relative h-full">

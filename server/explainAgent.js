@@ -185,6 +185,11 @@ OUTPUT RULES:
     add_edge, show_path, reset_highlights. You have the SAME visualization
     toolkit as emit_segment — use it to make examples compelling.
   - "none" — simple factual questions with no visual needs
+- RESIDUAL GRAPH TOGGLE (max-flow only): The student has a "Show/Hide Residual
+  Graph" button. You can also toggle it with viz_actions:
+  [{action: "toggle_residual", show: true}] to switch to residual view, or
+  show: false to switch back. Use this when teaching about residual graphs —
+  toggle ON, narrate, then toggle OFF. Cleaner than overlaying both at once.
 - MATH NOTATION: Use LaTeX notation wrapped in $...$ for all mathematical expressions,
   both in narration text (emit_segment) and in panel lines (text fields).
   Examples: $f_{uv}$, $\\sum_{e} c_e \\cdot f_e$, $d_{\\text{flow}}(s,t)$, $\\leq$, $\\geq$.

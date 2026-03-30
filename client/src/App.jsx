@@ -101,8 +101,8 @@ export default function App() {
           }]);
         }
 
-        // Extract residual edges from show_residual_overlay actions for the toggle button
-        const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay');
+        // Extract residual edges from show_residual_overlay or set_residual_data actions for the toggle button
+        const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay' || a.action === 'set_residual_data');
         const residualEdges = residualAction?.params?.residual_edges || residualAction?.residual_edges;
         if (residualEdges) {
           dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
@@ -534,6 +534,7 @@ export default function App() {
                     segmentCount={state.segmentCount}
                     algorithm={state.algorithm}
                     residualEdges={state.latestResidualEdges}
+                    residualToggle={state.residualToggle}
                     onElementClick={handleElementClick}
                   />
                 ) : (
@@ -545,6 +546,7 @@ export default function App() {
                     segmentCount={state.segmentCount}
                     algorithm={state.algorithm}
                     residualEdges={state.latestResidualEdges}
+                    residualToggle={state.residualToggle}
                     onElementClick={handleElementClick}
                   />
                 )}

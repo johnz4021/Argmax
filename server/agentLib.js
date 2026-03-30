@@ -272,6 +272,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           const contextPanels = getDefaultContextPanels(algo);
           console.log(`[Agent] Auto-setup for '${algo}': renderer=${algoInfo.renderer}, contextPanels=${contextPanels.map(p => p.id).join(',')}, sessionGraph=${!!session.currentGraph}`);
 
+          // Notify frontend which algorithm is running (enables algorithm-specific UI like residual toggle)
+          sendJSON(ws, { type: 'lesson_start', algorithm: algo });
+
           if (algoInfo.renderer === 'graph') {
             // Always send the graph for the current algorithm run
             const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
@@ -378,6 +381,14 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // Merge any explicit viz_actions from agent (rare overrides / backward compat)
       if (input.viz_actions && input.viz_actions.length > 0) {
         allVizActions.push(...input.viz_actions);
+      }
+
+      // Extract residual toggle actions and send as separate message
+      const toggleAction = allVizActions.find(a => (a.action || a.params?.action) === 'toggle_residual');
+      if (toggleAction) {
+        const show = toggleAction.show ?? toggleAction.params?.show ?? true;
+        sendJSON(ws, { type: 'residual_toggle', show });
+        allVizActions = allVizActions.filter(a => (a.action || a.params?.action) !== 'toggle_residual');
       }
 
       if (allVizActions.length === 0 && input.narration) {

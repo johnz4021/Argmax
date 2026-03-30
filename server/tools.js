@@ -215,7 +215,7 @@ export const tools = [
             required: ['renderer', 'action'],
           },
           description:
-            'Manual visualization actions. Only use when trace_step_indices cannot express what you need (rare). If both trace_step_indices and viz_actions are provided, auto-generated actions come first, then these are appended.',
+            'Manual visualization actions. Only use when trace_step_indices cannot express what you need (rare). If both trace_step_indices and viz_actions are provided, auto-generated actions come first, then these are appended. Special action: toggle_residual ({action: "toggle_residual", show: true/false}) switches the graph between original and residual views.',
         },
         phase: {
           type: 'string',

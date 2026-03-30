@@ -51,6 +51,14 @@ function applyAction(cy, action) {
 
     case 'reset_highlights': {
       cy.elements('.residual-temp').remove();
+      // Restore edge labels overwritten by residual overlay before removing classes
+      cy.edges().forEach((e) => {
+        const original = e.data('_preResidualWeight');
+        if (original != null) {
+          e.data('weight', original);
+          e.removeData('_preResidualWeight');
+        }
+      });
       cy.elements().removeClass(ALL_TRANSIENT_CLASSES);
       // Reset labels to original labels (not IDs)
       cy.nodes().forEach((n) => {
@@ -124,6 +132,10 @@ function applyAction(cy, action) {
             (e) => e.data('source') === re.from && e.data('target') === re.to
           );
           edges.forEach((e) => {
+            // Save original label so hide_residual_overlay can restore it
+            if (!e.data('_preResidualWeight')) {
+              e.data('_preResidualWeight', e.data('weight'));
+            }
             e.data('weight', `r:${re.residual}`);
             e.removeClass('residual-dimmed');
             e.addClass('residual-fwd');
@@ -133,8 +145,21 @@ function applyAction(cy, action) {
       break;
     }
 
+    case 'set_residual_data':
+    case 'toggle_residual':
+      // No-op on the graph — handled at App/state level
+      break;
+
     case 'hide_residual_overlay': {
       cy.elements('.residual-temp').remove();
+      // Restore original edge labels that were overwritten by 'full' mode
+      cy.edges('.residual-fwd').forEach((e) => {
+        const original = e.data('_preResidualWeight');
+        if (original != null) {
+          e.data('weight', original);
+          e.removeData('_preResidualWeight');
+        }
+      });
       cy.edges().removeClass('residual-fwd residual-rev residual-dimmed');
       break;
     }
@@ -218,6 +243,13 @@ export function restoreSnapshot(cy, snapshot) {
     ele.removeClass(ALL_TRANSIENT_CLASSES);
     for (const cls of saved.classes) {
       ele.addClass(cls);
+    }
+    // Clean replace: remove data keys not in snapshot, then merge snapshot data
+    const currentData = ele.data();
+    for (const key of Object.keys(currentData)) {
+      if (!(key in saved.data) && key !== 'id' && key !== 'source' && key !== 'target') {
+        ele.removeData(key);
+      }
     }
     ele.data(saved.data);
   }

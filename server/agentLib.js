@@ -462,12 +462,20 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
     }
 
     case 'respond_to_interrupt': {
+      // Auto-cleanup any leftover illustration from a previous interrupt
+      if (session._illustrationActive) {
+        console.warn('[respond_to_interrupt] previous illustration not ended, auto-restoring');
+        session._illustrationActive = false;
+        sendJSON(ws, { type: 'explanation_complete' });
+        await restoreGraphState(session, ws);
+      }
+
       // Validate illustrate mode has required data before committing
       if (input.explanation_mode === 'illustrate') {
-        if (!input.illustrate?.graph?.nodes?.length || !input.illustrate?.steps?.length) {
+        if (!input.illustrate?.graph?.nodes?.length) {
           return {
             success: false,
-            message: 'illustrate mode requires the "illustrate" property with "graph" (containing nodes and edges) and "steps" (array of {narration, viz_actions}). Please retry with the full illustrate object, or use explanation_mode "none" with a verbal explanation.',
+            message: 'illustrate mode requires the "illustrate" property with "graph" (containing nodes and edges). Please retry with the full illustrate object, or use explanation_mode "none" with a verbal explanation.',
           };
         }
       }
@@ -562,7 +570,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         };
       }
       if (input.explanation_mode === 'illustrate' && input.illustrate) {
-        const { graph: illGraph, steps } = input.illustrate;
+        const { graph: illGraph } = input.illustrate;
 
         // Build graph with auto-layout
         const graphData = {
@@ -576,48 +584,16 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         sendJSON(ws, { type: 'create_graph', graph: graphData });
         await new Promise((r) => setTimeout(r, 600));
 
-        // Step through with narration + viz actions
-        for (const step of steps) {
-          if (session.pauseFlag) break;
-          if (session.skipFlag) { session.skipFlag = false; continue; }
+        // Mark illustration active and return immediately — agent teaches with emit_segment
+        session._illustrationActive = true;
 
-          // Apply viz actions for this step and send narration text for transcript
-          sendJSON(ws, { type: 'illustrate_step', viz_actions: step.viz_actions || [], narration: step.narration });
-          await new Promise((r) => setTimeout(r, 300));
-
-          // TTS the step narration
-          const stepTts = await synthesizeAndStream(
-            sendBinaryFn, step.narration, session.speedMultiplier,
-            sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted
-          );
-          if (stepTts?.ttsAutoDisabled && !session._ttsDisabledNotified) {
-            session._ttsDisabledNotified = true;
-            sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable.' });
-          }
-
-          if (stepTts?.aborted || session.pauseFlag || session.skipFlag) {
-            sendJSON(ws, { type: 'audio_flush' });
-            if (session.skipFlag) {
-              session.skipFlag = false;
-              session.pauseFlag = false;
-              if (session.endSessionFlag) throw new Error('__end_session__');
-              continue; // Skip to next illustrate step, not the entire illustration
-            }
-            session.pauseFlag = false;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            sendJSON(ws, { type: 'paused' });
-            await new Promise((resolve) => { session.pauseResolver = resolve; });
-            session.pauseResolver = null;
-            if (session.endSessionFlag) throw new Error('__end_session__');
-            if (!session.interruptFlag) sendJSON(ws, { type: 'resumed' });
-          }
-
-          // Inter-step gap
-          await new Promise((r) => setTimeout(r, 400 / session.speedMultiplier));
-        }
+        return {
+          success: true,
+          message: 'Example graph displayed. Teach on it using emit_segment with manual viz_actions (no trace_step_indices). Call end_illustration when done to restore the lesson graph.',
+        };
       }
 
-      // Signal explanation complete so frontend can clean up
+      // Signal explanation complete so frontend can clean up (non-illustrate modes only)
       await new Promise((resolve) => setTimeout(resolve, 500));
       sendJSON(ws, { type: 'explanation_complete' });
 
@@ -628,6 +604,20 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       return {
         success: true,
         message: 'Interrupt response delivered with explanation. Continue teaching.',
+      };
+    }
+
+    case 'end_illustration': {
+      if (!session._illustrationActive) {
+        return { success: false, message: 'No active illustration to end.' };
+      }
+      session._illustrationActive = false;
+      await new Promise((r) => setTimeout(r, 500));
+      sendJSON(ws, { type: 'explanation_complete' });
+      await restoreGraphState(session, ws);
+      return {
+        success: true,
+        message: 'Illustration ended. Original graph restored. Continue teaching.',
       };
     }
 

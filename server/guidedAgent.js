@@ -382,18 +382,15 @@ When a learner interrupts with a question, pick the right explanation_mode:
   alternative), actual_path (node IDs of the real choice), ghost_label
   (e.g. "cost: 7"), and actual_label (e.g. "cost: 4").
 - "illustrate" — for conceptual "why does X work?" questions where the current graph
-  CANNOT show the concept. Builds a temporary small example graph (3-6 nodes) and
-  animates through it step-by-step. IMPORTANT: You MUST provide the "illustrate"
-  property with "graph" (containing nodes and edges) and "steps" (array of
-  {narration, viz_actions}). The "answer" field should be a SHORT intro (1 sentence).
-  The detailed explanation goes in each step's "narration" field.
-  Prefer illustrate over the multi-tool sequence (create_graph → run_algorithm →
-  emit_segment). illustrate does everything in one tool call.
-  Available viz_actions in illustrate steps: highlight_node, highlight_edge,
-  update_edge_label, show_residual_overlay (with residual_edges array),
-  hide_residual_overlay, mark_visited, mark_current, set_label, add_node,
-  add_edge, show_path, reset_highlights. You have the SAME visualization
-  toolkit as emit_segment — use it to make examples compelling.
+  CANNOT show the concept. Provide the "illustrate" property with "graph" (nodes, edges,
+  optional directed). The "answer" field should be a SHORT intro (1 sentence) spoken
+  before the example graph appears. Do NOT include "steps".
+
+  After respond_to_interrupt returns, you are on the example graph. Teach step-by-step
+  using emit_segment with manual viz_actions (NOT trace_step_indices — there is no
+  trace on the example graph). Use 2-6 emit_segment calls to walk through the concept.
+
+  When done, call end_illustration to restore the original lesson graph and continue.
 - "none" — simple factual questions with no visual needs
 
 RESIDUAL GRAPH TOGGLE (max-flow only):
@@ -1861,15 +1858,17 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
           // Snapshot current graph state so we can restore after the interrupt
           // (in case the agent constructs a temporary example graph via illustrate mode)
-          session._savedGraphState = {
-            graph: session.currentGraph,
-            trace: session.currentTrace,
-            algorithm: session.currentAlgorithm,
-            renderer: session.currentRenderer,
-            mapperState: { ...session.mapperState },
-            emittedTraceSteps: [...(session._emittedTraceSteps || [])],
-          };
-          console.log('[GuidedAgent] saved _savedGraphState:', session._savedGraphState.graph?.nodes?.length, 'nodes, algorithm:', session._savedGraphState.algorithm);
+          if (!session._savedGraphState) {
+            session._savedGraphState = {
+              graph: session.currentGraph,
+              trace: session.currentTrace,
+              algorithm: session.currentAlgorithm,
+              renderer: session.currentRenderer,
+              mapperState: { ...session.mapperState },
+              emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+            };
+            console.log('[GuidedAgent] saved _savedGraphState:', session._savedGraphState.graph?.nodes?.length, 'nodes, algorithm:', session._savedGraphState.algorithm);
+          }
 
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;

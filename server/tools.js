@@ -385,7 +385,7 @@ export const tools = [
             },
             steps: {
               type: 'array',
-              description: 'Ordered animation steps (2-6). Each has narration + optional viz_actions.',
+              description: 'Deprecated — ignored. Use emit_segment after setup instead.',
               items: {
                 type: 'object',
                 properties: {
@@ -438,7 +438,7 @@ export const tools = [
               },
             },
           },
-          required: ['graph', 'steps'],
+          required: ['graph'],
         },
         viz_actions: {
           type: 'array',
@@ -461,6 +461,14 @@ export const tools = [
         },
       },
       required: ['answer', 'explanation_mode'],
+    },
+  },
+  {
+    name: 'end_illustration',
+    description: 'End an active illustration and restore the original lesson graph. Call this after teaching on an example graph set up by respond_to_interrupt with illustrate mode.',
+    input_schema: {
+      type: 'object',
+      properties: {},
     },
   },
   {

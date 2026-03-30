@@ -133,7 +133,7 @@ const CYTOSCAPE_STYLE = [
   },
   {
     selector: '.dimmed',
-    style: { opacity: 0.15 },
+    style: { opacity: 0.2 },
   },
   {
     selector: '.spotlit',
@@ -160,8 +160,48 @@ const CYTOSCAPE_STYLE = [
       'line-color': '#f87171',
       'target-arrow-color': '#f87171',
       'line-style': 'dashed',
-      opacity: 0.4,
+      opacity: 0.5,
       width: 3,
+    },
+  },
+  {
+    selector: '.ghost-actual-label',
+    style: {
+      'text-background-color': '#1e3a5f',
+      'text-background-opacity': 0.9,
+      'text-background-padding': '4px',
+      'text-background-shape': 'roundrectangle',
+      'text-margin-y': 12,
+      'text-valign': 'bottom',
+      'font-size': '11px',
+      color: '#93c5fd',
+      'text-wrap': 'wrap',
+      'text-max-width': '120px',
+    },
+  },
+  {
+    selector: '.ghost-alt-label',
+    style: {
+      'text-background-color': '#4c1d1d',
+      'text-background-opacity': 0.9,
+      'text-background-padding': '4px',
+      'text-background-shape': 'roundrectangle',
+      'text-margin-y': 12,
+      'text-valign': 'bottom',
+      'font-size': '11px',
+      color: '#fca5a5',
+      'text-wrap': 'wrap',
+      'text-max-width': '120px',
+    },
+  },
+  {
+    selector: '[ghost_badge]',
+    style: {
+      label: (ele) => {
+        const main = ele.data('label') || ele.id();
+        const badge = ele.data('ghost_badge');
+        return badge ? `${main}\n${badge}` : main;
+      },
     },
   },
   {
@@ -327,6 +367,7 @@ export default function GraphRenderer({
 
     registerRenderer(rendererId, {
       apply: (action, params) => applyGraphAction(cy, action, params),
+      loadGraph: (graphData) => loadGraphIntoCy(graphData),
       takeSnapshot: () => takeSnapshot(cy),
       restoreSnapshot: (snap) => restoreSnapshot(cy, snap),
       cleanup: () => {
@@ -339,6 +380,7 @@ export default function GraphRenderer({
       unregisterRenderer(rendererId);
       cy.destroy();
       cyRef.current = null;
+      lastLoadedGraphRef.current = null;
     };
   }, [rendererId]);
 
@@ -372,23 +414,29 @@ export default function GraphRenderer({
     };
   }, [onElementClick]);
 
-  // Load graph data
-  useEffect(() => {
+  // Synchronous graph loader — shared by useEffect and registry.loadGraph.
+  // Tracks last loaded graph by reference to skip redundant loads (the registry
+  // loads synchronously on create_graph, then the useEffect fires for the same
+  // graph object — the ref check skips the second load to preserve viz actions).
+  const lastLoadedGraphRef = useRef(null);
+  const loadGraphIntoCy = useCallback((graphData) => {
     const cy = cyRef.current;
-    if (!cy || !graph) return;
+    if (!cy || !graphData) return;
+    if (lastLoadedGraphRef.current === graphData) return;
+    lastLoadedGraphRef.current = graphData;
 
     cy.elements().remove();
     snapshotsRef.current = [];
 
     const elements = [];
-    for (const node of graph.nodes) {
+    for (const node of graphData.nodes) {
       elements.push({
         group: 'nodes',
         data: { id: node.id, label: node.label || node.id, originalLabel: node.label || node.id },
-        position: graph.positions?.[node.id] || { x: 0, y: 0 },
+        position: graphData.positions?.[node.id] || { x: 0, y: 0 },
       });
     }
-    for (const edge of graph.edges) {
+    for (const edge of graphData.edges) {
       elements.push({
         group: 'edges',
         data: {
@@ -403,12 +451,18 @@ export default function GraphRenderer({
 
     cy.add(elements);
 
-    if (graph.directed === false) {
+    if (graphData.directed === false) {
       cy.edges().style('target-arrow-shape', 'none');
     }
 
     cy.fit(undefined, 40);
-  }, [graph]);
+  }, []);
+
+  // Load graph data (also handles React prop changes / initial mount).
+  // Skipped if the registry already loaded the same graph object synchronously.
+  useEffect(() => {
+    loadGraphIntoCy(graph);
+  }, [graph, loadGraphIntoCy]);
 
   // Apply viz actions (supports both legacy array and new registry format)
   useEffect(() => {

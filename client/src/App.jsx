@@ -17,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced, killActiveTimeline } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced, killActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -69,6 +69,19 @@ export default function App() {
       if (msg.type === 'create_graph' || msg.type === 'create_visualization') {
         console.log('[App] killing active timeline for', msg.type, msg.graph?.nodes?.map(n => n.id));
         killActiveTimeline();
+      }
+
+      // Load graph into Cytoscape synchronously so it's ready before any
+      // subsequent viz actions arrive (React useEffect would defer this).
+      if (msg.type === 'create_graph' && msg.graph) {
+        loadGraphImmediate('graph', msg.graph);
+      }
+      if (msg.type === 'create_visualization' && msg.panels) {
+        for (const panel of msg.panels) {
+          if (panel.renderer === 'graph' && panel.config?.graph) {
+            loadGraphImmediate(panel.id || 'graph', panel.config.graph);
+          }
+        }
       }
 
       processMessage(msg);

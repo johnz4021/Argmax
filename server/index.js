@@ -109,9 +109,14 @@ function attachHandlers(ws, session) {
 
       switch (msg.type) {
         case 'start_guided': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] start_guided received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] start_guided — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;
@@ -157,6 +162,7 @@ function attachHandlers(ws, session) {
             }
           }
           if (session.runGeneration === guidedGen) {
+            console.log(`[GuidedAgent] Cleanup: setting active=false (gen=${guidedGen})`);
             session.active = false;
             session.endSessionFlag = false;
             session.mode = 'direct';
@@ -164,14 +170,21 @@ function attachHandlers(ws, session) {
             session.followUpSent = false;
             session.conversationId = null;
             if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
+          } else {
+            console.log(`[GuidedAgent] Cleanup skipped — gen mismatch (mine=${guidedGen}, current=${session.runGeneration})`);
           }
           break;
         }
 
         case 'start_explain': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] start_explain received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] start_explain — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;
@@ -208,12 +221,15 @@ function attachHandlers(ws, session) {
             }
           }
           if (session.runGeneration === explainGen) {
+            console.log(`[ExplainAgent] Cleanup: setting active=false (gen=${explainGen})`);
             session.active = false;
             session.endSessionFlag = false;
             session.mode = 'direct';
             session.followUpResolver = null;
             session.followUpSent = false;
             if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
+          } else {
+            console.log(`[ExplainAgent] Cleanup skipped — gen mismatch (mine=${explainGen}, current=${session.runGeneration})`);
           }
           break;
         }
@@ -279,12 +295,21 @@ function attachHandlers(ws, session) {
             session.guidedResponseResolver('__interrupted__');
             session.guidedResponseResolver = null;
           }
+          // Unblock follow-up wait — treat as a follow-up question
+          if (session.followUpResolver) {
+            session.interruptFlag = null; // don't double-inject as interrupt
+            session.followUpResolver(msg.question);
+            session.followUpResolver = null;
+          }
           break;
         }
 
         case 'end_session': {
-          if (!session.active) return;
-          console.log(`[WS] End session requested`);
+          if (!session.active) {
+            console.log(`[WS] end_session ignored — session not active (mode=${session.mode}, gen=${session.runGeneration})`);
+            return;
+          }
+          console.log(`[WS] End session requested (mode=${session.mode}, gen=${session.runGeneration}, pauseResolver=${!!session.pauseResolver}, guidedResponseResolver=${!!session.guidedResponseResolver}, followUpResolver=${!!session.followUpResolver})`);
           session.endSessionFlag = true;
           session.pauseFlag = true; // unblock TTS waits
           // Unblock any pause wait
@@ -356,9 +381,14 @@ function attachHandlers(ws, session) {
         }
 
         case 'resume_conversation': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] resume_conversation received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] resume_conversation — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;

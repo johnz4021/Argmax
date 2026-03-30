@@ -1,18 +1,12 @@
 // Explain mode agent — direct solution walkthrough with visualization, no Socratic dialogue
 
-import Anthropic from '@anthropic-ai/sdk';
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary, liveWs } from './agent.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
 import { planVisualization } from './vizPlanner.js';
-
-const defaultAnthropicClient = new Anthropic({ maxRetries: 5 });
-function getClient(session) {
-  return session?.anthropicClient || defaultAnthropicClient;
-}
 
 function buildAlgorithmList() {
   return Object.entries(ALGORITHMS)
@@ -156,7 +150,44 @@ OUTPUT RULES:
 - NEVER respond with plain text. ALWAYS use the emit_segment tool for ALL narration.
 - Explain DIRECTLY — no questions, no MCQs, no "what do you think?" prompts
 - Keep explanations clear and educational but move at a steady pace
-- Use respond_to_interrupt if the student asks a question mid-explanation
+- Use respond_to_interrupt if the student asks a question mid-explanation.
+  Pick the right explanation_mode:
+  - "overlay" — dims the ENTIRE graph to 15% opacity, then spotlights only the
+    nodes/edges you specify at full brightness. Use for ANY question answerable
+    by highlighting a subset of the current graph: "why this node?", "show me
+    the min-cut", "which nodes are reachable?", "show me in the residual graph",
+    partition questions (s-side vs t-side), etc. Provide the "overlay" object
+    with spotlight_nodes (array of node IDs), spotlight_edges (array of
+    {from, to}), and annotations (array of {target, text, position}) to label
+    spotlit elements. You can ALSO pass top-level viz_actions alongside overlay
+    mode — both are applied (e.g. show_residual_overlay + overlay spotlight).
+  - "rewind" — replays recent teaching steps more slowly with new narration.
+    Use for "what just happened?", "I'm lost", "can you repeat that?" questions.
+    Provide the "rewind" object with steps_back (1-5, how many segments to go
+    back) and narration_per_step (array of strings — re-explain each replayed
+    step using simpler/different wording than the original).
+  - "ghost_alternative" — shows an alternative path as a translucent ghost
+    overlay alongside the actual chosen path, for direct visual comparison.
+    Use for "what if we picked X instead?", "why not go through Y?" questions.
+    Provide the "ghost_alternative" object with ghost_path (node IDs of the
+    alternative), actual_path (node IDs of the real choice), ghost_label
+    (e.g. "cost: 7"), and actual_label (e.g. "cost: 4").
+  - "illustrate" — for conceptual "why does X work?" questions where the current graph
+    CANNOT show the concept. Provide the "illustrate" property with "graph" (nodes, edges,
+    optional directed). The "answer" field should be a SHORT intro (1 sentence) spoken
+    before the example graph appears. Do NOT include "steps".
+
+    After respond_to_interrupt returns, you are on the example graph. Teach step-by-step
+    using emit_segment with manual viz_actions (NOT trace_step_indices — there is no
+    trace on the example graph). Use 2-6 emit_segment calls to walk through the concept.
+
+    When done, call end_illustration to restore the original lesson graph and continue.
+  - "none" — simple factual questions with no visual needs
+- RESIDUAL GRAPH TOGGLE (max-flow only): The student has a "Show/Hide Residual
+  Graph" button. You can also toggle it with viz_actions:
+  [{action: "toggle_residual", show: true}] to switch to residual view, or
+  show: false to switch back. Use this when teaching about residual graphs —
+  toggle ON, narrate, then toggle OFF. Cleaner than overlaying both at once.
 - MATH NOTATION: Use LaTeX notation wrapped in $...$ for all mathematical expressions,
   both in narration text (emit_segment) and in panel lines (text fields).
   Examples: $f_{uv}$, $\\sum_{e} c_e \\cdot f_e$, $d_{\\text{flow}}(s,t)$, $\\leq$, $\\geq$.
@@ -838,6 +869,19 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
           const interruptData = session.interruptFlag;
           session.interruptFlag = null;
           interrupted = true;
+
+          // Snapshot current graph state so we can restore after the interrupt
+          // (in case the agent constructs a temporary example graph via illustrate mode)
+          if (!session._savedGraphState) {
+            session._savedGraphState = {
+              graph: session.currentGraph,
+              trace: session.currentTrace,
+              algorithm: session.currentAlgorithm,
+              renderer: session.currentRenderer,
+              mapperState: { ...session.mapperState },
+              emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+            };
+          }
 
           for (const remaining of response.content) {
             if (remaining.type !== 'tool_use') continue;

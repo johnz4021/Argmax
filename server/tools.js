@@ -215,7 +215,7 @@ export const tools = [
             required: ['renderer', 'action'],
           },
           description:
-            'Manual visualization actions. Only use when trace_step_indices cannot express what you need (rare). If both trace_step_indices and viz_actions are provided, auto-generated actions come first, then these are appended.',
+            'Manual visualization actions. Only use when trace_step_indices cannot express what you need (rare). If both trace_step_indices and viz_actions are provided, auto-generated actions come first, then these are appended. Special action: toggle_residual ({action: "toggle_residual", show: true/false}) switches the graph between original and residual views.',
         },
         phase: {
           type: 'string',
@@ -244,7 +244,7 @@ export const tools = [
         },
         explanation_mode: {
           type: 'string',
-          enum: ['overlay', 'rewind', 'ghost_alternative', 'none'],
+          enum: ['overlay', 'rewind', 'ghost_alternative', 'illustrate', 'none'],
           description: 'Visual explanation mode. Use "none" for simple verbal answers.',
         },
         overlay: {
@@ -351,6 +351,95 @@ export const tools = [
             },
           },
         },
+        illustrate: {
+          type: 'object',
+          description: 'Build a temporary small example graph and animate through it step-by-step. Use for conceptual "why?" questions where the current graph cannot demonstrate the concept. The lesson graph auto-restores after. Required when explanation_mode is "illustrate".',
+          properties: {
+            graph: {
+              type: 'object',
+              description: 'Small example graph (3-6 nodes). Same format as create_graph.',
+              properties: {
+                nodes: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: { id: { type: 'string' }, label: { type: 'string' } },
+                    required: ['id'],
+                  },
+                },
+                edges: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      source: { type: 'string' },
+                      target: { type: 'string' },
+                      weight: { type: 'number' },
+                    },
+                    required: ['source', 'target'],
+                  },
+                },
+                directed: { type: 'boolean' },
+              },
+              required: ['nodes', 'edges'],
+            },
+            steps: {
+              type: 'array',
+              description: 'Deprecated — ignored. Use emit_segment after setup instead.',
+              items: {
+                type: 'object',
+                properties: {
+                  narration: { type: 'string', description: 'Spoken narration for this step' },
+                  viz_actions: {
+                    type: 'array',
+                    description: 'Graph actions for this step. Available: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label, show_residual_overlay, hide_residual_overlay, add_node, add_edge',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        action: { type: 'string' },
+                        node: { type: 'string' },
+                        from: { type: 'string' },
+                        to: { type: 'string' },
+                        label: { type: 'string' },
+                        weight: { type: 'number' },
+                        path: { type: 'array', items: { type: 'string' } },
+                        className: { type: 'string' },
+                        residual_edges: {
+                          type: 'array',
+                          description: 'For show_residual_overlay: residual edge definitions',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              from: { type: 'string' },
+                              to: { type: 'string' },
+                              residual: { type: 'number' },
+                              is_reverse: { type: 'boolean' },
+                            },
+                          },
+                        },
+                        mode: { type: 'string', description: 'For show_residual_overlay: "overlay" or "full"' },
+                        directed_only: { type: 'boolean', description: 'For update_edge_label' },
+                        id: { type: 'string', description: 'For add_node or add_edge' },
+                        position: {
+                          type: 'object',
+                          description: 'For add_node: position coordinates',
+                          properties: {
+                            x: { type: 'number' },
+                            y: { type: 'number' },
+                          },
+                        },
+                        undirected: { type: 'boolean', description: 'For add_edge' },
+                      },
+                      required: ['action'],
+                    },
+                  },
+                },
+                required: ['narration'],
+              },
+            },
+          },
+          required: ['graph'],
+        },
         viz_actions: {
           type: 'array',
           items: {
@@ -372,6 +461,14 @@ export const tools = [
         },
       },
       required: ['answer', 'explanation_mode'],
+    },
+  },
+  {
+    name: 'end_illustration',
+    description: 'End an active illustration and restore the original lesson graph. Call this after teaching on an example graph set up by respond_to_interrupt with illustrate mode.',
+    input_schema: {
+      type: 'object',
+      properties: {},
     },
   },
   {

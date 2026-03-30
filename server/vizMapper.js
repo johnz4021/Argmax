@@ -458,7 +458,7 @@ function mapGraphStep(algo, step, state) {
             const [from, to] = key.split('->');
             return { from, to, residual: val.residual, is_reverse: val.is_reverse };
           });
-        v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges }));
+        v.push(viz('graph', 'set_residual_data', { residual_edges: residualEdges }));
         c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path), layout: 'table' }));
       }
       break;
@@ -498,7 +498,7 @@ function mapGraphStep(algo, step, state) {
             const [from, to] = key.split('->');
             return { from, to, residual: val.residual, is_reverse: val.is_reverse };
           });
-        v.push(viz('graph', 'show_residual_overlay', { residual_edges: residualEdges }));
+        v.push(viz('graph', 'set_residual_data', { residual_edges: residualEdges }));
         c.push(ctxUpdate('residual', { entries: residualEntries(step.conceptual_state.residual_graph, step.path), layout: 'table' }));
       }
       break;

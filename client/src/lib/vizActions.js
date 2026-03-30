@@ -1,6 +1,6 @@
 // Maps viz_action objects to Cytoscape API calls
 
-const ALL_TRANSIENT_CLASSES = 'highlighted current visited path ghost examining dimmed spotlit ghost-alt mst-edge strikethrough saturated augmenting min-cut source-side sink-side tapped residual-fwd residual-rev residual-dimmed color-red color-blue color-green';
+const ALL_TRANSIENT_CLASSES = 'highlighted current visited path ghost examining dimmed spotlit ghost-alt ghost-actual-label ghost-alt-label mst-edge strikethrough saturated augmenting min-cut source-side sink-side tapped residual-fwd residual-rev residual-dimmed color-red color-blue color-green';
 
 export function applyVizActions(cy, actions) {
   if (!cy || !actions) return;
@@ -51,6 +51,14 @@ function applyAction(cy, action) {
 
     case 'reset_highlights': {
       cy.elements('.residual-temp').remove();
+      // Restore edge labels overwritten by residual overlay before removing classes
+      cy.edges().forEach((e) => {
+        const original = e.data('_preResidualWeight');
+        if (original != null) {
+          e.data('weight', original);
+          e.removeData('_preResidualWeight');
+        }
+      });
       cy.elements().removeClass(ALL_TRANSIENT_CLASSES);
       // Reset labels to original labels (not IDs)
       cy.nodes().forEach((n) => {
@@ -101,6 +109,11 @@ function applyAction(cy, action) {
       }
 
       for (const re of action.residual_edges) {
+        // Skip if source/target node doesn't exist (e.g. during graph transitions)
+        if (!cy.getElementById(re.from).nonempty() || !cy.getElementById(re.to).nonempty()) {
+          console.warn(`[vizActions] show_residual_overlay: skipping edge ${re.from}->${re.to}, node missing`);
+          continue;
+        }
         if (re.is_reverse && re.residual > 0) {
           // Reverse edge — add temporary dashed edge
           cy.add({
@@ -119,6 +132,10 @@ function applyAction(cy, action) {
             (e) => e.data('source') === re.from && e.data('target') === re.to
           );
           edges.forEach((e) => {
+            // Save original label so hide_residual_overlay can restore it
+            if (!e.data('_preResidualWeight')) {
+              e.data('_preResidualWeight', e.data('weight'));
+            }
             e.data('weight', `r:${re.residual}`);
             e.removeClass('residual-dimmed');
             e.addClass('residual-fwd');
@@ -128,8 +145,21 @@ function applyAction(cy, action) {
       break;
     }
 
+    case 'set_residual_data':
+    case 'toggle_residual':
+      // No-op on the graph — handled at App/state level
+      break;
+
     case 'hide_residual_overlay': {
       cy.elements('.residual-temp').remove();
+      // Restore original edge labels that were overwritten by 'full' mode
+      cy.edges('.residual-fwd').forEach((e) => {
+        const original = e.data('_preResidualWeight');
+        if (original != null) {
+          e.data('weight', original);
+          e.removeData('_preResidualWeight');
+        }
+      });
       cy.edges().removeClass('residual-fwd residual-rev residual-dimmed');
       break;
     }
@@ -214,6 +244,13 @@ export function restoreSnapshot(cy, snapshot) {
     for (const cls of saved.classes) {
       ele.addClass(cls);
     }
+    // Clean replace: remove data keys not in snapshot, then merge snapshot data
+    const currentData = ele.data();
+    for (const key of Object.keys(currentData)) {
+      if (!(key in saved.data) && key !== 'id' && key !== 'source' && key !== 'target') {
+        ele.removeData(key);
+      }
+    }
     ele.data(saved.data);
   }
 }
@@ -270,8 +307,8 @@ export function applyGhostAlternative(cy, ghostConfig) {
     }
     if (actual_label) {
       const lastNode = cy.getElementById(actual_path[actual_path.length - 1]);
-      const currentLabel = lastNode.data('label') || lastNode.id();
-      lastNode.data('label', `${currentLabel}\n✓ ${actual_label}`);
+      lastNode.data('ghost_badge', `✓ ${actual_label}`);
+      lastNode.addClass('ghost-actual-label');
     }
   }
 
@@ -297,8 +334,8 @@ export function applyGhostAlternative(cy, ghostConfig) {
     }
     if (ghost_label) {
       const lastGhostNode = cy.getElementById(ghost_path[ghost_path.length - 1]);
-      const currentLabel = lastGhostNode.data('label') || lastGhostNode.id();
-      lastGhostNode.data('label', `${currentLabel}\n✗ ${ghost_label}`);
+      lastGhostNode.data('ghost_badge', `✗ ${ghost_label}`);
+      lastGhostNode.addClass('ghost-alt-label');
     }
   }
 
@@ -312,5 +349,6 @@ export function applyGhostAlternative(cy, ghostConfig) {
 
 export function removeGhostAlternative(cy) {
   cy.elements('.ghost-temp').remove();
-  cy.elements().removeClass('ghost-alt dimmed spotlit');
+  cy.nodes('.ghost-actual-label, .ghost-alt-label').forEach((n) => n.removeData('ghost_badge'));
+  cy.elements().removeClass('ghost-alt ghost-actual-label ghost-alt-label dimmed spotlit');
 }

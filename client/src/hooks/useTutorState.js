@@ -12,6 +12,7 @@ const initialState = {
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
   latestResidualEdges: null,
+  residualToggle: null, // null | { show: boolean, ts: number }
   mode: 'direct',            // 'direct' | 'guided'
   guidedPhase: null,          // 'analyzing' | 'identifying' | 'modeling' | 'executing' | 'verifying' | null
   guidedOptions: null,        // null | { prompt, options: [{ id, label }] }
@@ -48,6 +49,9 @@ function reducer(state, action) {
 
     case 'SET_RESIDUAL_EDGES':
       return { ...state, latestResidualEdges: action.edges };
+
+    case 'RESIDUAL_TOGGLE':
+      return { ...state, residualToggle: { show: action.show, ts: Date.now() } };
 
     case 'CREATE_GRAPH':
       return {
@@ -322,10 +326,14 @@ export function useTutorState() {
           overlay: msg.overlay,
           rewind: msg.rewind,
           ghost_alternative: msg.ghost_alternative,
+          illustrate: msg.illustrate,
         });
         break;
       case 'explanation_complete':
         dispatch({ type: 'CLEAR_EXPLANATION_MODE' });
+        break;
+      case 'residual_toggle':
+        dispatch({ type: 'RESIDUAL_TOGGLE', show: msg.show });
         break;
       case 'paused':
         dispatch({ type: 'SET_PAUSED' });

@@ -6,7 +6,6 @@ import { parse as parseUrl } from 'url';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { DEFAULT_GRAPH } from './algorithms.js';
-import { startAgentSession } from './agent.js';
 import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
 import { startExplainSession } from './explainAgent.js';
 import Anthropic from '@anthropic-ai/sdk';
@@ -109,61 +108,15 @@ function attachHandlers(ws, session) {
       console.log(`[WS] Received:`, msg.type);
 
       switch (msg.type) {
-        case 'start_lesson': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Lesson already in progress' }));
-            return;
-          }
-          // Force-release a dying session (endSessionFlag is set but solver/API call still pending)
-          session.active = false;
-          session.endSessionFlag = false;
-          session.pauseFlag = false;
-          session.skipFlag = false;
-          session.runGeneration++;
-          session.currentGraph = null;
-          session.currentTrace = null;
-          session._emittedTraceSteps = [];
-          const lessonGen = session.runGeneration;
-          {
-            const gate = await checkSessionGate(session);
-            if (!gate.allowed) {
-              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
-              return;
-            }
-            if (gate.byok) {
-              const settings = await getUserSettings(session.userId);
-              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
-              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
-            }
-          }
-          session.active = true;
-          const algorithm = msg.algorithm || 'dijkstra';
-          const graph = msg.graph || DEFAULT_GRAPH;
-          const source = msg.source || 'A';
-
-          try {
-            await startAgentSession(session, algorithm, graph, source);
-          } catch (err) {
-            if (err.message === '__end_session__') {
-              console.log('[Agent] Session ended by user');
-            } else {
-              console.error('[Agent] Error:', err);
-              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'Agent session failed: ' + err.message }));
-            }
-          }
-          // Only clean up if this run is still the current one (not superseded)
-          if (session.runGeneration === lessonGen) {
-            session.active = false;
-            session.endSessionFlag = false;
-            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
-          }
-          break;
-        }
-
         case 'start_guided': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] start_guided received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] start_guided — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;
@@ -209,6 +162,7 @@ function attachHandlers(ws, session) {
             }
           }
           if (session.runGeneration === guidedGen) {
+            console.log(`[GuidedAgent] Cleanup: setting active=false (gen=${guidedGen})`);
             session.active = false;
             session.endSessionFlag = false;
             session.mode = 'direct';
@@ -216,14 +170,21 @@ function attachHandlers(ws, session) {
             session.followUpSent = false;
             session.conversationId = null;
             if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
+          } else {
+            console.log(`[GuidedAgent] Cleanup skipped — gen mismatch (mine=${guidedGen}, current=${session.runGeneration})`);
           }
           break;
         }
 
         case 'start_explain': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] start_explain received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] start_explain — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;
@@ -260,12 +221,15 @@ function attachHandlers(ws, session) {
             }
           }
           if (session.runGeneration === explainGen) {
+            console.log(`[ExplainAgent] Cleanup: setting active=false (gen=${explainGen})`);
             session.active = false;
             session.endSessionFlag = false;
             session.mode = 'direct';
             session.followUpResolver = null;
             session.followUpSent = false;
             if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
+          } else {
+            console.log(`[ExplainAgent] Cleanup skipped — gen mismatch (mine=${explainGen}, current=${session.runGeneration})`);
           }
           break;
         }
@@ -331,12 +295,21 @@ function attachHandlers(ws, session) {
             session.guidedResponseResolver('__interrupted__');
             session.guidedResponseResolver = null;
           }
+          // Unblock follow-up wait — treat as a follow-up question
+          if (session.followUpResolver) {
+            session.interruptFlag = null; // don't double-inject as interrupt
+            session.followUpResolver(msg.question);
+            session.followUpResolver = null;
+          }
           break;
         }
 
         case 'end_session': {
-          if (!session.active) return;
-          console.log(`[WS] End session requested`);
+          if (!session.active) {
+            console.log(`[WS] end_session ignored — session not active (mode=${session.mode}, gen=${session.runGeneration})`);
+            return;
+          }
+          console.log(`[WS] End session requested (mode=${session.mode}, gen=${session.runGeneration}, pauseResolver=${!!session.pauseResolver}, guidedResponseResolver=${!!session.guidedResponseResolver}, followUpResolver=${!!session.followUpResolver})`);
           session.endSessionFlag = true;
           session.pauseFlag = true; // unblock TTS waits
           // Unblock any pause wait
@@ -408,9 +381,14 @@ function attachHandlers(ws, session) {
         }
 
         case 'resume_conversation': {
-          if (session.active && !session.endSessionFlag) {
-            ws.send(JSON.stringify({ type: 'error', message: 'Session already in progress' }));
-            return;
+          console.log(`[WS] resume_conversation received (active=${session.active}, endSessionFlag=${session.endSessionFlag}, mode=${session.mode}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] resume_conversation — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
           }
           session.active = false;
           session.endSessionFlag = false;

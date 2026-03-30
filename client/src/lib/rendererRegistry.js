@@ -81,6 +81,13 @@ export function applyActionsSequenced(actions, { staggerMs = 150 } = {}) {
   return activeTimeline;
 }
 
+export function killActiveTimeline() {
+  if (activeTimeline) {
+    activeTimeline.kill();
+    activeTimeline = null;
+  }
+}
+
 export function setTimelineSpeed(speed) {
   timelineSpeed = speed;
   if (activeTimeline) activeTimeline.timeScale(speed);
@@ -96,4 +103,15 @@ export function restoreSnapshot(rendererName, snapshot) {
 
 export function getRenderer(name) {
   return renderers[name] || null;
+}
+
+/**
+ * Synchronously load graph data into a renderer, bypassing React's async state/effect cycle.
+ * Called from the WS message handler so the graph is ready before any viz actions arrive.
+ */
+export function loadGraphImmediate(rendererName, graph) {
+  const renderer = renderers[rendererName];
+  if (renderer?.loadGraph) {
+    renderer.loadGraph(graph);
+  }
 }

@@ -17,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced, killActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -63,6 +63,27 @@ export default function App() {
   const onMessage = useCallback(
     (msg) => {
       console.log('[App] WS message:', msg.type, msg);
+
+      // Kill any in-flight staggered action timeline before the graph is replaced,
+      // otherwise GSAP callbacks fire against a destroyed/different cytoscape instance.
+      if (msg.type === 'create_graph' || msg.type === 'create_visualization') {
+        console.log('[App] killing active timeline for', msg.type, msg.graph?.nodes?.map(n => n.id));
+        killActiveTimeline();
+      }
+
+      // Load graph into Cytoscape synchronously so it's ready before any
+      // subsequent viz actions arrive (React useEffect would defer this).
+      if (msg.type === 'create_graph' && msg.graph) {
+        loadGraphImmediate('graph', msg.graph);
+      }
+      if (msg.type === 'create_visualization' && msg.panels) {
+        for (const panel of msg.panels) {
+          if (panel.renderer === 'graph' && panel.config?.graph) {
+            loadGraphImmediate(panel.id || 'graph', panel.config.graph);
+          }
+        }
+      }
+
       processMessage(msg);
 
       // Route all viz actions through the renderer registry.
@@ -93,8 +114,8 @@ export default function App() {
           }]);
         }
 
-        // Extract residual edges from show_residual_overlay actions for the toggle button
-        const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay');
+        // Extract residual edges from show_residual_overlay or set_residual_data actions for the toggle button
+        const residualAction = msg.viz_actions.find((a) => a.action === 'show_residual_overlay' || a.action === 'set_residual_data');
         const residualEdges = residualAction?.params?.residual_edges || residualAction?.residual_edges;
         if (residualEdges) {
           dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
@@ -112,6 +133,21 @@ export default function App() {
       if (msg.type === 'interrupt_response' && msg.viz_actions?.length > 0) {
         const normalized = normalizeVizActions(msg.viz_actions);
         applyActions(normalized);
+      }
+      if (msg.type === 'illustrate_step') {
+        if (msg.viz_actions?.length > 0) {
+          const normalized = normalizeVizActions(msg.viz_actions);
+          applyActions(normalized);
+        }
+        if (msg.narration) {
+          processMessage({
+            type: 'segment_start',
+            segment_id: 'illustrate_' + Date.now(),
+            narration: msg.narration,
+            phase: '',
+            viz_actions: [],
+          });
+        }
       }
       if (msg.type === 'rewind_step_narration') {
         processMessage({
@@ -190,22 +226,18 @@ export default function App() {
       reset();
       sessionStartRef.current = Date.now();
       track('session_started', {
-        mode: algorithm === 'guided' ? 'guided' : algorithm === 'explain' ? 'explain' : 'tutorial',
+        mode: algorithm === 'guided' ? 'guided' : 'explain',
         algorithm,
       });
-      if (algorithm === 'guided' || algorithm === 'explain') {
-        const msg = {
-          type: algorithm === 'explain' ? 'start_explain' : 'start_guided',
-          problemText: data.problemText,
-        };
-        if (data.imageBase64) {
-          msg.imageBase64 = data.imageBase64;
-          msg.imageMimeType = data.imageMimeType;
-        }
-        send(msg);
-      } else {
-        send({ type: 'start_lesson', algorithm, source: 'A' });
+      const msg = {
+        type: algorithm === 'explain' ? 'start_explain' : 'start_guided',
+        problemText: data.problemText,
+      };
+      if (data.imageBase64) {
+        msg.imageBase64 = data.imageBase64;
+        msg.imageMimeType = data.imageMimeType;
       }
+      send(msg);
     },
     [send, reset, audioPlayer]
   );
@@ -515,6 +547,7 @@ export default function App() {
                     segmentCount={state.segmentCount}
                     algorithm={state.algorithm}
                     residualEdges={state.latestResidualEdges}
+                    residualToggle={state.residualToggle}
                     onElementClick={handleElementClick}
                   />
                 ) : (
@@ -526,6 +559,7 @@ export default function App() {
                     segmentCount={state.segmentCount}
                     algorithm={state.algorithm}
                     residualEdges={state.latestResidualEdges}
+                    residualToggle={state.residualToggle}
                     onElementClick={handleElementClick}
                   />
                 )}

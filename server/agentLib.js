@@ -578,7 +578,8 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
         // Step through with narration + viz actions
         for (const step of steps) {
-          if (session.pauseFlag || session.skipFlag) break;
+          if (session.pauseFlag) break;
+          if (session.skipFlag) { session.skipFlag = false; continue; }
 
           // Apply viz actions for this step and send narration text for transcript
           sendJSON(ws, { type: 'illustrate_step', viz_actions: step.viz_actions || [], narration: step.narration });
@@ -600,7 +601,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
               session.skipFlag = false;
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
-              break;
+              continue; // Skip to next illustrate step, not the entire illustration
             }
             session.pauseFlag = false;
             if (session.endSessionFlag) throw new Error('__end_session__');

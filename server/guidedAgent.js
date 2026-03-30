@@ -1894,7 +1894,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       if (!interrupted && vizActive && segmentsWithoutVizActions >= 3) {
         toolResults.push({
           type: 'text',
-          text: '[VIZ REMINDER] You have an active visualization but recent segments had no viz_actions. When referencing specific nodes, edges, or steps, remember to include highlight actions.',
+          text: '[VIZ REMINDER] You have an active visualization but recent segments had no viz_actions. If you are referencing specific nodes, edges, or structures, include viz_actions in emit_segment to highlight them. Use manual viz_actions like {action:"highlight_node", node:"v1", className:"current"} or {action:"highlight_edge", from:"v1", to:"v2", className:"highlighted"}. If there is genuinely nothing to highlight (e.g. purely conceptual discussion), this is fine — ignore this reminder.',
         });
         segmentsWithoutVizActions = 0;
       }

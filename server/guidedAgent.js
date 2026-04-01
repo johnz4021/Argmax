@@ -91,9 +91,34 @@ STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
   classifying the problem with the student. When the solver completes, a [SOLVER COMPLETE]
   message will appear — incorporate the solution context seamlessly from that point.
 
-STAGE 0 — REASONING MODE (1-2 exchanges):
-  Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
-  Use send_options with the top-level classification tree question.
+STAGE 0 — INTAKE + REASONING MODE:
+  FIRST, ask the student ONE open-ended intake question via conversational_reply
+  (NOT send_options):
+  "Before we dive in — what have you tried so far on this problem? Even partial
+  ideas or approaches you considered are helpful. If you haven't started yet,
+  that's totally fine — just let me know."
+
+  Use the student's response to inform everything that follows:
+  - "Nothing" / "haven't started" / "no idea" → proceed normally to classification.
+  - Partial approach described (e.g. "I think it's a graph problem, maybe BFS?")
+    → acknowledge what's right, factor it into classification. Skip questions
+    the student has already answered through their intake.
+  - Stuck at a specific point (e.g. "I set up the variables but can't get the
+    constraints") → if the reasoning mode and approach are clear from context,
+    call classify_problem immediately. Skip to the stage where they got stuck.
+    Acknowledge what they got right before teaching the next part.
+  - Wrong approach described → classify, then gently identify where their
+    reasoning diverges before teaching the correct path.
+  - Student pastes code → read it, assess correctness, and use it to determine
+    where they are in the problem.
+
+  Keep your intake question to 1-2 sentences. Do NOT ask follow-up intake
+  questions — one exchange only, then move on to classification.
+
+  THEN, determine WHAT TYPE OF REASONING the problem requires.
+  Use send_options with the top-level classification tree question (unless the
+  intake response already makes the reasoning mode obvious — in that case,
+  classify directly).
 
   Modes:
   - algorithm_execution → existing flow (classify algorithm → refresh → reduce → run)
@@ -104,18 +129,6 @@ STAGE 0 — REASONING MODE (1-2 exchanges):
   - runtime → Runtime Analysis flow
 
   Call classify_problem with the reasoning_mode once determined.
-
-STAGE 0.5 — CALIBRATION (1 exchange, after STAGE 0, before diving in):
-  After determining the reasoning mode but BEFORE starting the mode-specific flow,
-  ask ONE open-ended diagnostic question via conversational_reply (NOT send_options)
-  to gauge the student's familiarity with the relevant concepts.
-  Examples:
-  - "Before we dive in — in your own words, what does [key concept] mean?"
-  - "What's your intuition for why this might be a [algorithm type] problem?"
-  - "Have you seen problems like this before? What approach comes to mind?"
-  Use the student's answer to calibrate depth: skip basics if they're strong,
-  slow down and scaffold more if they're uncertain. This MUST be a free-response
-  question — do not offer multiple choice here.
 
 ALGORITHM EXECUTION MODE (existing flow):
   1. CLASSIFY algorithm (2-4 exchanges using the algorithm subtree)
@@ -197,11 +210,20 @@ DIVIDE-AND-CONQUER MODE:
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
   4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it using the recursion tree:
-     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree visualization
-     b. Walk through levels with reveal_level({level: 0}), reveal_level({level: 1}), ...
-     c. At each level, use highlight_level({level}) to show work distribution
-     d. Use show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"}) to reveal which MT case applies
-     e. Use set_cumulative({level}) to show the running total of work through that level
+     MANDATORY: As soon as you know a, b, and d, emit a viz_action with
+     renderer:"recursion_tree_0", action:"set_recurrence_tree",
+     params:{a, b, d, n: 16} in your NEXT emit_segment call. The recursion tree
+     panel is empty until you do this — don't leave it showing "Waiting for
+     recursion tree" while you already know the recurrence.
+     Then walk through it:
+     a. Use reveal_level({level: 0}), reveal_level({level: 1}), ... to show levels
+     b. At each level, use highlight_level({level}) to show work distribution
+     c. Use show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"}) to reveal which MT case applies
+     d. Use set_cumulative({level}) to show the running total of work through that level
+
+  NOTE: If the student derives a recurrence at ANY point during the lesson
+  (even during stages 1-3), immediately populate the recursion tree with
+  set_recurrence_tree. Do not wait for stage 4.
 
 RUNTIME / ASYMPTOTICS MODE:
   After classify_problem, a Runtime Analysis panel and recursion_tree renderer are auto-configured.
@@ -537,6 +559,41 @@ COMPREHENSION GATES:
   5. Track gated concepts internally. Do not move to the next stage of the problem
      until all critical_concepts for the current stage have been gated.
 
+HANDOFF POLICY — "GO TRY IT" MOMENTS:
+  At the KEY INSIGHT POINT of each mode, consider handing the student off to
+  work independently using suggest_independent_work. The key insight point is
+  where the creative/conceptual work ends and the mechanical/executable work
+  begins:
+
+  - modeling → after variables + constraints are framed → hand off formal write-up
+  - algorithm_execution → after algorithm identified + canonical refresh → hand off reduction/run
+  - dp_design → after recurrence identified → hand off base cases + order + runtime
+  - greedy_design → after greedy rule identified → hand off proof structure
+  - dc_design → after split/combine strategy identified → hand off recurrence + analysis
+  - runtime → after method identified (Master Thm, etc.) → hand off computation
+  - NP-completeness → after reduction mapping established → hand off forward/backward directions
+
+  HAND OFF when ALL of these are true:
+  1. Student derived or understood the key insight (not just heard it passively)
+  2. Remaining work is mechanical — execution of a known pattern, not new reasoning
+  3. Student did NOT say in intake they're stuck on the remaining part
+  4. Student has NOT been struggling heavily (3+ wrong answers in current stage)
+
+  Do NOT hand off if:
+  - Student explicitly asked to be walked through everything
+  - Student's intake indicated they're stuck on exactly the remaining work
+  - Student has been struggling — they need more scaffolding, not independence
+  - The remaining work requires new conceptual leaps (not just execution)
+
+  The checkpoint_summary should reference what's in the formulation panel.
+  The task_description should be specific and actionable.
+  Hints should each unlock one step without revealing the answer.
+
+  When the student returns:
+  - Correct attempt → praise, update formulation panel, lesson_complete
+  - Partially correct → acknowledge right parts, guide the gap (don't redo everything)
+  - Wrong → identify specific error, nudge, optionally hand off again or continue guided
+  - "Keep guiding me" → continue walkthrough from the next step, no judgment
 
 TOOL USAGE FOR NON-EXECUTION MODES:
 
@@ -767,6 +824,29 @@ const guidedTools = [
     },
   },
   {
+    name: 'suggest_independent_work',
+    description: 'Hand the student off to work independently. Use this at the KEY INSIGHT POINT when the student has grasped the core concept and the remaining work is mechanical/executable. The student will leave, work on their own, and return with their attempt. They can also choose "Keep guiding me" to opt back into the walkthrough.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        checkpoint_summary: {
+          type: 'string',
+          description: 'What the student has established so far (2-3 sentences). This stays visible while they work.',
+        },
+        task_description: {
+          type: 'string',
+          description: 'What the student should go try (1-2 sentences). Be specific: "Write the forward and backward directions of the reduction" not "finish the proof".',
+        },
+        hints: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional hints the student can reveal if stuck (1-2 max). Each hint should unlock one next step without giving the answer.',
+        },
+      },
+      required: ['checkpoint_summary', 'task_description'],
+    },
+  },
+  {
     name: 'run_solver',
     description: 'Run the problem solver on a specific sub-problem to get a verified solution as your teaching north star. Call this AFTER identifying which part of the problem the student wants to work on. Pass the focused sub-problem text (not the entire homework).',
     input_schema: {
@@ -950,7 +1030,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     : 'See the attached image for the problem the student wants to solve.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, check for multiple parts (use send_options if needed), call run_solver or run_solver_batch, then proceed to classification.`,
+    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, start with the STAGE 0 intake question to learn what the student has tried, then check for multiple parts (use send_options if needed), call run_solver or run_solver_batch, then proceed to classification.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];
@@ -1206,7 +1286,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               : plan.reasoning_mode === 'dp_design'
               ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
               : plan.reasoning_mode === 'dc_design'
-              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. A recursion_tree renderer is auto-configured. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime using set_recurrence_tree to visualize the recursion tree and Master Theorem case.`
+              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. A recursion_tree renderer is auto-configured (panel ID: "recursion_tree_0"). Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime. CRITICAL: As soon as you know a, b, d for T(n) = aT(n/b) + O(n^d), you MUST emit a viz_action with renderer:"recursion_tree_0", action:"set_recurrence_tree", params:{a, b, d, n: 16} to populate the tree. Do this even if you learn the recurrence early (e.g. student states it during intake or stages 1-3). Then use reveal_level, highlight_level, show_master_case to walk through it.`
               : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A recursion_tree renderer is auto-configured. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, use set_recurrence_tree to visualize the recursion tree.`;
 
             // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
@@ -1690,6 +1770,67 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           };
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
+        } else if (block.name === 'suggest_independent_work') {
+          const { checkpoint_summary, task_description, hints } = block.input;
+
+          // Send independent work state to client
+          sendJSON(ws, {
+            type: 'independent_work',
+            checkpoint_summary,
+            task_description,
+            hints: hints || [],
+          });
+
+          // Wait for student to return with their attempt (no timeout — they come back when ready)
+          const iwResponsePromise = new Promise((resolve) => {
+            if (session.guidedResponse) { resolve(); return; }
+            if (session.pendingGuidedResponses?.length > 0) {
+              session.guidedResponse = session.pendingGuidedResponses.shift();
+              resolve();
+              return;
+            }
+            if (session.guidedMessageQueue?.length > 0) {
+              const queued = session.guidedMessageQueue.shift();
+              session.guidedResponse = { text: queued, timestamp: Date.now() };
+              resolve();
+              return;
+            }
+            session.guidedResponseResolver = resolve;
+          });
+
+          const iwRaceResult = await Promise.race([
+            iwResponsePromise,
+            new Promise((resolve) => {
+              const interval = setInterval(() => {
+                if (session.endSessionFlag) { clearInterval(interval); resolve('__end_session__'); }
+                if (session.skipFlag) { clearInterval(interval); resolve('__skipped__'); }
+              }, 100);
+              iwResponsePromise.then(() => clearInterval(interval));
+            }),
+          ]);
+
+          session.guidedResponseResolver = null;
+
+          if (iwRaceResult === '__end_session__' || session.endSessionFlag) {
+            throw new Error('__end_session__');
+          } else if (iwRaceResult === '__skipped__' || session.skipFlag) {
+            // "Keep guiding me" — student opted out of independent work
+            session.skipFlag = false;
+            sendJSON(ws, { type: 'clear_guided_options' });
+            result = {
+              student_chose_guided: true,
+              message: 'The student chose to keep being guided instead of working independently. Continue the walkthrough from where you left off — pick up at the next step after the key insight.',
+            };
+          } else {
+            const iwStudentResponse = session.guidedResponse;
+            session.guidedResponse = null;
+            const attemptText = iwStudentResponse?.text || '';
+            sendJSON(ws, { type: 'clear_guided_options' });
+            result = {
+              student_attempt: attemptText,
+              message: `The student returned from independent work with this attempt:\n\n"${attemptText}"\n\nEvaluate their work carefully. If correct, praise and wrap up (fill in the formulation panel, call lesson_complete). If partially correct, acknowledge what's right and guide the remaining gap. If wrong, identify the specific error and give a targeted nudge — do NOT redo the entire walkthrough.`,
+            };
+          }
         } else if (block.name === 'lesson_complete') {
           // Check if there are remaining batch parts to work through
           if (selectedParts.length > 1 && activePart) {

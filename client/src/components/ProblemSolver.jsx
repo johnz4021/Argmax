@@ -86,12 +86,12 @@ export default function ProblemSolver({ onSelect, disabled }) {
     <div className="flex flex-col items-center h-full overflow-auto px-4 pt-16">
       <div className="text-center mb-10">
         <h1 className="text-2xl font-display font-semibold text-text-primary mb-2">
-          {solveMode === 'explain' ? 'Quick Solve' : 'Work Through It Together'}
+          {solveMode === 'explain' ? 'Just Explain' : 'Guide Me'}
         </h1>
         <p className="text-text-secondary font-body">
           {solveMode === 'explain'
-            ? 'Get a visual walkthrough of the solution'
-            : "Paste a problem or describe where you're stuck"}
+            ? 'Get a quick solution with a visual walkthrough'
+            : "Actively learn with the help of AI"}
         </p>
       </div>
 
@@ -142,7 +142,7 @@ export default function ProblemSolver({ onSelect, disabled }) {
               e.target.style.height = 'auto';
               e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
             }}
-            placeholder="What are you trying to understand?"
+            placeholder="Paste a problem or ask a concept question"
             rows={2}
             className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-text-primary font-body placeholder-text-tertiary focus:outline-none resize-none"
           />

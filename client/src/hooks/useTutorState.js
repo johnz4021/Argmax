@@ -1,7 +1,7 @@
 import { useReducer, useCallback } from 'react';
 
 const initialState = {
-  status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error
+  status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error | independent_work
   algorithm: null,
   graph: null,
   vizPanels: null, // [{ id, renderer, props }] — drives VizLayout
@@ -22,6 +22,7 @@ const initialState = {
   loadedConversation: null,    // loaded transcript messages for viewing
   viewingHistory: false,       // whether we're viewing a transcript
   creditsExhausted: false,     // whether Anthropic credits are exhausted (triggers BYOK modal)
+  independentWork: null,        // null | { checkpoint_summary, task_description, hints, revealedHints: [] }
 };
 
 /**
@@ -271,6 +272,38 @@ function reducer(state, action) {
 
     case 'CLEAR_CREDITS_EXHAUSTED':
       return { ...state, creditsExhausted: false };
+
+    case 'INDEPENDENT_WORK':
+      return {
+        ...state,
+        status: 'independent_work',
+        independentWork: {
+          checkpoint_summary: action.checkpoint_summary,
+          task_description: action.task_description,
+          hints: action.hints || [],
+          revealedHints: [],
+        },
+        guidedOptions: null,
+        guidedPrompt: null,
+        agentStatus: null,
+      };
+
+    case 'REVEAL_HINT':
+      if (!state.independentWork) return state;
+      return {
+        ...state,
+        independentWork: {
+          ...state.independentWork,
+          revealedHints: [...state.independentWork.revealedHints, action.hintIndex],
+        },
+      };
+
+    case 'CLEAR_INDEPENDENT_WORK':
+      return {
+        ...state,
+        status: 'teaching',
+        independentWork: null,
+      };
 
     case 'RESET':
       return initialState;

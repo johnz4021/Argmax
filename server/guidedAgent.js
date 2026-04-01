@@ -202,28 +202,35 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
-  After classify_problem, a D&C Structure panel and recursion_tree renderer are auto-configured.
-  The D&C Structure panel has placeholders (Split, Subproblems, Combine, T(n)).
-  A Recurrence panel is also available. Use emit_segment viz_actions to fill them.
+  After classify_problem, D&C Structure and Recurrence context panels are auto-configured.
+  No visualization renderer is pre-created — you choose what fits the problem.
 
+  VISUALIZATION CHOICE:
+  - RECURRENCE TREE: If the problem has a clean T(n) = aT(n/b) + O(n^d) recurrence,
+    call create_visualization with panels:[{renderer:"recursion_tree"}]. Then use
+    set_recurrence_tree({a, b, d, n: 16}) via viz_actions to populate it. Walk through
+    with reveal_level, highlight_level, show_master_case, set_cumulative.
+  - DECISION/CASE TREE: If the key insight is case analysis or branching logic
+    (e.g. different outcomes of a test lead to different algorithm paths), call
+    create_visualization with panels:[{renderer:"graph"}]. Then use update_graph to
+    incrementally build a top-down decision tree: nodes are algorithm states, edges
+    are labeled with conditions (use weight field for edge labels). autoLayout will
+    arrange it hierarchically.
+  - NO VIZ: If the problem is purely structural/proof-based and no visual adds value,
+    skip visualization — use the context panels only.
+
+  IMPORTANT: If the student states a recurrence in their intake response, create the
+  recursion tree immediately — don't wait for stage 4.
+
+  D&C STAGES:
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
-  4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it using the recursion tree:
-     MANDATORY: As soon as you know a, b, and d, emit a viz_action with
-     renderer:"recursion_tree_0", action:"set_recurrence_tree",
-     params:{a, b, d, n: 16} in your NEXT emit_segment call. The recursion tree
-     panel is empty until you do this — don't leave it showing "Waiting for
-     recursion tree" while you already know the recurrence.
-     Then walk through it:
-     a. Use reveal_level({level: 0}), reveal_level({level: 1}), ... to show levels
-     b. At each level, use highlight_level({level}) to show work distribution
-     c. Use show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"}) to reveal which MT case applies
-     d. Use set_cumulative({level}) to show the running total of work through that level
-
-  NOTE: If the student derives a recurrence at ANY point during the lesson
-  (even during stages 1-3), immediately populate the recursion tree with
-  set_recurrence_tree. Do not wait for stage 4.
+  4. RECURRENCE — Analyze runtime. If using recursion tree:
+     a. reveal_level({level: 0}), reveal_level({level: 1}), ... to show levels
+     b. highlight_level({level}) to show work distribution
+     c. show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"})
+     d. set_cumulative({level}) to show running total
 
 RUNTIME / ASYMPTOTICS MODE:
   After classify_problem, a Runtime Analysis panel and recursion_tree renderer are auto-configured.
@@ -1286,7 +1293,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               : plan.reasoning_mode === 'dp_design'
               ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
               : plan.reasoning_mode === 'dc_design'
-              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. A recursion_tree renderer is auto-configured (panel ID: "recursion_tree_0"). Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime. CRITICAL: As soon as you know a, b, d for T(n) = aT(n/b) + O(n^d), you MUST emit a viz_action with renderer:"recursion_tree_0", action:"set_recurrence_tree", params:{a, b, d, n: 16} to populate the tree. Do this even if you learn the recurrence early (e.g. student states it during intake or stages 1-3). Then use reveal_level, highlight_level, show_master_case to walk through it.`
+              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Context panels (dc_structure, recurrence) are auto-configured. No visualization renderer is pre-created — choose one based on the problem: (A) If the problem has a clean recurrence T(n)=aT(n/b)+O(n^d), call create_visualization with panels:[{renderer:"recursion_tree"}], then use set_recurrence_tree({a, b, d, n:16}) via viz_actions to populate it. Do this as soon as you know a, b, d — even if learned early from intake. (B) If the problem involves case analysis or branching logic (e.g. different test outcomes lead to different paths), call create_visualization with panels:[{renderer:"graph"}], then use update_graph to build a decision tree (nodes=states, edges labeled with conditions via weight field). (C) If no visualization adds value, skip it. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) analyze runtime.`
               : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A recursion_tree renderer is auto-configured. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, use set_recurrence_tree to visualize the recursion tree.`;
 
             // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
@@ -1306,17 +1313,23 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               // Auto-create visualization with mode-based preset panels
               const modeDefaults = getModeDefaultPanels(plan.reasoning_mode);
               if (modeDefaults) {
-                const autoRenderer = modeDefaults.renderer || rendererType;
+                const autoRenderer = modeDefaults.renderer === null ? null : (modeDefaults.renderer || rendererType);
                 const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
                 sendJSON(ws, {
                   type: 'create_visualization',
                   panels,
                   context_panels: modeDefaults.context_panels,
                 });
-                vizActive = true;
-                segmentsWithoutVizActions = 0;
+                if (autoRenderer) {
+                  vizActive = true;
+                  segmentsWithoutVizActions = 0;
+                }
                 const panelIds = modeDefaults.context_panels.map(p => p.id);
-                message += `\n\nAUTO-CONFIGURED PANELS: Visualization created with renderer "${autoRenderer}" and context panels: ${panelIds.join(', ')}. Use emit_segment with viz_actions (renderer:"context", action:"update", params:{panel_id:"<id>", ...}) to fill in panel content as the student works through each step. Do NOT call create_visualization — it's already set up.`;
+                if (autoRenderer) {
+                  message += `\n\nAUTO-CONFIGURED PANELS: Visualization created with renderer "${autoRenderer}" and context panels: ${panelIds.join(', ')}. Use emit_segment with viz_actions (renderer:"context", action:"update", params:{panel_id:"<id>", ...}) to fill in panel content as the student works through each step. Do NOT call create_visualization — it's already set up.`;
+                } else {
+                  message += `\n\nAUTO-CONFIGURED PANELS: Context panels created: ${panelIds.join(', ')}. No visualization renderer was auto-created — call create_visualization yourself when you know what visualization fits this problem. Use renderer:"recursion_tree" for problems with clean T(n)=aT(n/b)+O(n^d) recurrences. Use renderer:"graph" for problems involving case analysis or branching logic (autoLayout will arrange it as a top-down tree). Or skip visualization entirely if the context panels are sufficient.`;
+                }
                 console.log(`[GuidedAgent] Auto-created visualization: renderer=${autoRenderer}, panels=${panelIds.join(', ')}`);
               }
             }

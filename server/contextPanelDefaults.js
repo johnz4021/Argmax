@@ -201,7 +201,7 @@ const MODE_DEFAULTS = {
     ],
   },
   dc_design: {
-    renderer: 'recursion_tree',
+    renderer: null,   // Agent chooses: recursion_tree for recurrences, graph for case-analysis
     context_panels: [
       {
         id: 'dc_structure', type: 'expression', title: 'D&C Structure',

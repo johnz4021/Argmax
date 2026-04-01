@@ -222,7 +222,7 @@ const MODE_DEFAULTS = {
     ],
   },
   runtime: {
-    renderer: 'recursion_tree',
+    renderer: null,   // Agent creates recursion_tree when ready to populate it (avoids empty "Waiting..." state)
     context_panels: [
       {
         id: 'runtime_analysis', type: 'expression', title: 'Runtime Analysis',

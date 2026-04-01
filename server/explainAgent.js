@@ -6,7 +6,7 @@ import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agent
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
-import { planVisualization } from './vizPlanner.js';
+import { buildExampleGraph } from './graphBuilder.js';
 
 function buildAlgorithmList() {
   return Object.entries(ALGORITHMS)
@@ -319,7 +319,7 @@ VISUALIZATION SETUP:
 - For graph algorithms with a trace, prefer trace_step_indices over manual viz_actions
 
 VISUALIZATION PLANNING (problem flow only):
-After run_solver succeeds, call plan_visualization with the problem text.
+After run_solver succeeds, call build_example_graph with the problem text.
 The planner returns:
 - panels: initial visualization layout with pre-built graphs
 - algorithm_runs: algorithms to run on the initial graph
@@ -335,14 +335,14 @@ Workflow:
 6. Continue narrating the transformed graph
 
 GRAPH VARIANTS (transformation problems):
-When plan_visualization returns graph_variants, the planner has pre-built transformed
+When build_example_graph returns graph_variants, the planner has pre-built transformed
 graphs. Do NOT construct these graphs manually. Instead:
 - Narrate the transformation conceptually first ("Now we transform G into G' where...")
 - Call create_graph with variant_id to swap the visualization
 - Run the variant's algorithm_runs
 - Continue narrating on the new graph
 
-If plan_visualization fails, fall back to constructing the visualization manually.
+If build_example_graph fails, fall back to constructing the visualization manually.
 
 MULTI-GRAPH COMPARISON (when the planner returns multiple graph panels):
 - Each panel has a unique ID (e.g., "graph_left", "graph_right")
@@ -437,7 +437,7 @@ const explainTools = [
     },
   },
   {
-    name: 'plan_visualization',
+    name: 'build_example_graph',
     description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
     input_schema: {
       type: 'object',
@@ -623,7 +623,7 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
         send_options: null,
         run_solver: 'Solving problem',
         run_solver_batch: 'Solving problems',
-        plan_visualization: 'Planning visualization',
+        build_example_graph: 'Planning visualization',
       };
 
       for (const block of response.content) {
@@ -768,9 +768,9 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
               ? `All parts solved. Starting with Part ${activePart}. Explain each part sequentially. After finishing one part, switch context and explain the next.`
               : 'Batch solver failed. Proceed with your own analysis.',
           };
-        } else if (block.name === 'plan_visualization') {
+        } else if (block.name === 'build_example_graph') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          const plan = await planVisualization(
+          const plan = await buildExampleGraph(
             block.input.problem_text,
             solverResult,
             statusCb,

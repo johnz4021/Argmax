@@ -272,8 +272,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           const contextPanels = getDefaultContextPanels(algo);
           console.log(`[Agent] Auto-setup for '${algo}': renderer=${algoInfo.renderer}, contextPanels=${contextPanels.map(p => p.id).join(',')}, sessionGraph=${!!session.currentGraph}`);
 
-          // Notify frontend which algorithm is running (enables algorithm-specific UI like residual toggle)
-          sendJSON(ws, { type: 'lesson_start', algorithm: algo });
+          // Notify frontend which algorithm is running (enables algorithm-specific UI like residual toggle).
+          // Use 'algorithm_step' instead of 'lesson_start' to avoid wiping transcript/viz state.
+          sendJSON(ws, { type: 'algorithm_step', algorithm: algo });
 
           if (algoInfo.renderer === 'graph') {
             // Always send the graph for the current algorithm run

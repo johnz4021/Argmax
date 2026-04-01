@@ -48,6 +48,13 @@ function reducer(state, action) {
         latestResidualEdges: null,
       };
 
+    // algorithm_step: update the active algorithm without wiping transcript/viz state
+    case 'ALGORITHM_STEP':
+      return {
+        ...state,
+        algorithm: action.algorithm,
+      };
+
     case 'SET_RESIDUAL_EDGES':
       return { ...state, latestResidualEdges: action.edges };
 
@@ -321,6 +328,9 @@ export function useTutorState() {
       case 'lesson_start':
         dispatch({ type: 'LESSON_START', algorithm: msg.algorithm });
         break;
+      case 'algorithm_step':
+        dispatch({ type: 'ALGORITHM_STEP', algorithm: msg.algorithm });
+        break;
       case 'create_graph':
         dispatch({ type: 'CREATE_GRAPH', graph: msg.graph });
         if (msg.context_panels) {
@@ -328,13 +338,18 @@ export function useTutorState() {
         }
         break;
       case 'create_visualization': {
-        const panels = (msg.panels || []).map((p, i) => ({
-          id: p.id || p.renderer + '_' + i,
-          renderer: p.renderer,
-          props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
-        }));
-        console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
-        dispatch({ type: 'SET_VIZ_PANELS', panels });
+        // Only update viz panels if panels array is non-empty — empty array would destroy existing viz
+        if (msg.panels && msg.panels.length > 0) {
+          const panels = msg.panels.map((p, i) => ({
+            id: p.id || p.renderer,
+            renderer: p.renderer,
+            props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
+          }));
+          console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
+          dispatch({ type: 'SET_VIZ_PANELS', panels });
+        } else {
+          console.log('[State] create_visualization with empty panels — keeping existing viz');
+        }
         if (msg.context_panels) {
           dispatch({ type: 'SET_CONTEXT_PANELS', panels: msg.context_panels });
         }

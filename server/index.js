@@ -49,7 +49,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
-const FREE_SESSION_LIMIT = 50;
+const FREE_SESSION_LIMIT = 500;
 
 const sessions = new Map();
 const sessionsByUserId = new Map();

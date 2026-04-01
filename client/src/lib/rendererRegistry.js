@@ -35,21 +35,19 @@ export function unregisterRenderer(name) {
 }
 
 export function applyAction(action) {
-  const renderer = renderers[action.renderer];
+  const { renderer: rendererName, action: actionType, ...params } = action;
+  const renderer = renderers[rendererName];
   if (!renderer) {
     // Buffer action for later when the renderer registers
-    if (!pendingActions[action.renderer]) {
-      pendingActions[action.renderer] = [];
+    if (!pendingActions[rendererName]) {
+      pendingActions[rendererName] = [];
     }
-    pendingActions[action.renderer].push({
-      action: action.action,
-      params: action.params,
-    });
-    console.log(`[Registry] Buffered action for unregistered renderer '${action.renderer}': ${action.action}`, action.params);
+    pendingActions[rendererName].push({ action: actionType, params });
+    console.log(`[Registry] Buffered action for unregistered renderer '${rendererName}': ${actionType}`, params);
     return;
   }
-  console.log(`[Registry] Applying action to '${action.renderer}': ${action.action}`, action.params);
-  renderer.apply(action.action, action.params);
+  console.log(`[Registry] Applying action to '${rendererName}': ${actionType}`, params);
+  renderer.apply(actionType, params);
 }
 
 export function applyActions(actions) {

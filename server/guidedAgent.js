@@ -10,7 +10,8 @@ import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDef
 import { layoutGrid, autoLayout } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
-import { planVisualization } from './vizPlanner.js';
+import { buildExampleGraph } from './graphBuilder.js';
+import { adviseRenderer } from './rendererAdvisor.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
 // Build algorithm list dynamically from registry
@@ -138,7 +139,8 @@ ALGORITHM EXECUTION MODE (existing flow):
 MODELING MODE (LP, reductions, duality):
   Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
   After classify_problem, a Formulation panel is auto-configured with placeholder lines
-  (Variables, Objective, Constraints). Use emit_segment with viz_actions
+  (Variables, Objective, Constraints). If run_solver has completed, call
+  advise_renderer for a viz recommendation. Use emit_segment with viz_actions
   (renderer:"context", action:"update") to fill in panel content as the student works.
 
   Follow the Modeling Template:
@@ -166,6 +168,7 @@ MODELING MODE (LP, reductions, duality):
 
 GREEDY DESIGN MODE:
   After classify_problem, Greedy Rule and Proof Skeleton panels are auto-configured.
+  If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
   1. RULE — Guide student to propose the greedy criterion (student-produces)
@@ -188,6 +191,7 @@ GREEDY DESIGN MODE:
 
 DP DESIGN MODE:
   After classify_problem, DP Definition and Recurrence panels are auto-configured.
+  If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
   1. SUBPROBLEM — "What does dp[i] (or dp[i][j]) represent?" (student-produces)
@@ -203,24 +207,18 @@ DP DESIGN MODE:
 
 DIVIDE-AND-CONQUER MODE:
   After classify_problem, D&C Structure and Recurrence context panels are auto-configured.
-  No visualization renderer is pre-created — you choose what fits the problem.
+  No visualization renderer is pre-created.
 
-  VISUALIZATION CHOICE:
+  FIRST: If run_solver has completed, call advise_renderer to get a viz
+  recommendation. Follow its renderer choice, timing, and stage plan.
+  If the solver hasn't completed or the planner fails, choose yourself:
   - RECURRENCE TREE: If the problem has a clean T(n) = aT(n/b) + O(n^d) recurrence,
     call create_visualization with panels:[{renderer:"recursion_tree"}]. Then use
-    set_recurrence_tree({a, b, d, n: 16}) via viz_actions to populate it. Walk through
-    with reveal_level, highlight_level, show_master_case, set_cumulative.
-  - DECISION/CASE TREE: If the key insight is case analysis or branching logic
-    (e.g. different outcomes of a test lead to different algorithm paths), call
-    create_visualization with panels:[{renderer:"graph"}]. Then use update_graph to
-    incrementally build a top-down decision tree: nodes are algorithm states, edges
-    are labeled with conditions (use weight field for edge labels). autoLayout will
-    arrange it hierarchically.
-  - NO VIZ: If the problem is purely structural/proof-based and no visual adds value,
-    skip visualization — use the context panels only.
-
-  IMPORTANT: If the student states a recurrence in their intake response, create the
-  recursion tree immediately — don't wait for stage 4.
+    set_recurrence_tree({a, b, d, n: 16}) via viz_actions to populate it.
+  - DECISION/CASE TREE: If case analysis or branching logic is the key insight,
+    call create_visualization with panels:[{renderer:"graph"}]. Use update_graph to
+    build a top-down decision tree (nodes=states, edges labeled via weight field).
+  - NO VIZ: If purely structural/proof-based, skip visualization.
 
   D&C STAGES:
   1. SPLIT — How to divide the input
@@ -233,17 +231,21 @@ DIVIDE-AND-CONQUER MODE:
      d. set_cumulative({level}) to show running total
 
 RUNTIME / ASYMPTOTICS MODE:
-  After classify_problem, a Runtime Analysis panel and recursion_tree renderer are auto-configured.
+  After classify_problem, a Runtime Analysis context panel is auto-configured (no renderer yet).
   Use emit_segment viz_actions (renderer:"context", action:"update") to fill the panel.
 
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method applies (Master theorem, substitution, recursion tree)
   3. If using recursion tree method or Master Theorem:
-     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
-     b. Walk through levels progressively with reveal_level and highlight_level
-     c. Use show_master_case to apply the color gradient showing which levels dominate
-     d. Use set_cumulative to show the total work sum
-     e. Use add_level_annotation to annotate specific levels with custom formulas
+     FIRST guide the student to identify a, b, d. THEN, once you have the values,
+     call create_visualization with panels:[{renderer:"recursion_tree"}] AND in the
+     SAME emit_segment include set_recurrence_tree({a, b, d, n: 16}) via viz_actions.
+     This ensures the tree appears already populated — never show an empty tree.
+     After creating:
+     a. Walk through levels progressively with reveal_level and highlight_level
+     b. Use show_master_case to apply the color gradient showing which levels dominate
+     c. Use set_cumulative to show the total work sum
+     d. Use add_level_annotation to annotate specific levels with custom formulas
   4. Use concrete values to build intuition
 
 HANDLING STUDENT MESSAGES:
@@ -649,8 +651,15 @@ CONFIDENCE CALIBRATION:
 - Revised model → teach the revision: "I initially thought X, but that misses Y."
 - Unverified assumptions → use hedged language.
 
-VISUALIZATION PLANNING (problem flow only):
-After run_solver succeeds, call plan_visualization with the problem text.
+VISUALIZATION PLANNING:
+  CRITICAL: Use the correct planner for the mode:
+  - algorithm_execution → ALWAYS call build_example_graph (builds concrete example graphs)
+  - design/proof modes (modeling, greedy_design, dp_design, dc_design, runtime) → call advise_renderer
+  NEVER call advise_renderer for algorithm_execution mode. It will return null
+  because it's not designed to construct example graphs. build_example_graph handles that.
+
+ALGORITHM VISUALIZATION (algorithm_execution mode):
+After run_solver succeeds, call build_example_graph with the problem text.
 The planner returns:
 - panels: initial visualization layout with pre-built graphs
 - algorithm_runs: algorithms to run on the initial graph
@@ -666,14 +675,14 @@ Workflow:
 6. Continue narrating the transformed graph
 
 GRAPH VARIANTS (transformation problems):
-When plan_visualization returns graph_variants, the planner has pre-built transformed
+When build_example_graph returns graph_variants, the planner has pre-built transformed
 graphs. Do NOT construct these graphs manually. Instead:
 - Narrate the transformation conceptually first ("Now we transform G into G' where...")
 - Call create_graph with variant_id to swap the visualization
 - Run the variant's algorithm_runs
 - Continue narrating on the new graph
 
-If plan_visualization fails, fall back to constructing the visualization manually.
+If build_example_graph fails, fall back to constructing the visualization manually.
 
 MULTI-GRAPH COMPARISON (when the planner returns multiple graph panels):
 - Each panel has a unique ID (e.g., "graph_left", "graph_right")
@@ -910,14 +919,28 @@ const guidedTools = [
     },
   },
   {
-    name: 'plan_visualization',
-    description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
+    name: 'build_example_graph',
+    description: 'Plan the visualization layout for an algorithm_execution problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner constructs a concrete example graph even if the problem is abstract. IMPORTANT: For algorithm_execution mode, ALWAYS use this tool — never use advise_renderer.',
     input_schema: {
       type: 'object',
       properties: {
         problem_text: {
           type: 'string',
           description: 'The problem text being explained',
+        },
+      },
+      required: ['problem_text'],
+    },
+  },
+  {
+    name: 'advise_renderer',
+    description: 'Plan visualization for NON-EXECUTION modes only (D&C, DP, greedy, modeling, runtime). NEVER call this for algorithm_execution mode — use build_example_graph instead. Call AFTER classify_problem and AFTER run_solver completes. Returns renderer recommendation and stage-by-stage viz plan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        problem_text: {
+          type: 'string',
+          description: 'The problem text being worked on',
         },
       },
       required: ['problem_text'],
@@ -1021,9 +1044,10 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   const ws = liveWs(session);
   sendJSON(ws, { type: 'guided_start', problemText });
 
-  // Store image data on session so the solver can access it later
+  // Store image and problem text on session so solver/planner can access them
   session.imageBase64 = imageBase64 || null;
   session.imageMimeType = imageMimeType || null;
+  session._problemText = problemText || '';
 
   const userContent = [];
   if (imageBase64 && imageMimeType) {
@@ -1251,7 +1275,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         run_solver: 'Analyzing sub-problem...',
         run_solver_batch: 'Analyzing problems...',
         switch_part: 'Switching to next part...',
-        plan_visualization: 'Planning visualization',
+        build_example_graph: 'Designing layout...',
+        advise_renderer: 'Planning visualization...',
       };
 
       for (const block of response.content) {
@@ -1294,7 +1319,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
               : plan.reasoning_mode === 'dc_design'
               ? `Classification accepted: DIVIDE-AND-CONQUER MODE. Context panels (dc_structure, recurrence) are auto-configured. No visualization renderer is pre-created — choose one based on the problem: (A) If the problem has a clean recurrence T(n)=aT(n/b)+O(n^d), call create_visualization with panels:[{renderer:"recursion_tree"}], then use set_recurrence_tree({a, b, d, n:16}) via viz_actions to populate it. Do this as soon as you know a, b, d — even if learned early from intake. (B) If the problem involves case analysis or branching logic (e.g. different test outcomes lead to different paths), call create_visualization with panels:[{renderer:"graph"}], then use update_graph to build a decision tree (nodes=states, edges labeled with conditions via weight field). (C) If no visualization adds value, skip it. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) analyze runtime.`
-              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A recursion_tree renderer is auto-configured. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, use set_recurrence_tree to visualize the recursion tree.`;
+              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A Runtime Analysis context panel is auto-configured (no renderer yet). Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, FIRST guide the student to identify a, b, d, THEN call create_visualization with panels:[{renderer:"recursion_tree"}] and IMMEDIATELY populate it with set_recurrence_tree({a, b, d, n:16}) in the same emit_segment. Never create an empty recursion tree.`;
 
             // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
             if (plan.reasoning_mode !== 'algorithm_execution') {
@@ -1743,9 +1768,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               };
             }
           }
-        } else if (block.name === 'plan_visualization') {
+        } else if (block.name === 'build_example_graph') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          const plan = await planVisualization(
+          const plan = await buildExampleGraph(
             block.input.problem_text,
             solverResult,
             statusCb,
@@ -1781,6 +1806,58 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.graph_variants ? Object.keys(plan.graph_variants).length + ' graph variant(s) available.' : ''} ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run. To swap graphs mid-lesson, call create_graph with variant_id.`
               : 'Viz planning failed. Construct visualization manually.',
           };
+        } else if (block.name === 'advise_renderer') {
+          if (!solverResult?.success) {
+            result = {
+              success: false,
+              message: 'Solver has not completed yet. Skip visualization planning and use your judgment — create visualization manually when you know what fits the problem.',
+            };
+          } else {
+            const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+            const dvPlan = await adviseRenderer(
+              block.input.problem_text,
+              solverResult,
+              session.reasoningMode,
+              statusCb,
+              session.imageBase64,
+              session.imageMimeType,
+              session.anthropicClient,
+            );
+            if (session.endSessionFlag) throw new Error('__end_session__');
+
+            if (dvPlan.success) {
+              let dvMsg = `Viz plan: renderer=${dvPlan.renderer || 'none'}, create_at=${dvPlan.create_at_stage}. ${dvPlan.reasoning}`;
+              if (dvPlan.recurrence_params) {
+                const { a, b, d } = dvPlan.recurrence_params;
+                dvMsg += `\nRecurrence pre-computed: a=${a}, b=${b}, d=${d}. When you reach the recurrence stage, call create_visualization with panels:[{renderer:"recursion_tree"}], then immediately emit set_recurrence_tree({a:${a}, b:${b}, d:${d}, n:16}) via viz_actions.`;
+              }
+              if (dvPlan.renderer && dvPlan.create_at_stage === 'immediately') {
+                dvMsg += `\nCall create_visualization now with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              } else if (dvPlan.renderer && dvPlan.create_at_stage !== 'never') {
+                dvMsg += `\nDo NOT create visualization yet — wait until the "${dvPlan.create_at_stage}" stage, then call create_visualization with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              }
+              if (dvPlan.viz_stages?.length > 0) {
+                dvMsg += '\nStage plan:';
+                for (const s of dvPlan.viz_stages) {
+                  dvMsg += `\n  - ${s.stage}: ${s.description}`;
+                }
+              }
+              result = {
+                success: true,
+                renderer: dvPlan.renderer,
+                create_at_stage: dvPlan.create_at_stage,
+                viz_stages: dvPlan.viz_stages || [],
+                recurrence_params: dvPlan.recurrence_params,
+                extra_context_panels: dvPlan.extra_context_panels || [],
+                message: dvMsg,
+              };
+            } else {
+              result = {
+                success: false,
+                message: 'Design viz planning failed. Use your judgment — see mode-specific instructions for visualization choices. Default to no visualization rather than an empty one.',
+              };
+            }
+          }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
         } else if (block.name === 'suggest_independent_work') {

@@ -152,24 +152,31 @@ function reducer(state, action) {
         ],
       };
 
-    case 'SET_CONTEXT_PANELS':
-      return {
-        ...state,
-        contextPanels: action.panels.map((p) => ({
-          id: p.id,
-          type: p.type,
-          title: p.title,
-          data: p.initial_data || {},
-        })),
-      };
+    case 'SET_CONTEXT_PANELS': {
+      const incoming = action.panels.map((p) => ({
+        id: p.id,
+        type: p.type,
+        title: p.title,
+        data: p.initial_data || {},
+      }));
+      // Merge: keep existing panels not in the incoming set so a second
+      // create_visualization (e.g. from run_algorithm) doesn't wipe panels
+      // already set up by applyClassification (e.g. the formulation panel).
+      const incomingIds = new Set(incoming.map(p => p.id));
+      const kept = state.contextPanels.filter(p => !incomingIds.has(p.id));
+      return { ...state, contextPanels: [...kept, ...incoming] };
+    }
 
-    case 'UPDATE_CONTEXT_PANEL':
+    case 'UPDATE_CONTEXT_PANEL': {
+      const found = state.contextPanels.some(p => p.id === action.panel_id);
+      if (!found) console.warn(`[State] UPDATE_CONTEXT_PANEL: panel '${action.panel_id}' not found (ids: ${state.contextPanels.map(p => p.id).join(', ')})`);
       return {
         ...state,
         contextPanels: state.contextPanels.map((p) =>
           p.id === action.panel_id ? { ...p, data: { ...p.data, ...action.data } } : p
         ),
       };
+    }
 
     case 'APPEND_CONTEXT_LOG':
       return {

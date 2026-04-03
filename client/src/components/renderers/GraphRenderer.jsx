@@ -329,8 +329,10 @@ const liveCyInstances = new Map();
 
 function applyGraphAction(cy, action, params) {
   if (!cy) return;
-  // Convert the unified format to the legacy format that applyVizActions expects
-  const legacyAction = { action, ...params };
+  // Unwrap nested params (agent sends { renderer, action, params: { ... } },
+  // registry destructures to params = { params: { ... } })
+  const flatParams = params.params || params;
+  const legacyAction = { action, ...flatParams };
   applyVizActions(cy, [legacyAction]);
 }
 

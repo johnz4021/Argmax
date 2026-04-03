@@ -537,7 +537,7 @@ function attachHandlers(ws, session) {
         if (session.ws.readyState === 1) {
           session.ws.send(JSON.stringify({ type: 'session_ended' }));
         }
-      }, 60000);
+      }, 15 * 60 * 1000); // 15 minutes — covers sleep, tab switching, network changes
     } else {
       // No active lesson — clean up immediately
       sessions.delete(session.id);

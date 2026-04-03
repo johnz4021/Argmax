@@ -38,6 +38,41 @@ export function sendBinary(ws, buffer) {
   }
 }
 
+// Validate agent-emitted viz_actions against the known graph.
+// Returns { valid, warnings } — invalid actions are stripped and reported back to the agent.
+function validateVizActions(actions, graph) {
+  const nodeIds = new Set(graph.nodes.map(n => n.id));
+  const availableNodes = [...nodeIds].join(', ');
+  const valid = [];
+  const warnings = [];
+
+  for (const action of actions) {
+    const act = action.action;
+    const p = action.params || action; // handle both flat and nested formats
+
+    let warn = null;
+    if (['highlight_node', 'mark_visited', 'mark_current', 'set_label'].includes(act)) {
+      const id = p.node;
+      if (id && !nodeIds.has(id)) warn = `${act}: node '${id}' not found (available: ${availableNodes})`;
+    } else if (['highlight_edge', 'update_edge_label'].includes(act)) {
+      const from = p.from, to = p.to;
+      if (from && !nodeIds.has(from)) warn = `${act}: node '${from}' not found (available: ${availableNodes})`;
+      else if (to && !nodeIds.has(to)) warn = `${act}: node '${to}' not found (available: ${availableNodes})`;
+    } else if (act === 'show_path') {
+      const path = p.path || [];
+      const bad = path.filter(id => !nodeIds.has(id));
+      if (bad.length > 0) warn = `show_path: nodes [${bad.join(', ')}] not found (available: ${availableNodes})`;
+    }
+
+    if (warn) {
+      warnings.push(warn);
+    } else {
+      valid.push(action);
+    }
+  }
+  return { valid, warnings };
+}
+
 /**
  * Restore saved graph state (original lesson graph) after an interrupt or Q&A example.
  * Replays all viz_actions that were emitted before the interrupt so the graph
@@ -381,7 +416,18 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
       // Merge any explicit viz_actions from agent (rare overrides / backward compat)
       if (input.viz_actions && input.viz_actions.length > 0) {
-        allVizActions.push(...input.viz_actions);
+        const graph = session.currentGraph;
+        if (graph?.nodes?.length > 0) {
+          const { valid, warnings } = validateVizActions(input.viz_actions, graph);
+          if (warnings.length > 0) {
+            console.warn('[Agent] viz_action validation warnings:', warnings);
+          }
+          allVizActions.push(...valid);
+          session._lastVizWarnings = warnings;
+        } else {
+          // No graph loaded yet — pass through (non-graph renderers like recursion_tree, table)
+          allVizActions.push(...input.viz_actions);
+        }
       }
 
       // Extract residual toggle actions and send as separate message
@@ -456,9 +502,14 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
 
+      const vizWarnings = session._lastVizWarnings || [];
+      session._lastVizWarnings = [];
+      const warningText = vizWarnings.length > 0
+        ? ` WARNING: ${vizWarnings.length} viz_action(s) dropped (invalid IDs): ${vizWarnings.join('; ')}`
+        : '';
       return {
         success: true,
-        message: 'Segment delivered. Narration played and animations applied.',
+        message: `Segment delivered. Narration played and animations applied.${warningText}`,
       };
     }
 

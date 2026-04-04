@@ -49,7 +49,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = process.env.PORT || 3001;
 
-const FREE_SESSION_LIMIT = 50;
+const FREE_SESSION_LIMIT = 500;
 
 const sessions = new Map();
 const sessionsByUserId = new Map();
@@ -537,7 +537,7 @@ function attachHandlers(ws, session) {
         if (session.ws.readyState === 1) {
           session.ws.send(JSON.stringify({ type: 'session_ended' }));
         }
-      }, 60000);
+      }, 15 * 60 * 1000); // 15 minutes — covers sleep, tab switching, network changes
     } else {
       // No active lesson — clean up immediately
       sessions.delete(session.id);

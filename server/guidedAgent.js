@@ -4,13 +4,13 @@ import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
 import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
-import { treeToPromptText } from './classificationTree.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDefaults.js';
 import { layoutGrid, autoLayout } from './graphLayout.js';
 import { RENDERER_MANIFEST, buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
-import { planVisualization } from './vizPlanner.js';
+import { buildExampleGraph } from './graphBuilder.js';
+import { adviseRenderer } from './rendererAdvisor.js';
 import { saveMessage, saveAgentState, completeConversation } from './db.js';
 
 // Build algorithm list dynamically from registry
@@ -24,7 +24,7 @@ const MAX_API_CALLS_PER_SESSION = 150;
 
 const GUIDED_SYSTEM_PROMPT = `You are Argmax, an expert algorithm tutor. A student has pasted a problem and you will guide them through solving it via conversation.
 
-YOUR ROLE: Have a natural back-and-forth dialogue with the student to classify the problem, optionally refresh them on the algorithm, then build the algorithm input together incrementally.
+YOUR ROLE: Have a natural back-and-forth dialogue with the student, then teach them the algorithm using Socratic method and interactive visualization.
 
 SCOPE CONSTRAINT:
 - You ONLY help with algorithm and data structures problems from the list below.
@@ -35,9 +35,6 @@ SCOPE CONSTRAINT:
 
 AVAILABLE ALGORITHMS (this is your HARD BOUNDARY):
 ${buildAlgorithmList()}
-
-CLASSIFICATION TREE (use this to guide your send_options questions):
-${treeToPromptText()}
 
 REQUEST TYPE DETECTION:
 First, determine if the student's input is:
@@ -54,18 +51,17 @@ If (B) CONCRETE PROBLEM: Follow the CONVERSATIONAL FLOW below (existing stages).
 CONCEPT FLOW (for concept/general explanation requests):
 1. Acknowledge what the student wants to learn (1 segment via emit_segment).
 2. Identify the closest algorithm from the AVAILABLE ALGORITHMS list.
-3. Call classify_problem with the appropriate reasoning_mode and algorithm.
-4. Construct a small, pedagogically useful example input yourself:
+3. Construct a small, pedagogically useful example input yourself:
    - For graph algorithms: 5-7 nodes with meaningful weights/capacities.
    - For sorting/searching: a small array (6-10 elements).
    - For DP: a small instance (e.g., small knapsack, short strings for LCS).
    - Make the example exercise the algorithm's key behaviors (not a trivial case).
-5. Set up the visualization and call run_algorithm on the constructed example.
-6. Walk through the trace interactively — still use the Socratic approach:
+4. Set up the visualization and call run_algorithm on the constructed example.
+5. Walk through the trace interactively — still use the Socratic approach:
    ask the student what they think happens at key steps, use comprehension
    gates on critical concepts, respect the monologue cap.
-7. Summarize key ideas, time complexity, and when to use this algorithm.
-8. Call lesson_complete.
+6. Summarize key ideas, time complexity, and when to use this algorithm.
+7. Call lesson_complete.
 
 Do NOT call run_solver or run_solver_batch for concept requests — there is no problem to solve.
 Do NOT use send_options for sub-problem selection — there are no sub-problems.
@@ -85,37 +81,29 @@ STAGE -1 — SUB-PROBLEM SELECTION (if multi-part problem):
     Proceed to STAGE 0 with that part as the focus.
   If the problem is a single question (no parts), call run_solver with the full problem text
   and proceed directly to STAGE 0.
-  IMPORTANT: Always call run_solver or run_solver_batch before classify_problem. You need the solver's
-  north star to guide effectively.
-  If the solver returns pending: true, proceed to STAGE 0 without the north star. Begin
-  classifying the problem with the student. When the solver completes, a [SOLVER COMPLETE]
-  message will appear — incorporate the solution context seamlessly from that point.
 
-STAGE 0 — REASONING MODE (1-2 exchanges):
-  Before classifying an algorithm, determine WHAT TYPE OF REASONING the problem requires.
-  Use send_options with the top-level classification tree question.
+STAGE 0 — INTAKE + SOLVER:
+  FIRST, ask the student ONE open-ended intake question via conversational_reply
+  (NOT send_options):
+  "Before we dive in — what have you tried so far on this problem? Even partial
+  ideas or approaches you considered are helpful. If you haven't started yet,
+  that's totally fine — just let me know."
 
-  Modes:
-  - algorithm_execution → existing flow (classify algorithm → refresh → reduce → run)
-  - modeling → Modeling Template flow (see below)
-  - greedy_design → Greedy Design flow
-  - dp_design → DP Design flow
-  - dc_design → Divide-and-Conquer flow
-  - runtime → Runtime Analysis flow
+  THEN call run_solver with the sub-problem text. run_solver is BLOCKING — it will
+  return with the full solution AND pre-determined classification (reasoning_mode,
+  target_algorithm). Once it returns, classification is complete — proceed directly
+  to mode-specific teaching without asking classification questions.
 
-  Call classify_problem with the reasoning_mode once determined.
+  Use the student's intake response to calibrate teaching, not to classify:
+  - "Nothing" / "haven't started" → begin from the start of the mode flow.
+  - Partial approach described → acknowledge what's right, skip stages they've covered.
+  - Stuck at a specific point → skip to that stage, acknowledge what they got right.
+  - Wrong approach described → gently identify the divergence before teaching the correct path.
+  - Student pastes code → read it, assess correctness, use it to determine where they are.
 
-STAGE 0.5 — CALIBRATION (1 exchange, after STAGE 0, before diving in):
-  After determining the reasoning mode but BEFORE starting the mode-specific flow,
-  ask ONE open-ended diagnostic question via conversational_reply (NOT send_options)
-  to gauge the student's familiarity with the relevant concepts.
-  Examples:
-  - "Before we dive in — in your own words, what does [key concept] mean?"
-  - "What's your intuition for why this might be a [algorithm type] problem?"
-  - "Have you seen problems like this before? What approach comes to mind?"
-  Use the student's answer to calibrate depth: skip basics if they're strong,
-  slow down and scaffold more if they're uncertain. This MUST be a free-response
-  question — do not offer multiple choice here.
+  You may ask "what algorithm do you think applies here?" as a Socratic TEACHING MOMENT,
+  but the student's answer does NOT determine the mode — classification is pre-determined
+  by the solver. Use their answer only to understand their current mental model.
 
 ALGORITHM EXECUTION MODE (existing flow):
   1. CLASSIFY algorithm (2-4 exchanges using the algorithm subtree)
@@ -125,7 +113,8 @@ ALGORITHM EXECUTION MODE (existing flow):
 MODELING MODE (LP, reductions, duality):
   Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
   After classify_problem, a Formulation panel is auto-configured with placeholder lines
-  (Variables, Objective, Constraints). Use emit_segment with viz_actions
+  (Variables, Objective, Constraints). If run_solver has completed, call
+  advise_renderer for a viz recommendation. Use emit_segment with viz_actions
   (renderer:"context", action:"update") to fill in panel content as the student works.
 
   Follow the Modeling Template:
@@ -153,6 +142,7 @@ MODELING MODE (LP, reductions, duality):
 
 GREEDY DESIGN MODE:
   After classify_problem, Greedy Rule and Proof Skeleton panels are auto-configured.
+  If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
   1. RULE — Guide student to propose the greedy criterion (student-produces)
@@ -175,6 +165,7 @@ GREEDY DESIGN MODE:
 
 DP DESIGN MODE:
   After classify_problem, DP Definition and Recurrence panels are auto-configured.
+  If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
   1. SUBPROBLEM — "What does dp[i] (or dp[i][j]) represent?" (student-produces)
@@ -189,32 +180,46 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
-  After classify_problem, a D&C Structure panel and recursion_tree renderer are auto-configured.
-  The D&C Structure panel has placeholders (Split, Subproblems, Combine, T(n)).
-  A Recurrence panel is also available. Use emit_segment viz_actions to fill them.
+  After classify_problem, D&C Structure and Recurrence context panels are auto-configured.
+  No visualization renderer is pre-created.
 
+  FIRST: If run_solver has completed, call advise_renderer to get a viz
+  recommendation. Follow its renderer choice, timing, and stage plan.
+  If the solver hasn't completed or the planner fails, choose yourself:
+  - RECURRENCE TREE: If the problem has a clean T(n) = aT(n/b) + O(n^d) recurrence,
+    call create_visualization with panels:[{renderer:"recursion_tree"}]. Then use
+    set_recurrence_tree({a, b, d, n: 16}) via viz_actions to populate it.
+  - DECISION/CASE TREE: If case analysis or branching logic is the key insight,
+    call create_visualization with panels:[{renderer:"graph"}]. Use update_graph to
+    build a top-down decision tree (nodes=states, edges labeled via weight field).
+  - NO VIZ: If purely structural/proof-based, skip visualization.
+
+  D&C STAGES:
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
-  4. RECURRENCE — Write T(n) = aT(n/b) + O(n^d) and solve it using the recursion tree:
-     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree visualization
-     b. Walk through levels with reveal_level({level: 0}), reveal_level({level: 1}), ...
-     c. At each level, use highlight_level({level}) to show work distribution
-     d. Use show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"}) to reveal which MT case applies
-     e. Use set_cumulative({level}) to show the running total of work through that level
+  4. RECURRENCE — Analyze runtime. If using recursion tree:
+     a. reveal_level({level: 0}), reveal_level({level: 1}), ... to show levels
+     b. highlight_level({level}) to show work distribution
+     c. show_master_case({case: "balanced"|"root_heavy"|"leaf_heavy"})
+     d. set_cumulative({level}) to show running total
 
 RUNTIME / ASYMPTOTICS MODE:
-  After classify_problem, a Runtime Analysis panel and recursion_tree renderer are auto-configured.
+  After classify_problem, a Runtime Analysis context panel is auto-configured (no renderer yet).
   Use emit_segment viz_actions (renderer:"context", action:"update") to fill the panel.
 
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method applies (Master theorem, substitution, recursion tree)
   3. If using recursion tree method or Master Theorem:
-     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
-     b. Walk through levels progressively with reveal_level and highlight_level
-     c. Use show_master_case to apply the color gradient showing which levels dominate
-     d. Use set_cumulative to show the total work sum
-     e. Use add_level_annotation to annotate specific levels with custom formulas
+     FIRST guide the student to identify a, b, d. THEN, once you have the values,
+     call create_visualization with panels:[{renderer:"recursion_tree"}] AND in the
+     SAME emit_segment include set_recurrence_tree({a, b, d, n: 16}) via viz_actions.
+     This ensures the tree appears already populated — never show an empty tree.
+     After creating:
+     a. Walk through levels progressively with reveal_level and highlight_level
+     b. Use show_master_case to apply the color gradient showing which levels dominate
+     c. Use set_cumulative to show the total work sum
+     d. Use add_level_annotation to annotate specific levels with custom formulas
   4. Use concrete values to build intuition
 
 HANDLING STUDENT MESSAGES:
@@ -537,6 +542,41 @@ COMPREHENSION GATES:
   5. Track gated concepts internally. Do not move to the next stage of the problem
      until all critical_concepts for the current stage have been gated.
 
+HANDOFF POLICY — "GO TRY IT" MOMENTS:
+  At the KEY INSIGHT POINT of each mode, consider handing the student off to
+  work independently using suggest_independent_work. The key insight point is
+  where the creative/conceptual work ends and the mechanical/executable work
+  begins:
+
+  - modeling → after variables + constraints are framed → hand off formal write-up
+  - algorithm_execution → after algorithm identified + canonical refresh → hand off reduction/run
+  - dp_design → after recurrence identified → hand off base cases + order + runtime
+  - greedy_design → after greedy rule identified → hand off proof structure
+  - dc_design → after split/combine strategy identified → hand off recurrence + analysis
+  - runtime → after method identified (Master Thm, etc.) → hand off computation
+  - NP-completeness → after reduction mapping established → hand off forward/backward directions
+
+  HAND OFF when ALL of these are true:
+  1. Student derived or understood the key insight (not just heard it passively)
+  2. Remaining work is mechanical — execution of a known pattern, not new reasoning
+  3. Student did NOT say in intake they're stuck on the remaining part
+  4. Student has NOT been struggling heavily (3+ wrong answers in current stage)
+
+  Do NOT hand off if:
+  - Student explicitly asked to be walked through everything
+  - Student's intake indicated they're stuck on exactly the remaining work
+  - Student has been struggling — they need more scaffolding, not independence
+  - The remaining work requires new conceptual leaps (not just execution)
+
+  The checkpoint_summary should reference what's in the formulation panel.
+  The task_description should be specific and actionable.
+  Hints should each unlock one step without revealing the answer.
+
+  When the student returns:
+  - Correct attempt → praise, update formulation panel, lesson_complete
+  - Partially correct → acknowledge right parts, guide the gap (don't redo everything)
+  - Wrong → identify specific error, nudge, optionally hand off again or continue guided
+  - "Keep guiding me" → continue walkthrough from the next step, no judgment
 
 TOOL USAGE FOR NON-EXECUTION MODES:
 
@@ -585,8 +625,15 @@ CONFIDENCE CALIBRATION:
 - Revised model → teach the revision: "I initially thought X, but that misses Y."
 - Unverified assumptions → use hedged language.
 
-VISUALIZATION PLANNING (problem flow only):
-After run_solver succeeds, call plan_visualization with the problem text.
+VISUALIZATION PLANNING:
+  CRITICAL: Use the correct planner for the mode:
+  - algorithm_execution → ALWAYS call build_example_graph (builds concrete example graphs)
+  - design/proof modes (modeling, greedy_design, dp_design, dc_design, runtime) → call advise_renderer
+  NEVER call advise_renderer for algorithm_execution mode. It will return null
+  because it's not designed to construct example graphs. build_example_graph handles that.
+
+ALGORITHM VISUALIZATION (algorithm_execution mode):
+After run_solver succeeds, call build_example_graph with the problem text.
 The planner returns:
 - panels: initial visualization layout with pre-built graphs
 - algorithm_runs: algorithms to run on the initial graph
@@ -602,14 +649,14 @@ Workflow:
 6. Continue narrating the transformed graph
 
 GRAPH VARIANTS (transformation problems):
-When plan_visualization returns graph_variants, the planner has pre-built transformed
+When build_example_graph returns graph_variants, the planner has pre-built transformed
 graphs. Do NOT construct these graphs manually. Instead:
 - Narrate the transformation conceptually first ("Now we transform G into G' where...")
 - Call create_graph with variant_id to swap the visualization
 - Run the variant's algorithm_runs
 - Continue narrating on the new graph
 
-If plan_visualization fails, fall back to constructing the visualization manually.
+If build_example_graph fails, fall back to constructing the visualization manually.
 
 MULTI-GRAPH COMPARISON (when the planner returns multiple graph panels):
 - Each panel has a unique ID (e.g., "graph_left", "graph_right")
@@ -644,62 +691,6 @@ SEGMENT BUDGETING:
 // Tools specific to guided mode
 const guidedTools = [
   ...tools,
-  {
-    name: 'classify_problem',
-    description:
-      'Called after classifying the student\'s problem through conversation. Records which algorithm to use and the internal model contract (kept internal, not shown to student).',
-    input_schema: {
-      type: 'object',
-      properties: {
-        reasoning_mode: {
-          type: 'string',
-          enum: ['algorithm_execution', 'modeling', 'greedy_design', 'dp_design', 'dc_design', 'runtime'],
-          description: 'The type of reasoning this problem requires',
-        },
-        is_in_scope: {
-          type: 'boolean',
-          description: 'Whether the problem maps to an available algorithm',
-        },
-        target_algorithm: {
-          type: 'string',
-          description: 'Algorithm ID from registry (e.g., "dijkstra", "knapsack"), or "out_of_scope". Required for algorithm_execution mode.',
-        },
-        closest_algorithm: {
-          type: 'string',
-          description: 'If out of scope or non-execution mode, the closest available algorithm for context',
-        },
-        problem_summary: {
-          type: 'string',
-          description: 'One-sentence summary of what the problem is asking',
-        },
-        key_insight: {
-          type: 'string',
-          description: 'The main modeling insight the student needs to discover',
-        },
-        critical_concepts: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'The 1-3 concepts the student MUST understand to solve this problem (e.g., "flow conservation", "LP relaxation"). These get comprehension-gated — the student must restate each in their own words before moving on.',
-        },
-        internal_model_contract: {
-          type: 'object',
-          description: 'Internal reasoning about the reduction — NOT shown to students',
-          properties: {
-            state_definition: { type: 'string' },
-            transition_rules: { type: 'string' },
-            cost_model: { type: 'string' },
-            feasibility_constraints: { type: 'string' },
-            assumptions_to_verify: {
-              type: 'array',
-              items: { type: 'string' },
-            },
-          },
-          required: ['state_definition', 'transition_rules', 'cost_model', 'feasibility_constraints', 'assumptions_to_verify'],
-        },
-      },
-      required: ['reasoning_mode', 'is_in_scope', 'problem_summary', 'key_insight', 'critical_concepts', 'internal_model_contract'],
-    },
-  },
   {
     name: 'show_canonical_example',
     description:
@@ -767,6 +758,29 @@ const guidedTools = [
     },
   },
   {
+    name: 'suggest_independent_work',
+    description: 'Hand the student off to work independently. Use this at the KEY INSIGHT POINT when the student has grasped the core concept and the remaining work is mechanical/executable. The student will leave, work on their own, and return with their attempt. They can also choose "Keep guiding me" to opt back into the walkthrough.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        checkpoint_summary: {
+          type: 'string',
+          description: 'What the student has established so far (2-3 sentences). This stays visible while they work.',
+        },
+        task_description: {
+          type: 'string',
+          description: 'What the student should go try (1-2 sentences). Be specific: "Write the forward and backward directions of the reduction" not "finish the proof".',
+        },
+        hints: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional hints the student can reveal if stuck (1-2 max). Each hint should unlock one next step without giving the answer.',
+        },
+      },
+      required: ['checkpoint_summary', 'task_description'],
+    },
+  },
+  {
     name: 'run_solver',
     description: 'Run the problem solver on a specific sub-problem to get a verified solution as your teaching north star. Call this AFTER identifying which part of the problem the student wants to work on. Pass the focused sub-problem text (not the entire homework).',
     input_schema: {
@@ -823,14 +837,28 @@ const guidedTools = [
     },
   },
   {
-    name: 'plan_visualization',
-    description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
+    name: 'build_example_graph',
+    description: 'Plan the visualization layout for an algorithm_execution problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner constructs a concrete example graph even if the problem is abstract. IMPORTANT: For algorithm_execution mode, ALWAYS use this tool — never use advise_renderer.',
     input_schema: {
       type: 'object',
       properties: {
         problem_text: {
           type: 'string',
           description: 'The problem text being explained',
+        },
+      },
+      required: ['problem_text'],
+    },
+  },
+  {
+    name: 'advise_renderer',
+    description: 'Plan visualization for NON-EXECUTION modes only (D&C, DP, greedy, modeling, runtime). NEVER call this for algorithm_execution mode — use build_example_graph instead. Call AFTER run_solver completes. Returns renderer recommendation and stage-by-stage viz plan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        problem_text: {
+          type: 'string',
+          description: 'The problem text being worked on',
         },
       },
       required: ['problem_text'],
@@ -895,6 +923,7 @@ function buildSolverContext(result) {
   let ctx = `
 
 ===== SOLVER CONTEXT (INTERNAL — NEVER REVEAL TO STUDENT) =====
+CLASSIFICATION: ${result.reasoning_mode?.toUpperCase() || 'UNKNOWN'} | ALGORITHM: ${result.target_algorithm || 'N/A'}
 OPTIMAL APPROACH: ${result.approach}
 COMPLEXITY: ${result.complexity}
 KEY INSIGHT: ${result.keyInsight}
@@ -917,6 +946,79 @@ RULES:
   return ctx;
 }
 
+/**
+ * Apply classification from a solver result (or any classify_problem-shaped object).
+ * Sets session state, auto-creates visualization panels for non-execution modes,
+ * and returns { success, message } for inclusion in a tool result.
+ * vizState = { vizActive, segmentsWithoutVizActions } — mutable refs updated in place.
+ */
+function applyClassification(plan, session, ws, vizState) {
+  session.sessionPlan = plan;
+  session.modelContract = plan.internal_model_contract;
+  session.reasoningMode = plan.reasoning_mode;
+  console.log(`[GuidedAgent] Classification: mode=${plan.reasoning_mode}, target=${plan.target_algorithm}, closest=${plan.closest_algorithm}, in_scope=${plan.is_in_scope}`);
+
+  const validAlgorithms = Object.keys(ALGORITHMS);
+  if (plan.reasoning_mode === 'algorithm_execution' && plan.is_in_scope && plan.target_algorithm && !validAlgorithms.includes(plan.target_algorithm)) {
+    return {
+      success: false,
+      error: `Unknown algorithm: ${plan.target_algorithm}. Available: ${validAlgorithms.join(', ')}`,
+    };
+  }
+
+  let message = plan.reasoning_mode === 'algorithm_execution'
+    ? (plan.is_in_scope
+      ? `Classification: algorithm_execution. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
+      : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
+    : plan.reasoning_mode === 'modeling'
+    ? `Classification: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
+    : plan.reasoning_mode === 'greedy_design'
+    ? `Classification: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
+    : plan.reasoning_mode === 'dp_design'
+    ? `Classification: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
+    : plan.reasoning_mode === 'dc_design'
+    ? `Classification: DIVIDE-AND-CONQUER MODE. Context panels (dc_structure, recurrence) are auto-configured. No visualization renderer is pre-created — choose one based on the problem: (A) If the problem has a clean recurrence T(n)=aT(n/b)+O(n^d), call create_visualization with panels:[{renderer:"recursion_tree"}], then use set_recurrence_tree({a, b, d, n:16}) via viz_actions to populate it. Do this as soon as you know a, b, d — even if learned early from intake. (B) If the problem involves case analysis or branching logic (e.g. different test outcomes lead to different paths), call create_visualization with panels:[{renderer:"graph"}], then use update_graph to build a decision tree (nodes=states, edges labeled with conditions via weight field). (C) If no visualization adds value, skip it. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) analyze runtime.`
+    : `Classification: RUNTIME/ASYMPTOTICS MODE. A Runtime Analysis context panel is auto-configured (no renderer yet). Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, FIRST guide the student to identify a, b, d, THEN call create_visualization with panels:[{renderer:"recursion_tree"}] and IMMEDIATELY populate it with set_recurrence_tree({a, b, d, n:16}) in the same emit_segment. Never create an empty recursion tree.`;
+
+  // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
+  if (plan.reasoning_mode !== 'algorithm_execution') {
+    const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
+    const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
+    let rendererType = algoInfo?.renderer || 'graph';
+    const algoLower = (targetAlgo || '').toLowerCase();
+    if (algoLower.includes('interval') || algoLower.includes('schedule') || algoLower.includes('machine') || algoLower.includes('job') || algoLower.includes('activity')) {
+      rendererType = 'interval';
+    }
+    console.log(`[GuidedAgent] Non-execution mode: targetAlgo=${targetAlgo}, algoInfo=${!!algoInfo}, rendererType=${rendererType}`);
+    const rendererDocs = buildRendererDocs([rendererType]);
+    message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
+
+    const modeDefaults = getModeDefaultPanels(plan.reasoning_mode);
+    if (modeDefaults) {
+      const autoRenderer = modeDefaults.renderer === null ? null : (modeDefaults.renderer || rendererType);
+      const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
+      sendJSON(ws, {
+        type: 'create_visualization',
+        panels,
+        context_panels: modeDefaults.context_panels,
+      });
+      if (autoRenderer && vizState) {
+        vizState.vizActive = true;
+        vizState.segmentsWithoutVizActions = 0;
+      }
+      const panelIds = modeDefaults.context_panels.map(p => p.id);
+      if (autoRenderer) {
+        message += `\n\nAUTO-CONFIGURED PANELS: Visualization created with renderer "${autoRenderer}" and context panels: ${panelIds.join(', ')}. Use emit_segment with viz_actions (renderer:"context", action:"update", params:{panel_id:"<id>", ...}) to fill in panel content as the student works through each step. Do NOT call create_visualization — it's already set up.`;
+      } else {
+        message += `\n\nAUTO-CONFIGURED PANELS: Context panels created: ${panelIds.join(', ')}. No visualization renderer was auto-created — call create_visualization yourself when you know what visualization fits this problem. Use renderer:"recursion_tree" for problems with clean T(n)=aT(n/b)+O(n^d) recurrences. Use renderer:"graph" for problems involving case analysis or branching logic (autoLayout will arrange it as a top-down tree). Or skip visualization entirely if the context panels are sufficient.`;
+      }
+      console.log(`[GuidedAgent] Auto-created visualization: renderer=${autoRenderer}, panels=${panelIds.join(', ')}`);
+    }
+  }
+
+  return { success: true, message };
+}
+
 export async function startGuidedSession(session, problemText, imageBase64, imageMimeType) {
   // Clear stale state from previous session
   resetTTSDisabled();
@@ -924,6 +1026,9 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   session.currentTrace = null;
   session.currentRenderer = null;
   session.currentAlgorithm = null;
+  session.sessionPlan = null;
+  session.reasoningMode = null;
+  session.modelContract = null;
   session.mapperState = {};
   session.graphs = {};
   session.traces = {};
@@ -934,9 +1039,10 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   const ws = liveWs(session);
   sendJSON(ws, { type: 'guided_start', problemText });
 
-  // Store image data on session so the solver can access it later
+  // Store image and problem text on session so solver/planner can access them
   session.imageBase64 = imageBase64 || null;
   session.imageMimeType = imageMimeType || null;
+  session._problemText = problemText || '';
 
   const userContent = [];
   if (imageBase64 && imageMimeType) {
@@ -950,7 +1056,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     : 'See the attached image for the problem the student wants to solve.';
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, check for multiple parts (use send_options if needed), call run_solver or run_solver_batch, then proceed to classification.`,
+    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, start with the STAGE 0 intake question to learn what the student has tried, then check for multiple parts (use send_options if needed), then call run_solver or run_solver_batch — classification is returned in the tool result, proceed directly to teaching.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];
@@ -1000,7 +1106,6 @@ export async function resumeGuidedSession(session, savedMessages, savedSolverRes
 async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolverResult, restoredBatchState) {
   const ws = liveWs(session);
   const myGeneration = session.runGeneration;
-  let sessionPlan = null;
   let emptyEndTurnCount = 0;
   let systemPrompt = initialSystemPrompt;
   let solverResult = initialSolverResult;
@@ -1010,8 +1115,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
   let activePart = restoredBatchState?.activePart || null;
   let selectedParts = restoredBatchState?.selectedParts || [];
 
-  let pendingSolverPromise = null;
-
+  // vizState is passed by ref to applyClassification so it can update these flags
+  const vizState = { vizActive: false, segmentsWithoutVizActions: 0 };
+  // Convenience aliases — keep using these locals throughout the loop
   let vizActive = false;
   let segmentsWithoutVizActions = 0;
 
@@ -1028,27 +1134,6 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       continue;
     }
     if (session.endSessionFlag || session.runGeneration !== myGeneration) throw new Error('__end_session__');
-
-    // Non-blocking check if background solver is done
-    if (pendingSolverPromise) {
-      const done = await Promise.race([
-        pendingSolverPromise.then(() => true),
-        Promise.resolve(false),
-      ]);
-      if (done) {
-        console.log(`[GuidedAgent] Solver promise resolved, solverResult.success=${solverResult?.success}`);
-        pendingSolverPromise = null;
-        if (solverResult?.success) {
-          console.log('[GuidedAgent] Injecting [SOLVER COMPLETE] message into conversation');
-          messages.push({
-            role: 'user',
-            content: '[SOLVER COMPLETE] Background solver finished. Use the solution context now available in your system prompt to guide the student.',
-          });
-        }
-      } else {
-        console.log('[GuidedAgent] Solver still running in background...');
-      }
-    }
 
     if (apiCallCount >= MAX_API_CALLS_PER_SESSION) {
       sendJSON(ws, { type: 'error', message: 'Session limit reached. Please start a new session.' });
@@ -1164,7 +1249,8 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         run_solver: 'Analyzing sub-problem...',
         run_solver_batch: 'Analyzing problems...',
         switch_part: 'Switching to next part...',
-        plan_visualization: 'Planning visualization',
+        build_example_graph: 'Designing layout...',
+        advise_renderer: 'Planning visualization...',
       };
 
       for (const block of response.content) {
@@ -1181,69 +1267,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
         let result;
 
-        if (block.name === 'classify_problem') {
-          const plan = block.input;
-          sessionPlan = plan;
-          session.modelContract = plan.internal_model_contract;
-          session.reasoningMode = plan.reasoning_mode;
-          console.log(`[GuidedAgent] classify_problem: reasoning_mode=${plan.reasoning_mode}, target=${plan.target_algorithm}, closest=${plan.closest_algorithm}, in_scope=${plan.is_in_scope}`);
-
-          const validAlgorithms = Object.keys(ALGORITHMS);
-          if (plan.reasoning_mode === 'algorithm_execution' && plan.is_in_scope && plan.target_algorithm && !validAlgorithms.includes(plan.target_algorithm)) {
-            result = {
-              success: false,
-              error: `Unknown algorithm: ${plan.target_algorithm}. Available: ${validAlgorithms.join(', ')}`,
-            };
-          } else {
-            let message = plan.reasoning_mode === 'algorithm_execution'
-              ? (plan.is_in_scope
-                ? `Classification accepted. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
-                : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
-              : plan.reasoning_mode === 'modeling'
-              ? `Classification accepted: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
-              : plan.reasoning_mode === 'greedy_design'
-              ? `Classification accepted: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
-              : plan.reasoning_mode === 'dp_design'
-              ? `Classification accepted: DP DESIGN MODE. Guide the student to: (1) define subproblem, (2) write recurrence, (3) identify base cases, (4) analyze runtime. Use expression panels for the recurrence.`
-              : plan.reasoning_mode === 'dc_design'
-              ? `Classification accepted: DIVIDE-AND-CONQUER MODE. A recursion_tree renderer is auto-configured. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) solve recurrence for runtime using set_recurrence_tree to visualize the recursion tree and Master Theorem case.`
-              : `Classification accepted: RUNTIME/ASYMPTOTICS MODE. A recursion_tree renderer is auto-configured. Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, use set_recurrence_tree to visualize the recursion tree.`;
-
-            // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
-            if (plan.reasoning_mode !== 'algorithm_execution') {
-              const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
-              const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
-              let rendererType = algoInfo?.renderer || 'graph';
-              // Detect interval/scheduling problems by keyword in target algorithm or problem context
-              const algoLower = (targetAlgo || '').toLowerCase();
-              if (algoLower.includes('interval') || algoLower.includes('schedule') || algoLower.includes('machine') || algoLower.includes('job') || algoLower.includes('activity')) {
-                rendererType = 'interval';
-              }
-              console.log(`[GuidedAgent] Non-execution mode: targetAlgo=${targetAlgo}, algoInfo=${!!algoInfo}, rendererType=${rendererType}`);
-              const rendererDocs = buildRendererDocs([rendererType]);
-              message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
-
-              // Auto-create visualization with mode-based preset panels
-              const modeDefaults = getModeDefaultPanels(plan.reasoning_mode);
-              if (modeDefaults) {
-                const autoRenderer = modeDefaults.renderer || rendererType;
-                const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
-                sendJSON(ws, {
-                  type: 'create_visualization',
-                  panels,
-                  context_panels: modeDefaults.context_panels,
-                });
-                vizActive = true;
-                segmentsWithoutVizActions = 0;
-                const panelIds = modeDefaults.context_panels.map(p => p.id);
-                message += `\n\nAUTO-CONFIGURED PANELS: Visualization created with renderer "${autoRenderer}" and context panels: ${panelIds.join(', ')}. Use emit_segment with viz_actions (renderer:"context", action:"update", params:{panel_id:"<id>", ...}) to fill in panel content as the student works through each step. Do NOT call create_visualization — it's already set up.`;
-                console.log(`[GuidedAgent] Auto-created visualization: renderer=${autoRenderer}, panels=${panelIds.join(', ')}`);
-              }
-            }
-
-            result = { success: true, message };
-          }
-        } else if (block.name === 'update_graph') {
+        if (block.name === 'update_graph') {
           // Incremental graph construction
           const input = block.input;
           if (!session.currentGraph) {
@@ -1650,9 +1674,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               };
             }
           }
-        } else if (block.name === 'plan_visualization') {
+        } else if (block.name === 'build_example_graph') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          const plan = await planVisualization(
+          const plan = await buildExampleGraph(
             block.input.problem_text,
             solverResult,
             statusCb,
@@ -1688,8 +1712,121 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.graph_variants ? Object.keys(plan.graph_variants).length + ' graph variant(s) available.' : ''} ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run. To swap graphs mid-lesson, call create_graph with variant_id.`
               : 'Viz planning failed. Construct visualization manually.',
           };
+        } else if (block.name === 'advise_renderer') {
+          if (!solverResult?.success) {
+            result = {
+              success: false,
+              message: 'Solver has not completed yet. Skip visualization planning and use your judgment — create visualization manually when you know what fits the problem.',
+            };
+          } else {
+            const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+            const dvPlan = await adviseRenderer(
+              block.input.problem_text,
+              solverResult,
+              session.reasoningMode,
+              statusCb,
+              session.imageBase64,
+              session.imageMimeType,
+              session.anthropicClient,
+            );
+            if (session.endSessionFlag) throw new Error('__end_session__');
+
+            if (dvPlan.success) {
+              let dvMsg = `Viz plan: renderer=${dvPlan.renderer || 'none'}, create_at=${dvPlan.create_at_stage}. ${dvPlan.reasoning}`;
+              if (dvPlan.recurrence_params) {
+                const { a, b, d } = dvPlan.recurrence_params;
+                dvMsg += `\nRecurrence pre-computed: a=${a}, b=${b}, d=${d}. When you reach the recurrence stage, call create_visualization with panels:[{renderer:"recursion_tree"}], then immediately emit set_recurrence_tree({a:${a}, b:${b}, d:${d}, n:16}) via viz_actions.`;
+              }
+              if (dvPlan.renderer && dvPlan.create_at_stage === 'immediately') {
+                dvMsg += `\nCall create_visualization now with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              } else if (dvPlan.renderer && dvPlan.create_at_stage !== 'never') {
+                dvMsg += `\nDo NOT create visualization yet — wait until the "${dvPlan.create_at_stage}" stage, then call create_visualization with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              }
+              if (dvPlan.viz_stages?.length > 0) {
+                dvMsg += '\nStage plan:';
+                for (const s of dvPlan.viz_stages) {
+                  dvMsg += `\n  - ${s.stage}: ${s.description}`;
+                }
+              }
+              result = {
+                success: true,
+                renderer: dvPlan.renderer,
+                create_at_stage: dvPlan.create_at_stage,
+                viz_stages: dvPlan.viz_stages || [],
+                recurrence_params: dvPlan.recurrence_params,
+                extra_context_panels: dvPlan.extra_context_panels || [],
+                message: dvMsg,
+              };
+            } else {
+              result = {
+                success: false,
+                message: 'Design viz planning failed. Use your judgment — see mode-specific instructions for visualization choices. Default to no visualization rather than an empty one.',
+              };
+            }
+          }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
+        } else if (block.name === 'suggest_independent_work') {
+          const { checkpoint_summary, task_description, hints } = block.input;
+
+          // Send independent work state to client
+          sendJSON(ws, {
+            type: 'independent_work',
+            checkpoint_summary,
+            task_description,
+            hints: hints || [],
+          });
+
+          // Wait for student to return with their attempt (no timeout — they come back when ready)
+          const iwResponsePromise = new Promise((resolve) => {
+            if (session.guidedResponse) { resolve(); return; }
+            if (session.pendingGuidedResponses?.length > 0) {
+              session.guidedResponse = session.pendingGuidedResponses.shift();
+              resolve();
+              return;
+            }
+            if (session.guidedMessageQueue?.length > 0) {
+              const queued = session.guidedMessageQueue.shift();
+              session.guidedResponse = { text: queued, timestamp: Date.now() };
+              resolve();
+              return;
+            }
+            session.guidedResponseResolver = resolve;
+          });
+
+          const iwRaceResult = await Promise.race([
+            iwResponsePromise,
+            new Promise((resolve) => {
+              const interval = setInterval(() => {
+                if (session.endSessionFlag) { clearInterval(interval); resolve('__end_session__'); }
+                if (session.skipFlag) { clearInterval(interval); resolve('__skipped__'); }
+              }, 100);
+              iwResponsePromise.then(() => clearInterval(interval));
+            }),
+          ]);
+
+          session.guidedResponseResolver = null;
+
+          if (iwRaceResult === '__end_session__' || session.endSessionFlag) {
+            throw new Error('__end_session__');
+          } else if (iwRaceResult === '__skipped__' || session.skipFlag) {
+            // "Keep guiding me" — student opted out of independent work
+            session.skipFlag = false;
+            sendJSON(ws, { type: 'clear_guided_options' });
+            result = {
+              student_chose_guided: true,
+              message: 'The student chose to keep being guided instead of working independently. Continue the walkthrough from where you left off — pick up at the next step after the key insight.',
+            };
+          } else {
+            const iwStudentResponse = session.guidedResponse;
+            session.guidedResponse = null;
+            const attemptText = iwStudentResponse?.text || '';
+            sendJSON(ws, { type: 'clear_guided_options' });
+            result = {
+              student_attempt: attemptText,
+              message: `The student returned from independent work with this attempt:\n\n"${attemptText}"\n\nEvaluate their work carefully. If correct, praise and wrap up (fill in the formulation panel, call lesson_complete). If partially correct, acknowledge what's right and guide the remaining gap. If wrong, identify the specific error and give a targeted nudge — do NOT redo the entire walkthrough.`,
+            };
+          }
         } else if (block.name === 'lesson_complete') {
           // Check if there are remaining batch parts to work through
           if (selectedParts.length > 1 && activePart) {
@@ -1720,29 +1857,44 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           }
         } else if (block.name === 'run_solver') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
-          pendingSolverPromise = solveProblem(
+          const sr = await solveProblem(
             block.input.subproblem_text,
             statusCb,
             session.imageBase64,
             session.imageMimeType,
             session.anthropicClient
-          ).then((sr) => {
-            console.log(`[GuidedAgent] run_solver completed: success=${sr.success}, approach=${sr.approach || 'N/A'}, keyInsight=${(sr.keyInsight || '').slice(0, 80)}`);
-            if (sr.success) {
-              solverResult = sr;
-              systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(sr);
-              console.log('[GuidedAgent] Solver context integrated into system prompt');
-            }
-            return sr;
-          }).catch((err) => {
-            console.error('[GuidedAgent] Background solver error:', err.message);
-            return { success: false };
-          });
+          );
+          console.log(`[GuidedAgent] run_solver completed: success=${sr.success}, approach=${sr.approach || 'N/A'}, mode=${sr.reasoning_mode || 'N/A'}`);
 
-          result = {
-            success: true, pending: true,
-            message: 'Solver running in background. Proceed to STAGE 0 — classify the problem with the student.',
-          };
+          if (!sr.success) {
+            result = { success: false, message: 'Solver failed. Proceed with your best judgment on the approach and mode.' };
+          } else {
+            solverResult = sr;
+            systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(sr);
+
+            if (sr.reasoning_mode) {
+              const classResult = applyClassification(sr, session, ws, vizState);
+              vizActive = vizState.vizActive;
+              segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
+              if (!classResult.success) {
+                result = { success: false, error: classResult.error };
+              } else {
+                result = {
+                  success: true,
+                  reasoning_mode: sr.reasoning_mode,
+                  target_algorithm: sr.target_algorithm || null,
+                  key_insight: sr.keyInsight,
+                  critical_concepts: sr.critical_concepts || [],
+                  message: `Solver complete. ${classResult.message} Skip classification questions — begin teaching immediately in ${sr.reasoning_mode} mode.`,
+                };
+              }
+            } else {
+              result = {
+                success: true,
+                message: `Solver complete. Approach: ${sr.approach}. Key insight: ${sr.keyInsight}. No classification returned — use your judgment on mode and proceed to teaching.`,
+              };
+            }
+          }
         } else if (block.name === 'run_solver_batch') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
           const subproblems = block.input.subproblems.map((sp) => ({
@@ -1752,33 +1904,37 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           selectedParts = subproblems.map((sp) => sp.part_label);
           activePart = selectedParts[0];
 
-          pendingSolverPromise = solveProblems(
+          const batchResult = await solveProblems(
             subproblems,
             statusCb,
             session.imageBase64,
             session.imageMimeType,
             session.anthropicClient
-          ).then((batchResult) => {
-            console.log(`[GuidedAgent] run_solver_batch completed: success=${batchResult.success}, parts=${Object.keys(batchResult.solutions || {}).join(', ')}`);
-            if (batchResult.success) {
-              solverResultsMap = batchResult.solutions;
-              solverResult = solverResultsMap[activePart];
-              systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
-              sessionPlan = null;
-              console.log(`[GuidedAgent] Batch solver context integrated, active part: ${activePart}`);
-            }
-            return batchResult;
-          }).catch((err) => {
-            console.error('[GuidedAgent] Background batch solver error:', err.message);
-            return { success: false };
-          });
+          );
+          console.log(`[GuidedAgent] run_solver_batch completed: success=${batchResult.success}, parts=${Object.keys(batchResult.solutions || {}).join(', ')}`);
 
-          result = {
-            success: true, pending: true,
-            active_part: activePart,
-            selected_parts: selectedParts,
-            message: 'Batch solver running in background. Proceed to STAGE 0 with the first part — classify the problem with the student.',
-          };
+          if (!batchResult.success) {
+            result = { success: false, message: 'Batch solver failed. Proceed with your best judgment.' };
+          } else {
+            solverResultsMap = batchResult.solutions;
+            solverResult = solverResultsMap[activePart];
+            systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
+
+            // Apply classification for the first active part
+            let classMessage = '';
+            if (solverResult?.reasoning_mode) {
+              const classResult = applyClassification(solverResult, session, ws, vizState);
+              vizActive = vizState.vizActive;
+              segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
+              classMessage = classResult.success ? ` ${classResult.message}` : ` Classification failed: ${classResult.error}`;
+            }
+            result = {
+              success: true,
+              active_part: activePart,
+              selected_parts: selectedParts,
+              message: `Batch solver complete. Active part: ${activePart}.${classMessage} Proceed to STAGE 0 with the first part.`,
+            };
+          }
         } else if (block.name === 'switch_part') {
           const targetLabel = block.input.part_label;
           if (!solverResultsMap[targetLabel]) {
@@ -1787,21 +1943,30 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
             activePart = targetLabel;
             solverResult = solverResultsMap[targetLabel];
             systemPrompt = GUIDED_SYSTEM_PROMPT + buildSolverContext(solverResult);
-            sessionPlan = null; // Reset classification for new part
+            session.sessionPlan = null; // Reset classification for new part
+
+            // Apply classification for the new part
+            let classMessage = '';
+            if (solverResult?.reasoning_mode) {
+              const classResult = applyClassification(solverResult, session, ws, vizState);
+              vizActive = vizState.vizActive;
+              segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
+              classMessage = classResult.success ? ` ${classResult.message}` : ` Classification failed: ${classResult.error}`;
+            }
             result = {
               success: true,
               active_part: activePart,
               remaining_parts: selectedParts.filter((p) => p !== activePart && !solverResultsMap[p]?._completed),
-              message: `Switched to Part ${targetLabel}. Approach: ${solverResult.approach}. Key insight: ${solverResult.keyInsight}. Begin guiding through this part from STAGE 0.`,
+              message: `Switched to Part ${targetLabel}. Approach: ${solverResult.approach}. Key insight: ${solverResult.keyInsight}.${classMessage}`,
             };
           }
         } else if (block.name === 'run_algorithm') {
           sendJSON(ws, { type: 'guided_transition' });
           sendJSON(ws, { type: 'guided_phase', phase: 'executing' });
-          result = await handleToolCall(session, block, null, sessionPlan?.target_algorithm, null);
+          result = await handleToolCall(session, block, null, session.sessionPlan?.target_algorithm, null);
         } else {
           // Delegate all other tools to shared handler
-          result = await handleToolCall(session, block, null, sessionPlan?.target_algorithm, null);
+          result = await handleToolCall(session, block, null, session.sessionPlan?.target_algorithm, null);
         }
 
         toolResults.push({

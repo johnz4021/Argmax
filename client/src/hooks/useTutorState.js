@@ -1,7 +1,7 @@
 import { useReducer, useCallback } from 'react';
 
 const initialState = {
-  status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error
+  status: 'idle', // idle | connecting | teaching | paused | interrupted | complete | error | independent_work
   algorithm: null,
   graph: null,
   vizPanels: null, // [{ id, renderer, props }] — drives VizLayout
@@ -22,6 +22,7 @@ const initialState = {
   loadedConversation: null,    // loaded transcript messages for viewing
   viewingHistory: false,       // whether we're viewing a transcript
   creditsExhausted: false,     // whether Anthropic credits are exhausted (triggers BYOK modal)
+  independentWork: null,        // null | { checkpoint_summary, task_description, hints, revealedHints: [] }
 };
 
 /**
@@ -45,6 +46,13 @@ function reducer(state, action) {
         status: 'teaching',
         algorithm: action.algorithm,
         latestResidualEdges: null,
+      };
+
+    // algorithm_step: update the active algorithm without wiping transcript/viz state
+    case 'ALGORITHM_STEP':
+      return {
+        ...state,
+        algorithm: action.algorithm,
       };
 
     case 'SET_RESIDUAL_EDGES':
@@ -144,24 +152,36 @@ function reducer(state, action) {
         ],
       };
 
-    case 'SET_CONTEXT_PANELS':
-      return {
-        ...state,
-        contextPanels: action.panels.map((p) => ({
+    case 'SET_CONTEXT_PANELS': {
+      const existingMap = new Map(state.contextPanels.map(p => [p.id, p]));
+      const incoming = action.panels.map((p) => {
+        const existing = existingMap.get(p.id);
+        return {
           id: p.id,
           type: p.type,
           title: p.title,
-          data: p.initial_data || {},
-        })),
-      };
+          // If this panel already has data from renderer updates, don't wipe it
+          // with an empty initial_data from create_visualization. Only use
+          // initial_data if it's explicitly provided or the panel is new.
+          data: p.initial_data ? p.initial_data : (existing?.data || {}),
+        };
+      });
+      // Keep panels not in the incoming set (different panel IDs stay untouched)
+      const incomingIds = new Set(incoming.map(p => p.id));
+      const kept = state.contextPanels.filter(p => !incomingIds.has(p.id));
+      return { ...state, contextPanels: [...kept, ...incoming] };
+    }
 
-    case 'UPDATE_CONTEXT_PANEL':
+    case 'UPDATE_CONTEXT_PANEL': {
+      const found = state.contextPanels.some(p => p.id === action.panel_id);
+      if (!found) console.warn(`[State] UPDATE_CONTEXT_PANEL: panel '${action.panel_id}' not found (ids: ${state.contextPanels.map(p => p.id).join(', ')})`);
       return {
         ...state,
         contextPanels: state.contextPanels.map((p) =>
           p.id === action.panel_id ? { ...p, data: { ...p.data, ...action.data } } : p
         ),
       };
+    }
 
     case 'APPEND_CONTEXT_LOG':
       return {
@@ -272,6 +292,38 @@ function reducer(state, action) {
     case 'CLEAR_CREDITS_EXHAUSTED':
       return { ...state, creditsExhausted: false };
 
+    case 'INDEPENDENT_WORK':
+      return {
+        ...state,
+        status: 'independent_work',
+        independentWork: {
+          checkpoint_summary: action.checkpoint_summary,
+          task_description: action.task_description,
+          hints: action.hints || [],
+          revealedHints: [],
+        },
+        guidedOptions: null,
+        guidedPrompt: null,
+        agentStatus: null,
+      };
+
+    case 'REVEAL_HINT':
+      if (!state.independentWork) return state;
+      return {
+        ...state,
+        independentWork: {
+          ...state.independentWork,
+          revealedHints: [...state.independentWork.revealedHints, action.hintIndex],
+        },
+      };
+
+    case 'CLEAR_INDEPENDENT_WORK':
+      return {
+        ...state,
+        status: 'teaching',
+        independentWork: null,
+      };
+
     case 'RESET':
       return initialState;
 
@@ -288,6 +340,9 @@ export function useTutorState() {
       case 'lesson_start':
         dispatch({ type: 'LESSON_START', algorithm: msg.algorithm });
         break;
+      case 'algorithm_step':
+        dispatch({ type: 'ALGORITHM_STEP', algorithm: msg.algorithm });
+        break;
       case 'create_graph':
         dispatch({ type: 'CREATE_GRAPH', graph: msg.graph });
         if (msg.context_panels) {
@@ -295,13 +350,18 @@ export function useTutorState() {
         }
         break;
       case 'create_visualization': {
-        const panels = (msg.panels || []).map((p, i) => ({
-          id: p.id || p.renderer + '_' + i,
-          renderer: p.renderer,
-          props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
-        }));
-        console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
-        dispatch({ type: 'SET_VIZ_PANELS', panels });
+        // Only update viz panels if panels array is non-empty — empty array would destroy existing viz
+        if (msg.panels && msg.panels.length > 0) {
+          const panels = msg.panels.map((p, i) => ({
+            id: p.id || p.renderer,
+            renderer: p.renderer,
+            props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
+          }));
+          console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
+          dispatch({ type: 'SET_VIZ_PANELS', panels });
+        } else {
+          console.log('[State] create_visualization with empty panels — keeping existing viz');
+        }
         if (msg.context_panels) {
           dispatch({ type: 'SET_CONTEXT_PANELS', panels: msg.context_panels });
         }

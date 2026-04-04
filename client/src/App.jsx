@@ -17,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced, killActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced, killActiveTimeline, flushActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -121,6 +121,10 @@ export default function App() {
           dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
         }
 
+        // Flush any in-flight stagger timeline so the previous segment reaches
+        // its fully-applied state before this segment's actions are applied.
+        flushActiveTimeline();
+
         // Use sequenced application for multi-action segments
         if (normalized.length > 2) {
           applyActionsSequenced(normalized, { staggerMs: 120 });
@@ -197,6 +201,14 @@ export default function App() {
       }
       if (msg.type === 'credits_exhausted') {
         setShowCreditsModal(true);
+      }
+      if (msg.type === 'independent_work') {
+        processMessage({
+          type: 'INDEPENDENT_WORK',
+          checkpoint_summary: msg.checkpoint_summary,
+          task_description: msg.task_description,
+          hints: msg.hints,
+        });
       }
     },
     [processMessage, dispatchContext, audioPlayer, reset]
@@ -310,6 +322,28 @@ export default function App() {
     send({ type: 'resume' });
     processMessage({ type: 'resumed' });
   }, [send, processMessage]);
+
+  const handleIndependentWorkSubmit = useCallback(
+    (text) => {
+      processMessage({ type: 'add_student_message', text: `[Independent work submission]\n${text}` });
+      processMessage({ type: 'CLEAR_INDEPENDENT_WORK' });
+      send({ type: 'guided_message', text });
+      send({ type: 'resume' });
+    },
+    [send, processMessage]
+  );
+
+  const handleKeepGuiding = useCallback(() => {
+    processMessage({ type: 'CLEAR_INDEPENDENT_WORK' });
+    send({ type: 'skip' });
+  }, [send, processMessage]);
+
+  const handleRevealHint = useCallback(
+    (hintIndex) => {
+      processMessage({ type: 'REVEAL_HINT', hintIndex });
+    },
+    [processMessage]
+  );
 
   const handleInterrupt = useCallback(
     (question) => {
@@ -501,6 +535,10 @@ export default function App() {
                 onGuidedMessage={handleGuidedMessage}
                 guidedPrompt={state.guidedPrompt}
                 registerInsertRef={registerInsertRef}
+                independentWork={state.independentWork}
+                onIndependentWorkSubmit={handleIndependentWorkSubmit}
+                onKeepGuiding={handleKeepGuiding}
+                onRevealHint={handleRevealHint}
               />
             </div>
           </div>
@@ -531,6 +569,10 @@ export default function App() {
                 onGuidedMessage={handleGuidedMessage}
                 guidedPrompt={state.guidedPrompt}
                 registerInsertRef={registerInsertRef}
+                independentWork={state.independentWork}
+                onIndependentWorkSubmit={handleIndependentWorkSubmit}
+                onKeepGuiding={handleKeepGuiding}
+                onRevealHint={handleRevealHint}
               />
             </div>
           </div>
@@ -589,6 +631,10 @@ export default function App() {
                 onGuidedMessage={handleGuidedMessage}
                 guidedPrompt={state.guidedPrompt}
                 registerInsertRef={registerInsertRef}
+                independentWork={state.independentWork}
+                onIndependentWorkSubmit={handleIndependentWorkSubmit}
+                onKeepGuiding={handleKeepGuiding}
+                onRevealHint={handleRevealHint}
               />
             </div>
           </>

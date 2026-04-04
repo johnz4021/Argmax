@@ -11,6 +11,13 @@ Think deeply about the problem. Consider:
 1. What is the optimal approach? (Not just the obvious one — consider if a non-obvious technique is needed)
 2. What is the time/space complexity?
 3. Is there a "paradigm shift" where the obvious approach fails and a non-obvious one is required?
+4. Classify the problem: determine reasoning_mode and, if algorithm_execution, the target_algorithm.
+   - algorithm_execution: problem asks to run/apply a specific known algorithm on given input
+   - greedy_design: must design a greedy rule and prove correctness via exchange argument
+   - dp_design: must define subproblem, write recurrence, prove correctness
+   - dc_design: must design a divide-and-conquer algorithm and solve its recurrence
+   - modeling: LP formulation, reduction to another problem, or duality argument
+   - runtime: Big-O analysis, recurrence solving, or asymptotics only (no algorithm to run)
 
 You MUST call the submit_solution tool with your complete analysis. Do NOT respond with plain text — always use the submit_solution tool.`;
 
@@ -53,8 +60,45 @@ const SUBMIT_SOLUTION_TOOL = {
         type: 'boolean',
         description: 'Whether you verified your solution against sample cases or logical checks.',
       },
+      reasoning_mode: {
+        type: 'string',
+        enum: ['algorithm_execution', 'modeling', 'greedy_design', 'dp_design', 'dc_design', 'runtime'],
+        description: 'Teaching mode for this problem.',
+      },
+      is_in_scope: {
+        type: 'boolean',
+        description: 'True if a concrete supported algorithm can be executed (reasoning_mode is algorithm_execution and target_algorithm is known).',
+      },
+      target_algorithm: {
+        type: 'string',
+        description: 'Algorithm ID to run (e.g. "dijkstra", "kruskal", "maxflow"). Required when is_in_scope is true.',
+      },
+      closest_algorithm: {
+        type: 'string',
+        description: 'For non-execution modes, the algorithm most closely related to this problem (for teaching context).',
+      },
+      problem_summary: {
+        type: 'string',
+        description: 'One-sentence summary of what the problem is asking.',
+      },
+      critical_concepts: {
+        type: 'array',
+        items: { type: 'string' },
+        description: '1-3 concepts the student MUST understand to solve this.',
+      },
+      internal_model_contract: {
+        type: 'object',
+        description: 'Internal reasoning contract — NOT shown to student.',
+        properties: {
+          state_definition: { type: 'string' },
+          transition_rules: { type: 'string' },
+          cost_model: { type: 'string' },
+          feasibility_constraints: { type: 'string' },
+          assumptions_to_verify: { type: 'array', items: { type: 'string' } },
+        },
+      },
     },
-    required: ['solution', 'approach', 'complexity', 'confidence', 'paradigmShift', 'obviousApproach', 'keyInsight', 'selfCheckPassed'],
+    required: ['solution', 'approach', 'complexity', 'confidence', 'paradigmShift', 'obviousApproach', 'keyInsight', 'selfCheckPassed', 'reasoning_mode', 'is_in_scope'],
   },
 };
 
@@ -106,8 +150,45 @@ const SUBMIT_SOLUTIONS_TOOL = {
               type: 'boolean',
               description: 'Whether you verified your solution against sample cases or logical checks.',
             },
+            reasoning_mode: {
+              type: 'string',
+              enum: ['algorithm_execution', 'modeling', 'greedy_design', 'dp_design', 'dc_design', 'runtime'],
+              description: 'Teaching mode for this part.',
+            },
+            is_in_scope: {
+              type: 'boolean',
+              description: 'True if a concrete supported algorithm can be executed.',
+            },
+            target_algorithm: {
+              type: 'string',
+              description: 'Algorithm ID to run. Required when is_in_scope is true.',
+            },
+            closest_algorithm: {
+              type: 'string',
+              description: 'For non-execution modes, the closest related algorithm.',
+            },
+            problem_summary: {
+              type: 'string',
+              description: 'One-sentence summary of what this part is asking.',
+            },
+            critical_concepts: {
+              type: 'array',
+              items: { type: 'string' },
+              description: '1-3 concepts the student MUST understand to solve this part.',
+            },
+            internal_model_contract: {
+              type: 'object',
+              description: 'Internal reasoning contract — NOT shown to student.',
+              properties: {
+                state_definition: { type: 'string' },
+                transition_rules: { type: 'string' },
+                cost_model: { type: 'string' },
+                feasibility_constraints: { type: 'string' },
+                assumptions_to_verify: { type: 'array', items: { type: 'string' } },
+              },
+            },
           },
-          required: ['part_label', 'solution', 'approach', 'complexity', 'confidence', 'paradigmShift', 'obviousApproach', 'keyInsight', 'selfCheckPassed'],
+          required: ['part_label', 'solution', 'approach', 'complexity', 'confidence', 'paradigmShift', 'obviousApproach', 'keyInsight', 'selfCheckPassed', 'reasoning_mode', 'is_in_scope'],
         },
         description: 'Array of solutions, one per sub-problem.',
       },

@@ -1,5 +1,6 @@
-// Visualization planner — pre-builds visualization layout before teaching begins.
-// Follows the same pattern as solver.js: single Claude API call with structured tool output.
+// Graph builder — constructs concrete example graphs for algorithm_execution problems.
+// Builds nodes, edges, positions, algorithm runs, and graph variants.
+// Single Claude API call with structured tool output.
 
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -207,7 +208,7 @@ const VIZ_PLANNER_TIMEOUT_MS = 120_000;
  * Returns { success: true, panels, algorithm_runs, context_panels, teaching_notes }
  * or { success: false }.
  */
-export async function planVisualization(problemText, solverResult, statusCallback, imageBase64, imageMimeType, anthropicClient) {
+export async function buildExampleGraph(problemText, solverResult, statusCallback, imageBase64, imageMimeType, anthropicClient) {
   if (statusCallback) statusCallback('Planning visualization...');
 
   try {
@@ -247,12 +248,12 @@ export async function planVisualization(problemText, solverResult, statusCallbac
 
     const toolUse = response.content.find((b) => b.type === 'tool_use' && b.name === 'submit_viz_plan');
     if (!toolUse) {
-      console.warn('[VizPlanner] No submit_viz_plan tool call in response');
+      console.warn('[GraphBuilder] No submit_viz_plan tool call in response');
       return { success: false };
     }
 
     const plan = toolUse.input;
-    console.log(`[VizPlanner] Plan: ${plan.panels?.length} panels, ${plan.algorithm_runs?.length} algo runs, reasoning: ${plan.reasoning?.slice(0, 100)}`);
+    console.log(`[GraphBuilder] Plan: ${plan.panels?.length} panels, ${plan.algorithm_runs?.length} algo runs, reasoning: ${plan.reasoning?.slice(0, 100)}`);
 
     return {
       success: true,
@@ -264,7 +265,7 @@ export async function planVisualization(problemText, solverResult, statusCallbac
       graph_variants: plan.graph_variants || null,
     };
   } catch (err) {
-    console.error('[VizPlanner] Failed:', err.message);
+    console.error('[GraphBuilder] Failed:', err.message);
     return { success: false };
   }
 }

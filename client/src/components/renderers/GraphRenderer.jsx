@@ -323,10 +323,16 @@ const CYTOSCAPE_STYLE = [
  * This bridges the new unified protocol (action + params) to the existing
  * applyVizActions format.
  */
+// Module-level map of live (non-destroyed) Cytoscape instances by rendererId.
+// Avoids stale-closure issues with React refs during StrictMode remounts.
+const liveCyInstances = new Map();
+
 function applyGraphAction(cy, action, params) {
   if (!cy) return;
-  // Convert the unified format to the legacy format that applyVizActions expects
-  const legacyAction = { action, ...params };
+  // Unwrap nested params (agent sends { renderer, action, params: { ... } },
+  // registry destructures to params = { params: { ... } })
+  const flatParams = params.params || params;
+  const legacyAction = { action, ...flatParams };
   applyVizActions(cy, [legacyAction]);
 }
 
@@ -364,22 +370,55 @@ export default function GraphRenderer({
     });
 
     cyRef.current = cy;
+    liveCyInstances.set(rendererId, cy);
+    console.log(`[GraphRenderer] MOUNT ${rendererId} — cy created, mapSize=${liveCyInstances.size}`);
 
     registerRenderer(rendererId, {
-      apply: (action, params) => applyGraphAction(cy, action, params),
+      apply: (action, params) => {
+        const targetCy = liveCyInstances.get(rendererId);
+        const isDestroyed = targetCy?.destroyed?.();
+        const nodeCount = targetCy?.nodes?.()?.length ?? 0;
+        console.log(`[GraphRenderer] APPLY '${action}' — hasCy=${!!targetCy}, destroyed=${isDestroyed}, nodes=${nodeCount}`);
+        if (!targetCy || isDestroyed) {
+          console.warn(`[GraphRenderer] DROPPED '${action}' — no valid cy`);
+          return;
+        }
+        applyGraphAction(targetCy, action, params);
+        // Verify it actually stuck
+        if (action === 'show_path' || action === 'highlight_node' || action === 'highlight_edge') {
+          const pathCount = targetCy.elements('.path').length;
+          const highlightedCount = targetCy.elements('.highlighted, .color-red, .color-blue, .color-green').length;
+          console.log(`[GraphRenderer] AFTER '${action}' — pathEls=${pathCount}, highlightedEls=${highlightedCount}`);
+        }
+      },
       loadGraph: (graphData) => loadGraphIntoCy(graphData),
-      takeSnapshot: () => takeSnapshot(cy),
-      restoreSnapshot: (snap) => restoreSnapshot(cy, snap),
+      takeSnapshot: () => {
+        const c = liveCyInstances.get(rendererId);
+        return c && !c.destroyed() ? takeSnapshot(c) : null;
+      },
+      restoreSnapshot: (snap) => {
+        const c = liveCyInstances.get(rendererId);
+        if (c && !c.destroyed()) restoreSnapshot(c, snap);
+      },
       cleanup: () => {
-        removeOverlay(cy);
-        removeGhostAlternative(cy);
+        const c = liveCyInstances.get(rendererId);
+        if (c && !c.destroyed()) {
+          removeOverlay(c);
+          removeGhostAlternative(c);
+        }
       },
     });
 
     return () => {
+      console.log(`[GraphRenderer] UNMOUNT ${rendererId} — mapSize=${liveCyInstances.size}`);
       unregisterRenderer(rendererId);
       cy.destroy();
-      cyRef.current = null;
+      if (liveCyInstances.get(rendererId) === cy) {
+        liveCyInstances.delete(rendererId);
+      }
+      if (cyRef.current === cy) {
+        cyRef.current = null;
+      }
       lastLoadedGraphRef.current = null;
     };
   }, [rendererId]);

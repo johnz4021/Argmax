@@ -7,9 +7,10 @@ import { setTimelineSpeed } from '../lib/rendererRegistry';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
-export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onSkip, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef }) {
+export default function Controls({ status, agentStatus, onInterrupt, onPause, onResume, onSkip, onRestart, onSpeedChange, onTtsMuteToggle, ttsMuted, explanationMode, guidedOptions, onGuidedResponse, mode, onGuidedMessage, guidedPrompt, registerInsertRef, independentWork, onIndependentWorkSubmit, onKeepGuiding, onRevealHint }) {
   const [question, setQuestion] = useState('');
   const [pausePending, setPausePending] = useState(false);
+  const [independentText, setIndependentText] = useState('');
   const { isListening, transcript, isSupported, start, stop, clearTranscript } = useSpeechToText();
   const inputRef = useRef(null);
 
@@ -269,6 +270,87 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
           >
             New Problem
           </button>
+        </div>
+      )}
+
+      {status === 'independent_work' && independentWork && (
+        <div className="space-y-4">
+          <div className="bg-surface-2 border border-border rounded-xl p-4 space-y-3">
+            <div className="flex items-center gap-2 text-accent text-sm font-medium">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              What you&apos;ve established
+            </div>
+            <p className="text-sm text-text-secondary">
+              <MathText>{independentWork.checkpoint_summary}</MathText>
+            </p>
+          </div>
+
+          <div className="bg-accent/10 border border-accent/30 rounded-xl p-4 space-y-2">
+            <div className="text-sm font-medium text-accent">Your task</div>
+            <p className="text-sm text-text-primary">
+              <MathText>{independentWork.task_description}</MathText>
+            </p>
+          </div>
+
+          {independentWork.hints.length > 0 && (
+            <div className="space-y-2">
+              {independentWork.hints.map((hint, i) => (
+                <div key={i}>
+                  {independentWork.revealedHints.includes(i) ? (
+                    <div className="bg-surface-2 border border-border rounded-lg p-3 text-sm text-text-secondary">
+                      <span className="text-accent font-medium">Hint {i + 1}:</span>{' '}
+                      <MathText>{hint}</MathText>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onRevealHint(i)}
+                      className="text-sm text-accent hover:text-accent-hover underline"
+                    >
+                      Reveal hint {i + 1}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-surface-2 border border-border rounded-xl overflow-hidden focus-within:border-accent transition-colors">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!independentText.trim()) return;
+                onIndependentWorkSubmit(independentText.trim());
+                setIndependentText('');
+              }}
+              className="flex flex-col gap-2 p-3"
+            >
+              <textarea
+                rows={4}
+                value={independentText}
+                onChange={(e) => setIndependentText(e.target.value)}
+                placeholder="Paste your attempt here when you're ready..."
+                className="bg-transparent text-text-primary placeholder-text-tertiary resize-y outline-none text-sm font-body w-full"
+              />
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={onKeepGuiding}
+                  className="text-sm text-text-tertiary hover:text-text-secondary underline"
+                >
+                  Keep guiding me instead
+                </button>
+                <button
+                  type="submit"
+                  disabled={!independentText.trim()}
+                  className="bg-accent hover:bg-accent-hover disabled:opacity-40 text-surface-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Submit my work
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

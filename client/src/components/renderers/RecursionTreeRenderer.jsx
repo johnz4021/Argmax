@@ -230,7 +230,8 @@ export default function RecursionTreeRenderer({
     setCustomAnnotations(snap.customAnnotations);
   }, []);
 
-  const applyAction = useCallback((action, params) => {
+  const applyAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     switch (action) {
       case 'set_recurrence_tree': {
         const { a, b, d, n } = params;

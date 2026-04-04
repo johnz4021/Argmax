@@ -24,6 +24,7 @@ function applyAction(cy, action) {
           (e.data('source') === action.from && e.data('target') === action.to) ||
           (e.data('source') === action.to && e.data('target') === action.from)
       );
+      console.log(`[vizActions] highlight_edge ${action.from}->${action.to} class=${action.className}: found ${edges.length} edges, totalEdges=${cy.edges().length}, edgeData=${cy.edges().map(e => e.data('source')+'->'+e.data('target')).join(', ')}`);
       edges.addClass(action.className || 'highlighted');
       break;
     }
@@ -69,8 +70,12 @@ function applyAction(cy, action) {
 
     case 'show_path': {
       if (!action.path || action.path.length < 2) break;
+      console.log(`[vizActions] show_path: ${JSON.stringify(action.path)}, cy.nodes=${cy.nodes().length}, cy.container=${!!cy.container()}`);
       for (let i = 0; i < action.path.length; i++) {
-        cy.getElementById(action.path[i]).addClass('path');
+        const node = cy.getElementById(action.path[i]);
+        console.log(`[vizActions] show_path node '${action.path[i]}': found=${!node.empty()}, classesBefore=${node.classes()?.join(',')}`);
+        node.addClass('path');
+        console.log(`[vizActions] show_path node '${action.path[i]}': classesAfter=${node.classes()?.join(',')}`);
         if (i < action.path.length - 1) {
           const a = action.path[i];
           const b = action.path[i + 1];

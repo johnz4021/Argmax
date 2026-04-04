@@ -68,7 +68,8 @@ export default function TableRenderer({
     setDepArrows(snap.depArrows);
   }, []);
 
-  const applyTableAction = useCallback((action, params) => {
+  const applyTableAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     console.log(`[TableRenderer] applyTableAction: ${action}`, params);
     switch (action) {
       case 'init_grid': {

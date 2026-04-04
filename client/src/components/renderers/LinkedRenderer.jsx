@@ -132,7 +132,8 @@ export default function LinkedRenderer({
     if (snap.stableIds) setStableIds(snap.stableIds);
   }, []);
 
-  const applyLinkedAction = useCallback((action, params) => {
+  const applyLinkedAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     switch (action) {
       case 'set_list': {
         const values = params.values || [];

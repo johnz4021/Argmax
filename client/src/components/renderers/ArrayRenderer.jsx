@@ -63,7 +63,8 @@ export default function ArrayRenderer({
     setSubarrayRanges(snap.subarrayRanges || []);
   }, []);
 
-  const applyArrayAction = useCallback((action, params) => {
+  const applyArrayAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     console.log(`[ArrayRenderer] applyArrayAction: ${action}`, params);
     switch (action) {
       case 'set_data': {

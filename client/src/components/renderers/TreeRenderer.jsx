@@ -155,7 +155,8 @@ export default function TreeRenderer({
     setLevelHighlight(snap.levelHighlight);
   }, []);
 
-  const applyTreeAction = useCallback((action, params) => {
+  const applyTreeAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     switch (action) {
       case 'set_tree': {
         setTreeData({
@@ -484,13 +485,13 @@ export default function TreeRenderer({
         </div>
       )}
 
-      {!treeData || treeData.nodes.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-gray-500">Waiting for tree data...</p>
-        </div>
-      ) : (
-        <>
-          <div ref={containerRef} className="flex-1 w-full" style={{ minHeight: '300px' }}>
+      <div ref={containerRef} className="flex-1 w-full" style={{ minHeight: '300px' }}>
+        {!treeData || treeData.nodes.length === 0 ? (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-gray-500">Waiting for tree data...</p>
+          </div>
+        ) : (
+          <>
             <svg
               ref={svgRef}
               width={dimensions.width}
@@ -658,7 +659,6 @@ export default function TreeRenderer({
                 )}
               </g>
             </svg>
-          </div>
 
           {/* Heap array representation */}
           {heapArray && (
@@ -689,8 +689,9 @@ export default function TreeRenderer({
               </div>
             </div>
           )}
-        </>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

@@ -153,15 +153,20 @@ function reducer(state, action) {
       };
 
     case 'SET_CONTEXT_PANELS': {
-      const incoming = action.panels.map((p) => ({
-        id: p.id,
-        type: p.type,
-        title: p.title,
-        data: p.initial_data || {},
-      }));
-      // Merge: keep existing panels not in the incoming set so a second
-      // create_visualization (e.g. from run_algorithm) doesn't wipe panels
-      // already set up by applyClassification (e.g. the formulation panel).
+      const existingMap = new Map(state.contextPanels.map(p => [p.id, p]));
+      const incoming = action.panels.map((p) => {
+        const existing = existingMap.get(p.id);
+        return {
+          id: p.id,
+          type: p.type,
+          title: p.title,
+          // If this panel already has data from renderer updates, don't wipe it
+          // with an empty initial_data from create_visualization. Only use
+          // initial_data if it's explicitly provided or the panel is new.
+          data: p.initial_data ? p.initial_data : (existing?.data || {}),
+        };
+      });
+      // Keep panels not in the incoming set (different panel IDs stay untouched)
       const incomingIds = new Set(incoming.map(p => p.id));
       const kept = state.contextPanels.filter(p => !incomingIds.has(p.id));
       return { ...state, contextPanels: [...kept, ...incoming] };

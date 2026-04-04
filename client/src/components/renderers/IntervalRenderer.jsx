@@ -62,7 +62,8 @@ export default function IntervalRenderer({
     setPointers(snap.pointers);
   }, []);
 
-  const applyAction = useCallback((action, params) => {
+  const applyAction = useCallback((action, rawParams) => {
+    const params = rawParams.params || rawParams;
     console.log(`[IntervalRenderer] applyAction: ${action}`, params);
     switch (action) {
       case 'set_jobs': {

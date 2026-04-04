@@ -86,6 +86,18 @@ export function killActiveTimeline() {
   }
 }
 
+/**
+ * Snap the active stagger timeline to its end, firing all remaining
+ * callbacks immediately. Call this before applying a new segment's actions
+ * so the renderer is fully caught up rather than left in a partial state.
+ */
+export function flushActiveTimeline() {
+  if (activeTimeline) {
+    activeTimeline.progress(1);
+    activeTimeline = null;
+  }
+}
+
 export function setTimelineSpeed(speed) {
   timelineSpeed = speed;
   if (activeTimeline) activeTimeline.timeScale(speed);

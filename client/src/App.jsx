@@ -17,7 +17,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced, killActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
+import { applyActions, applyActionsSequenced, killActiveTimeline, flushActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -120,6 +120,10 @@ export default function App() {
         if (residualEdges) {
           dispatchContext({ type: 'SET_RESIDUAL_EDGES', edges: residualEdges });
         }
+
+        // Flush any in-flight stagger timeline so the previous segment reaches
+        // its fully-applied state before this segment's actions are applied.
+        flushActiveTimeline();
 
         // Use sequenced application for multi-action segments
         if (normalized.length > 2) {

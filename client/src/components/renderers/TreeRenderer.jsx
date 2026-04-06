@@ -103,6 +103,8 @@ export default function TreeRenderer({
 }) {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
+  const zoomRef = useRef(null);
+  const [zoomTransformStr, setZoomTransformStr] = useState('');
   const [treeData, setTreeData] = useState(null);
   const [nodeClasses, setNodeClasses] = useState({});
   const [edgeClasses, setEdgeClasses] = useState({});
@@ -132,6 +134,28 @@ export default function TreeRenderer({
 
     observer.observe(container);
     return () => observer.disconnect();
+  }, []);
+
+  // D3 zoom/pan — re-run when treeData changes so we attach after SVG mounts
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    if (!zoomRef.current) {
+      const zoom = d3.zoom()
+        .scaleExtent([0.2, 3])
+        .on('zoom', (event) => setZoomTransformStr(event.transform.toString()));
+      zoomRef.current = zoom;
+    }
+    svg.call(zoomRef.current);
+    svg.on('dblclick.zoom', null);
+    return () => { svg.on('.zoom', null); };
+  }, [treeData]);
+
+  const resetZoom = useCallback(() => {
+    if (!svgRef.current || !zoomRef.current) return;
+    d3.select(svgRef.current)
+      .transition().duration(300)
+      .call(zoomRef.current.transform, d3.zoomIdentity);
   }, []);
 
   const takeTreeSnapshot = useCallback(() => {
@@ -485,19 +509,29 @@ export default function TreeRenderer({
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 w-full" style={{ minHeight: '300px' }}>
+      <div ref={containerRef} className="relative flex-1 w-full" style={{ minHeight: '300px' }}>
         {!treeData || treeData.nodes.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-gray-500">Waiting for tree data...</p>
           </div>
         ) : (
           <>
+            {zoomTransformStr && (
+              <button
+                onClick={resetZoom}
+                className="absolute bottom-10 right-3 z-10 bg-gray-800/90 text-xs text-gray-300 px-2 py-1 rounded border border-gray-700 hover:bg-gray-700 transition-colors"
+              >
+                Reset view
+              </button>
+            )}
             <svg
               ref={svgRef}
               width={dimensions.width}
               height={dimensions.height}
               className="w-full h-full"
+              style={{ cursor: 'grab' }}
             >
+              <g transform={zoomTransformStr}>
               <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
                 {/* Level highlight rectangle */}
                 {levelRect && (
@@ -658,6 +692,7 @@ export default function TreeRenderer({
                   })
                 )}
               </g>
+              </g>{/* end zoom wrapper */}
             </svg>
 
           {/* Heap array representation */}

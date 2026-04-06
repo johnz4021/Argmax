@@ -174,6 +174,8 @@ export default function RecursionTreeRenderer({
 }) {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
+  const zoomRef = useRef(null);
+  const [zoomTransformStr, setZoomTransformStr] = useState('');
   const [treeData, setTreeData] = useState(null);
   const [levelAnnotations, setLevelAnnotations] = useState([]);
   const [highlightedLevel, setHighlightedLevel] = useState(null);
@@ -201,6 +203,28 @@ export default function RecursionTreeRenderer({
     });
     observer.observe(container);
     return () => observer.disconnect();
+  }, []);
+
+  // D3 zoom/pan — re-run when treeData changes so we attach after SVG mounts
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const svg = d3.select(svgRef.current);
+    if (!zoomRef.current) {
+      const zoom = d3.zoom()
+        .scaleExtent([0.2, 3])
+        .on('zoom', (event) => setZoomTransformStr(event.transform.toString()));
+      zoomRef.current = zoom;
+    }
+    svg.call(zoomRef.current);
+    svg.on('dblclick.zoom', null);
+    return () => { svg.on('.zoom', null); };
+  }, [treeData]);
+
+  const resetZoom = useCallback(() => {
+    if (!svgRef.current || !zoomRef.current) return;
+    d3.select(svgRef.current)
+      .transition().duration(300)
+      .call(zoomRef.current.transform, d3.zoomIdentity);
   }, []);
 
   const takeSnapshot = useCallback(() => {
@@ -423,18 +447,29 @@ export default function RecursionTreeRenderer({
         </div>
       )}
 
-      <div ref={containerRef} className="flex-1 w-full pb-3" style={{ minHeight: '300px' }}>
+      <div ref={containerRef} className="relative flex-1 w-full pb-3" style={{ minHeight: '300px' }}>
         {!treeData || treeData.nodes.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <p className="text-gray-500">Waiting for recursion tree...</p>
           </div>
         ) : (
+          <>
+            {zoomTransformStr && (
+              <button
+                onClick={resetZoom}
+                className="absolute bottom-4 right-3 z-10 bg-gray-800/90 text-xs text-gray-300 px-2 py-1 rounded border border-gray-700 hover:bg-gray-700 transition-colors"
+              >
+                Reset view
+              </button>
+            )}
           <svg
             ref={svgRef}
             width={dimensions.width}
             height={dimensions.height}
             className="w-full h-full"
+            style={{ cursor: 'grab' }}
           >
+            <g transform={zoomTransformStr}>
             {/* ── Tree area (left portion) ── */}
             <g transform={`translate(${TREE_PAD.left}, ${TREE_PAD.top})`}>
               {/* Level highlight band */}
@@ -655,7 +690,9 @@ export default function RecursionTreeRenderer({
                 Total: {bigO}
               </m.text>
             )}
+            </g>{/* end zoom wrapper */}
           </svg>
+          </>
         )}
       </div>
     </div>

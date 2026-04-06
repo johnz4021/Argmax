@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { m, AnimatePresence } from 'motion/react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
+import { usePanZoom } from '../../hooks/usePanZoom';
 
 const CELL_BG_COLORS = {
   empty: 'rgba(31, 41, 55, 1)',         // gray-800
@@ -48,6 +49,7 @@ export default function TableRenderer({
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
   const tableRef = useRef(null);
+  const panZoom = usePanZoom();
 
   const takeTableSnapshot = useCallback(() => {
     return {
@@ -242,7 +244,12 @@ export default function TableRenderer({
   }, [depArrows, grid]);
 
   return (
-    <div className="relative h-full flex flex-col items-center justify-center p-8 overflow-auto">
+    <div
+      ref={panZoom.containerRef}
+      className="relative h-full flex flex-col items-center justify-center p-8 overflow-hidden"
+      style={{ cursor: 'grab', userSelect: 'none' }}
+      {...panZoom.handlers}
+    >
       {phase && (
         <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
           {phase}
@@ -256,10 +263,22 @@ export default function TableRenderer({
         </div>
       )}
 
+      {panZoom.hasMoved && (
+        <button
+          onClick={panZoom.reset}
+          className="absolute bottom-3 right-3 z-10 bg-gray-800/90 text-xs text-gray-300 px-2 py-1 rounded border border-gray-700 hover:bg-gray-700 transition-colors"
+        >
+          Reset view
+        </button>
+      )}
+
       {grid.length === 0 ? (
         <p className="text-gray-500">Waiting for table data...</p>
       ) : (
-        <div className="relative overflow-auto max-h-full w-full flex items-center justify-center">
+        <div
+          className="relative w-full flex items-center justify-center"
+          style={{ transform: panZoom.transformStyle, transformOrigin: '0 0' }}
+        >
           {/* Overlay annotations */}
           {overlayState?.annotations?.map((ann, i) => {
             const target = ann.target;

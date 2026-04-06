@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
+import { usePanZoom } from '../../hooks/usePanZoom';
 
 const CLASS_COLORS = {
   default: 'bg-gray-600 border-gray-500',
@@ -40,6 +41,7 @@ export default function IntervalRenderer({
   const [ghostState, setGhostState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const panZoom = usePanZoom();
 
   const takeSnapshot = useCallback(() => ({
     jobs: jobs.map(j => ({ ...j })),
@@ -329,7 +331,12 @@ export default function IntervalRenderer({
   );
 
   return (
-    <div className="relative h-full flex flex-col p-4 overflow-auto">
+    <div
+      ref={panZoom.containerRef}
+      className="relative h-full flex flex-col p-4 overflow-hidden"
+      style={{ cursor: 'grab', userSelect: 'none' }}
+      {...panZoom.handlers}
+    >
       {phase && (
         <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
           {phase}
@@ -343,12 +350,24 @@ export default function IntervalRenderer({
         </div>
       )}
 
+      {panZoom.hasMoved && (
+        <button
+          onClick={panZoom.reset}
+          className="absolute bottom-3 right-3 z-10 bg-gray-800/90 text-xs text-gray-300 px-2 py-1 rounded border border-gray-700 hover:bg-gray-700 transition-colors"
+        >
+          Reset view
+        </button>
+      )}
+
       {jobs.length === 0 ? (
         <div className="flex items-center justify-center h-full">
           <p className="text-gray-500">Waiting for interval data...</p>
         </div>
       ) : (
-        <div className="flex flex-col gap-1 mt-8" style={{ minWidth: minTimelineWidth + 64 }}>
+        <div
+          className="flex flex-col gap-1 mt-8"
+          style={{ minWidth: minTimelineWidth + 64, transform: panZoom.transformStyle, transformOrigin: '0 0' }}
+        >
           {/* Machine rows */}
           {machines.map((name, i) => renderRow(name, assignedJobs[i] || [], i))}
 

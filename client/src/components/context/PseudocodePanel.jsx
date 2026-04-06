@@ -8,6 +8,8 @@ export default function PseudocodePanel({ data }) {
       {lines.map((line, i) => {
         const isCurrent = currentLine === i;
         const isHighlight = highlightLines.has(i);
+        const text = typeof line === 'object' ? line.text : line;
+        const indent = typeof line === 'object' ? (line.indent || 0) : 0;
         return (
           <div
             key={i}
@@ -18,9 +20,10 @@ export default function PseudocodePanel({ data }) {
                   ? 'bg-yellow-500/20 text-yellow-200'
                   : 'text-gray-400'
             }`}
+            style={indent ? { paddingLeft: `${indent * 12 + 8}px` } : undefined}
           >
             <span className="text-gray-600 select-none mr-2 inline-block w-4 text-right">{i + 1}</span>
-            {line}
+            {text}
           </div>
         );
       })}

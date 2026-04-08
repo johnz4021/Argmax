@@ -3,6 +3,7 @@ export { kruskal } from './kruskal.js';
 export { prim } from './prim.js';
 export { maxflow, DEFAULT_FLOW_NETWORK } from './maxflow.js';
 export { bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH } from './bellmanFord.js';
+export { dagShortest, DEFAULT_DAG_GRAPH } from './dagShortest.js';
 
 export const DEFAULT_UNDIRECTED_GRAPH = {
   nodes: [

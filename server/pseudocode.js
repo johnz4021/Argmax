@@ -83,4 +83,38 @@ export const PSEUDOCODE = {
     '      dist[v] ← dist[u] + w',       // 5
     'return dist',                         // 6
   ],
+
+  dag_shortest: [
+    'order ← topological_sort(G)',        // 0
+    'dist[s] ← 0; dist[v] ← ∞ for v≠s', // 1
+    'for u in order:',                    // 2
+    '  for each edge (u, v, w):',        // 3
+    '    if dist[u] + w < dist[v]:',     // 4
+    '      dist[v] ← dist[u] + w',      // 5
+    'return dist',                        // 6
+  ],
+
+  quickselect: [
+    'quickselect(arr, left, right, k):',        // 0
+    '  if left = right: return arr[left]',      // 1
+    '  pivot_idx ← partition(arr, left, right)',// 2
+    '  if k = pivot_idx: return arr[k]',        // 3
+    '  if k < pivot_idx:',                      // 4
+    '    return quickselect(arr, left, pivot_idx−1, k)', // 5
+    '  else:',                                  // 6
+    '    return quickselect(arr, pivot_idx+1, right, k)', // 7
+  ],
+
+  huffman: [
+    'freq ← frequency table of characters',         // 0
+    'PQ ← min-heap of (char, freq) leaf nodes',     // 1
+    'while |PQ| > 1:',                               // 2
+    '  left ← extract-min(PQ)',                     // 3
+    '  right ← extract-min(PQ)',                    // 4
+    '  parent.freq ← left.freq + right.freq',       // 5
+    '  parent.left ← left; parent.right ← right',  // 6
+    '  PQ.insert(parent)',                          // 7
+    'root ← PQ.extract-min()',                      // 8
+    'assign codes: traverse tree (left=0, right=1)',// 9
+  ],
 };

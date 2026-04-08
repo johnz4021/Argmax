@@ -164,6 +164,24 @@ function mapGraphStep(algo, step, state) {
             { key: 'Phase', value: 'Introduction' },
           ],
         }));
+      } else if (algo === 'dag_shortest' && step.distances) {
+        c.push(ctxUpdate('distances', {
+          entries: Object.entries(step.distances).map(([k, d]) => ({
+            key: k, value: d === Infinity ? '∞' : d, status: 'default',
+          })),
+        }));
+        c.push(ctxUpdate('topo_order', {
+          items: step.topo_order.map(n => ({ value: n })),
+          style: 'queue',
+        }));
+      } else if (algo === 'huffman' && step.frequencies) {
+        c.push(ctxUpdate('freq_table', {
+          entries: Object.entries(step.frequencies).map(([k, val]) => ({ key: k, value: val })),
+        }));
+        c.push(ctxUpdate('pq', {
+          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
+          style: 'queue',
+        }));
       } else if (algo === 'maxflow') {
         // Set initial edge labels
         if (step.edge_labels) {
@@ -287,6 +305,83 @@ function mapGraphStep(algo, step, state) {
       break;
     }
 
+    // ── dag_shortest ──────────────────────────────────────────────────────
+    case 'process_node': {
+      v.push(viz('graph', 'mark_current', { node: step.node }));
+      if (step.distances) {
+        c.push(ctxUpdate('distances', {
+          entries: Object.entries(step.distances).map(([k, d]) => ({
+            key: k, value: d === Infinity ? '∞' : d,
+            status: k === step.node ? 'highlight' : 'default',
+          })),
+        }));
+      }
+      if (step.topo_order) {
+        c.push(ctxUpdate('topo_order', {
+          items: step.topo_order.map((n, i) => ({
+            value: n, status: i === step.topo_position ? 'active' : 'default',
+          })),
+          style: 'queue',
+        }));
+      }
+      break;
+    }
+
+    case 'no_improvement': {
+      v.push(viz('graph', 'highlight_edge', { from: step.from, to: step.to, className: 'examining' }));
+      break;
+    }
+
+    // ── huffman ───────────────────────────────────────────────────────────
+    case 'extract_mins': {
+      v.push(viz('graph', 'highlight_node', { node: step.left_id, className: 'comparing' }));
+      v.push(viz('graph', 'highlight_node', { node: step.right_id, className: 'comparing' }));
+      if (step.heap) {
+        c.push(ctxUpdate('pq', {
+          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
+          style: 'queue',
+        }));
+      }
+      break;
+    }
+
+    case 'create_parent': {
+      v.push(viz('graph', 'add_node', {
+        id: step.parent_id,
+        label: String(step.parent_freq),
+        position: step.position,
+      }));
+      v.push(viz('graph', 'highlight_node', { node: step.parent_id, className: 'visited' }));
+      break;
+    }
+
+    case 'add_edges': {
+      v.push(viz('graph', 'add_edge', { from: step.parent_id, to: step.left_id, label: '0' }));
+      v.push(viz('graph', 'add_edge', { from: step.parent_id, to: step.right_id, label: '1' }));
+      break;
+    }
+
+    case 'update_heap': {
+      if (step.heap) {
+        c.push(ctxUpdate('pq', {
+          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
+          style: 'queue',
+        }));
+      }
+      break;
+    }
+
+    case 'assign_codes': {
+      if (step.codes) {
+        c.push(ctxUpdate('codes', {
+          entries: Object.entries(step.codes).map(([char, code]) => ({
+            key: char, value: code, status: 'default',
+          })),
+        }));
+      }
+      break;
+    }
+
     case 'discover': {
       v.push(viz('graph', 'highlight_node', { node: step.node, className: 'highlighted' }));
       if (step.from) {
@@ -343,6 +438,13 @@ function mapGraphStep(algo, step, state) {
             ],
           }));
         }
+      }
+      if (algo === 'huffman' && step.codes) {
+        c.push(ctxUpdate('codes', {
+          entries: Object.entries(step.codes).map(([char, code]) => ({
+            key: char, value: code, status: 'default',
+          })),
+        }));
       }
       if (algo === 'maxflow') {
         c.push(ctxUpdate('flow_status', {
@@ -797,6 +899,13 @@ function mapArrayStep(algo, step, state) {
             { key: 'Right', value: step.array.length - 1 },
           ],
         }));
+      } else if (algo === 'quickselect') {
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Target k', value: step.k ?? '–' },
+            { key: 'Array size', value: step.array?.length ?? '–' },
+          ],
+        }));
       } else if (algo === 'gcd') {
         const cs = step.conceptual_state || {};
         c.push(ctxUpdate('stats', {
@@ -1026,6 +1135,37 @@ function mapArrayStep(algo, step, state) {
           { key: 'b', value: sv.b },
         ],
       }));
+      break;
+    }
+
+    // ── quickselect ──────────────────────────────────────────────────────
+    case 'recurse_into': {
+      v.push(viz('array', 'highlight', {
+        indices: Array.from({ length: step.range[1] - step.range[0] + 1 }, (_, i) => step.range[0] + i),
+        className: 'active',
+      }));
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Target k', value: step.k },
+          { key: 'Pivot at', value: step.pivot_index },
+          { key: 'Recurse', value: `${step.side} [${step.range[0]}..${step.range[1]}]`, status: 'highlight' },
+        ],
+      }));
+      break;
+    }
+
+    case 'found': {
+      if (step.index !== undefined) {
+        v.push(viz('array', 'mark_sorted', { indices: [step.index] }));
+      }
+      if (step.k !== undefined) {
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Target k', value: step.k },
+            { key: `${step.k}-th element`, value: step.value, status: 'highlight' },
+          ],
+        }));
+      }
       break;
     }
 

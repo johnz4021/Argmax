@@ -142,15 +142,6 @@ export const CANONICAL_EXAMPLES = {
     teaching_notes: 'With capacity 5, optimal is Book + Camera (value 6), not just the Laptop (value 5). Shows why greedy by value/weight ratio can fail.',
   },
 
-  lcs: {
-    description: 'Find the longest common subsequence of two strings',
-    input: {
-      str1: 'ABCB',
-      str2: 'BDCB',
-    },
-    teaching_notes: 'LCS is "BCB" (length 3). The DP table shows how matches extend subsequences diagonally, while mismatches take the max of left/above.',
-  },
-
   edit_distance: {
     description: 'Transform one word into another with minimum edits',
     input: {
@@ -160,38 +151,4 @@ export const CANONICAL_EXAMPLES = {
     teaching_notes: 'Only 1 edit needed: replace "a" with "u". Shows the three operations (insert, delete, replace) and how the DP table tracks minimum cost.',
   },
 
-  coin_change: {
-    description: 'Make change using fewest coins',
-    input: {
-      coins: [1, 5, 10],
-      amount: 12,
-    },
-    teaching_notes: 'Optimal: 10 + 1 + 1 = 3 coins. Greedy works here, but DP finds the answer for all amounts up to 12, proving optimality.',
-  },
-
-  binary_search: {
-    description: 'Search for a target in a sorted array',
-    input: {
-      array: [2, 5, 8, 12, 16, 23, 38],
-      target: 16,
-    },
-    teaching_notes: 'Array has 7 elements. Binary search finds 16 in just 2-3 comparisons by halving the search space each time.',
-  },
-
-  quicksort: {
-    description: 'Sort an array using divide-and-conquer with a pivot',
-    input: {
-      array: [8, 3, 5, 1, 9, 2],
-    },
-    teaching_notes: 'After partitioning around a pivot, everything left is smaller, everything right is larger. The pivot is in its final position.',
-  },
-
-  gcd: {
-    description: 'Find the greatest common divisor of two numbers',
-    input: {
-      a: 48,
-      b: 18,
-    },
-    teaching_notes: 'Euclid\'s algorithm: gcd(48,18) -> gcd(18,12) -> gcd(12,6) -> gcd(6,0) = 6. Each step replaces the larger with the remainder.',
-  },
 };

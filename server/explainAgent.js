@@ -7,6 +7,8 @@ import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
 import { buildExampleGraph } from './graphBuilder.js';
+import { adviseRenderer } from './rendererAdvisor.js';
+import { getModeDefaultPanels } from './contextPanelDefaults.js';
 
 function buildAlgorithmList() {
   return Object.entries(ALGORITHMS)
@@ -44,7 +46,7 @@ CONCEPT FLOW (for concept/general explanation requests):
 3. Construct a small, clear example input yourself:
    - For graph algorithms: create a graph with 5-7 nodes and meaningful weights/capacities.
    - For sorting/searching: use a small array (6-10 elements).
-   - For DP: use a small instance (e.g., small knapsack, short strings for LCS).
+   - For DP: use a small instance (e.g., small knapsack, short strings for edit distance).
    - Make the example pedagogically useful — it should exercise the algorithm's
      key behaviors (not a trivial case).
 4. Set up the visualization (create_graph or create_visualization).
@@ -83,43 +85,66 @@ PROBLEM TYPE MODES:
 
 ALGORITHM EXECUTION MODE:
   For problems that require running a specific algorithm on given input.
-  1. Set up the graph/visualization via create_graph or create_visualization
-  2. Call run_algorithm to get the trace (context panels are auto-configured)
-  3. Narrate each step using emit_segment with trace_step_indices
-  4. Verify against expected output if provided in the problem
+  1. Set up the graph/visualization via create_graph or create_visualization (call build_example_graph first)
+  2. Call run_algorithm to get the trace (auto-configures context panels)
+  3. Build input visually BEFORE running the algorithm
+  4. Narrate each step using emit_segment with trace_step_indices
+  5. Verify against expected output if provided in the problem
 
 MODELING MODE (LP, reductions, duality):
-  For "write an LP," "define variables," "take a dual," or "reduce X to Y."
-  Set up the visualization with context panels, then explain each component:
+  After run_solver, a Formulation panel is auto-configured with placeholder lines
+  (Variables, Objective, Constraints). Call advise_renderer for a viz recommendation.
+  Use emit_segment with viz_actions (renderer:"context", action:"update") to fill the panel.
+  For "write an LP," "define variables," "take a dual," or "reduce X to Y":
   1. OBJECTS — Define the decision variables and explain why
   2. OBJECTIVE — State and explain what is being optimized
+     Use emit_segment viz_actions to update the formulation panel (add objective line)
+     and highlight relevant graph edges.
   3. CONSTRAINTS — Walk through each constraint, highlighting the graph structures
      that correspond to each one
   4. TRICK — Explain any transformation needed (absolute value linearization, layering, etc.)
   5. SANITY CHECK — Verify the formulation captures the problem
 
-  Use context panels to build the formulation incrementally. Each panel update must
-  include ALL accumulated lines (the array is replaced, not appended).
+  Each panel update must include ALL accumulated lines (the array is replaced, not appended).
   When building an auxiliary/product/layered graph as part of a reduction,
   ALWAYS render it using update_graph. Students need to SEE the construction.
+  Do NOT call run_algorithm unless the problem explicitly asks for execution.
 
 GREEDY DESIGN MODE:
+  After run_solver, Greedy Rule and Proof Skeleton panels are auto-configured.
+  Call advise_renderer for a viz recommendation.
+  Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
   1. RULE — Explain the greedy criterion and why it works
   2. EXAMPLE — Set up a concrete example and trace through the greedy behavior
   3. ALGORITHM — Present the full algorithm
   4. PROOF — Walk through the exchange argument / proof of correctness
   5. RUNTIME — Analyze time complexity
+  Do NOT call run_algorithm unless the problem explicitly asks for execution.
 
 DP DESIGN MODE:
+  After run_solver, DP Definition and Recurrence panels are auto-configured.
+  Call advise_renderer for a viz recommendation.
+  Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
   1. SUBPROBLEM — Define what dp[i] (or dp[i][j]) represents and why
-  2. RECURRENCE — Derive the recurrence relation step by step
+  2. RECURRENCE — Derive the recurrence relation step by step. Update the Recurrence panel.
   3. BASE CASES — State the boundary conditions
   4. ORDER — Explain the fill order
   5. RUNTIME — Analyze based on table size and per-cell work
   Optionally run the algorithm on a small example if one exists in the registry.
+  Do NOT call run_algorithm unless the problem explicitly asks for execution.
 
 DIVIDE-AND-CONQUER MODE:
-  A recursion_tree renderer is auto-configured for D&C problems.
+  After run_solver, D&C Structure and Recurrence context panels are auto-configured.
+  No visualization renderer is pre-created. Call advise_renderer for a viz recommendation.
+  Follow its renderer choice, timing, and stage plan. If the planner fails, choose yourself:
+  - RECURRENCE TREE: If the problem has a clean T(n) = aT(n/b) + O(n^d) recurrence,
+    call create_visualization with panels:[{renderer:"recursion_tree"}]. Then use
+    set_recurrence_tree({a, b, d, n: 16}) via viz_actions to populate it.
+    Never show an empty recursion tree — populate it in the same emit_segment.
+  - DECISION/CASE TREE: If case analysis or branching is the key insight,
+    call create_visualization with panels:[{renderer:"graph"}]. Use update_graph to
+    build a top-down decision tree (nodes=states, edges labeled via weight field).
+  - NO VIZ: If purely structural/proof-based, skip visualization.
   1. SPLIT — How to divide the input
   2. SUBPROBLEMS — What recursive calls are made
   3. COMBINE — How to merge subproblem results
@@ -130,13 +155,18 @@ DIVIDE-AND-CONQUER MODE:
      d. Use set_cumulative to show the total work
 
 RUNTIME / ASYMPTOTICS MODE:
-  A recursion_tree renderer is auto-configured for runtime analysis.
+  After run_solver, a Runtime Analysis context panel is auto-configured (no renderer yet).
+  Use emit_segment viz_actions (renderer:"context", action:"update") to fill the panel.
   1. Identify what bound is needed (upper, lower, tight)
   2. For recurrences: identify which method (Master theorem, substitution, recursion tree)
   3. If using recursion tree / Master Theorem:
-     a. Use set_recurrence_tree({a, b, d, n: 16}) to build the tree
-     b. Use highlight_level, show_master_case, set_cumulative for step-by-step analysis
-  4. Walk through the proof steps using expression panels
+     Call create_visualization with panels:[{renderer:"recursion_tree"}] AND in the
+     SAME emit_segment include set_recurrence_tree({a, b, d, n: 16}) via viz_actions.
+     Never create an empty recursion tree.
+     a. Walk through levels with reveal_level and highlight_level
+     b. Use show_master_case to show which levels dominate
+     c. Use set_cumulative to show the total work sum
+  4. Walk through the proof steps using the expression panel
   5. Use concrete values to build intuition
 
 SEGMENT BUDGET:
@@ -246,93 +276,96 @@ MODE B — Proof/theory/modeling (NO trace, manual viz_actions required):
       ]
     })
 
-CONTEXT PANELS:
-  Use create_visualization with context_panels to set up side panels for formulations,
-  DP definitions, proof skeletons, etc. Update them incrementally via emit_segment viz_actions.
-  Panel types: key_value, collection, expression, log, pseudocode.
-  NOTE: Each update must include ALL accumulated lines (the array is replaced, not appended).
+TOOL USAGE FOR NON-EXECUTION MODES:
 
-  RECOMMENDED PANEL CONFIGS BY MODE (pass these as context_panels in create_visualization):
+A. Context panels are AUTO-CONFIGURED after run_solver. You do NOT need to call
+  create_visualization for them — panels are already set up with placeholder content.
+  You CAN still call create_visualization manually if you need to add a renderer panel
+  (e.g. graph or interval) on top of the auto-configured context panels.
 
-  MODELING (LP, reductions, duality):
-    [{ id: "formulation", type: "expression", title: "Formulation",
-       initial_data: { label: "Formulation", lines: [
-         { label: "Variables", text: "___" },
-         { label: "Objective", text: "___" },
-         { label: "Constraints", text: "___" }
-       ]} }]
+B. Updating panels incrementally as you explain:
+  Use emit_segment with a context viz_action.
+  NOTE: lines is an array — each update must include ALL lines accumulated so far.
+    emit_segment({
+      narration: "Now let's add the objective...",
+      viz_actions: [{
+        renderer: "context",
+        action: "update",
+        params: {
+          panel_id: "formulation",
+          label: "$\\text{LP: Flow Distance}$",
+          lines: [
+            { label: "Variables", text: "$f_{uv}$ for each directed edge $(u,v)$" },
+            { label: "$\\min$", text: "$\\sum_e c_e \\cdot f_e$", highlight: true }
+          ]
+        }
+      }]
+    })
 
-  GREEDY DESIGN:
-    [{ id: "greedy_rule", type: "expression", title: "Greedy Rule",
-       initial_data: { label: "Greedy Rule", lines: [{ label: "Criterion", text: "___" }] } },
-     { id: "proof_skeleton", type: "expression", title: "Proof Skeleton",
-       initial_data: { label: "Exchange Argument", lines: [
-         { label: "Lower bound", text: "___" },
-         { label: "Upper bound", text: "___" },
-         { label: "Combining", text: "___" }
-       ]} }]
+C. Adding a renderer panel in non-execution mode:
+  A renderer panel is NOT auto-created — create one via create_visualization if the
+  problem benefits from a visual (graph, interval timeline, recursion tree, etc.).
+  PANEL ID RULE: Always use the renderer type as the panel id:
+    create_visualization({ panels: [{ id: "interval", renderer: "interval" }] })
+    NOT { id: "intervals", renderer: "interval" }  ← wrong, causes routing mismatch
+  In viz_actions, the renderer field must exactly match the panel id you assigned.
 
-  DP DESIGN:
-    [{ id: "dp_definition", type: "expression", title: "DP Definition",
-       initial_data: { label: "Subproblem", lines: [{ label: "Definition", text: "___" }] } },
-     { id: "recurrence", type: "expression", title: "Recurrence",
-       initial_data: { label: "Recurrence", lines: [
-         { label: "Recurrence", text: "___" },
-         { label: "Base case", text: "___" }
-       ]} }]
+  Available renderers and actions:
+  - graph: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label
+  - array: set_data, highlight, swap, compare, partition, place, mark_sorted, set_pointer, clear_pointers, slide_window, set_label, reset
+  - table: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, clear_dependency_arrows, set_row_header, set_col_header, mark_optimal, reset
+  - tree: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset
+  - linked: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset
+  - interval: set_jobs, set_machines, assign_machine, highlight_job, highlight_jobs, highlight_overlap, clear_overlaps, mark_sorted, mark_selected, mark_rejected, sweep_line, clear_sweep_line, set_pointer, clear_pointers, reset
+    USE interval FOR: job scheduling, minimum machines, interval overlap, activity selection, conference scheduling — any problem with jobs/intervals on a timeline.
 
-  DIVIDE-AND-CONQUER:
-    [{ id: "dc_structure", type: "expression", title: "D&C Structure",
-       initial_data: { label: "Divide & Conquer", lines: [
-         { label: "Split", text: "___" },
-         { label: "Subproblems", text: "___" },
-         { label: "Combine", text: "___" },
-         { label: "$T(n)$", text: "___" }
-       ]} }]
+  Call get_renderer_docs to get full parameter docs, classNames, and examples for any renderer(s) you need.
 
-  RUNTIME / ASYMPTOTICS:
-    [{ id: "runtime_analysis", type: "expression", title: "Runtime Analysis",
-       initial_data: { label: "Runtime", lines: [{ label: "$T(n)$", text: "___" }] } }]
-
-  You may add additional panels (e.g., a key_value panel for variable definitions) as needed.
-  Fill in the "___" placeholders via viz_actions as you explain each component.
-
-RENDERER REFERENCE:
-
-Available renderers and actions:
-- graph: highlight_node, highlight_edge, mark_visited, mark_current, set_label, reset_highlights, show_path, update_edge_label
-- array: set_data, highlight, swap, compare, partition, place, mark_sorted, set_pointer, clear_pointers, slide_window, set_label, reset
-- table: init_grid, fill_cell, highlight_cell, highlight_row, highlight_col, show_dependency_arrow, clear_dependency_arrows, set_row_header, set_col_header, mark_optimal, reset
-- tree: set_tree, highlight_node, highlight_edge, insert_node, delete_node, rotate_left, rotate_right, recolor_node, sift_up, sift_down, mark_level, update_heap_array, reset
-- linked: set_list, highlight_node, highlight_pointer, insert_after, delete_node, reverse_segment, push, pop, enqueue, dequeue, set_pointer, reset
-- interval: set_jobs, set_machines, assign_machine, highlight_job, highlight_jobs, highlight_overlap, clear_overlaps, mark_sorted, mark_selected, mark_rejected, sweep_line, clear_sweep_line, set_pointer, clear_pointers, reset
-  USE interval FOR: job scheduling, minimum machines, interval overlap, activity selection — any problem with jobs/intervals on a timeline.
-
-Call get_renderer_docs to get full parameter docs, classNames, and examples for any renderer(s) you need.
+CONTEXT PANEL IDs (for reference — these are auto-created, use these ids in viz_actions):
+  MODELING:          formulation
+  GREEDY DESIGN:     greedy_rule, proof_skeleton
+  DP DESIGN:         dp_definition, recurrence
+  DIVIDE-AND-CONQUER: dc_structure, recurrence
+  RUNTIME:           runtime_analysis
 
 GRAPH RENDERER DETAILED REFERENCE:
 ${buildRendererDocs(['graph'])}
 
+GUARDRAILS:
+- Never make up an algorithm trace. Always use run_algorithm.
+- Build input visually BEFORE running the algorithm (create_graph or create_visualization first).
+- In non-execution modes (modeling, greedy_design, dp_design, dc_design, runtime),
+  do NOT call run_algorithm unless the problem explicitly asks for execution.
+- Use formal model panels (expression panels with lines mode) to keep structured
+  information visible: variables, objective, constraints, recurrences, invariants.
+- In non-execution modes, context panels are auto-configured after run_solver.
+  Use emit_segment viz_actions to fill them — do NOT call create_visualization for the context panels.
+- Each formulation/recurrence panel update must include ALL accumulated lines (array is replaced, not appended).
+- When building an auxiliary/product/layered graph as part of a reduction,
+  ALWAYS render it using update_graph. Students need to SEE the construction.
+  If the product graph is too large (>12 nodes), render a representative subset.
+- INPUT SIZE LIMITS: Max 12 nodes / 20 edges for graphs, max 15 elements for arrays, max 8x8 for DP tables.
+  If the problem exceeds these, build a smaller example for visualization.
+
 VISUALIZATION SETUP:
 - Use create_graph for graph algorithms and graph-based proofs
-- Use create_visualization for non-graph problems (arrays, DP tables, trees)
+- Use create_visualization for non-graph problems (arrays, DP tables, trees, interval)
 - For graph algorithms with a trace, prefer trace_step_indices over manual viz_actions
 
 VISUALIZATION PLANNING (problem flow only):
-After run_solver succeeds, call build_example_graph with the problem text.
-The planner returns:
-- panels: initial visualization layout with pre-built graphs
-- algorithm_runs: algorithms to run on the initial graph
-- graph_variants: pre-built transformed graphs for mid-lesson swapping
-- teaching_notes: guidance on when to swap and what to narrate
+After run_solver, the correct planner depends on the mode returned:
 
-Workflow:
-1. Call create_visualization with the planner's panels and context_panels
-2. Call run_algorithm for each entry in algorithm_runs
-3. Narrate the initial graph using trace_step_indices
-4. When it's time to show a transformation, call create_graph(variant_id: "variant_key")
-5. Call run_algorithm for each algorithm_run in that variant
-6. Continue narrating the transformed graph
+- algorithm_execution → call build_example_graph
+  Returns: panels (pre-built graphs), algorithm_runs, graph_variants, teaching_notes
+  Workflow: create_visualization with panels → run_algorithm for each run → narrate with trace_step_indices
+
+- modeling / greedy_design / dp_design / dc_design / runtime → call advise_renderer
+  Returns: renderer recommendation, create_at_stage, viz_stages, recurrence_params (for D&C)
+  Context panels are ALREADY auto-configured after run_solver — do NOT call create_visualization for them.
+  Follow the stage plan returned by advise_renderer for when/whether to add a renderer.
+
+NEVER call build_example_graph for non-execution modes — it is not designed for them.
+NEVER call advise_renderer for algorithm_execution mode — use build_example_graph instead.
 
 GRAPH VARIANTS (transformation problems):
 When build_example_graph returns graph_variants, the planner has pre-built transformed
@@ -438,13 +471,27 @@ const explainTools = [
   },
   {
     name: 'build_example_graph',
-    description: 'Plan the visualization layout for a problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). The planner decides whether single or multi-graph is needed.',
+    description: 'Plan the visualization layout for an algorithm_execution problem. Call AFTER run_solver to get a pre-built visualization setup (graphs, panels, algorithm runs). IMPORTANT: For algorithm_execution mode ONLY — never use this for non-execution modes (greedy, dp, modeling, d&c, runtime). Use advise_renderer for those.',
     input_schema: {
       type: 'object',
       properties: {
         problem_text: {
           type: 'string',
           description: 'The problem text being explained',
+        },
+      },
+      required: ['problem_text'],
+    },
+  },
+  {
+    name: 'advise_renderer',
+    description: 'Plan visualization for NON-EXECUTION modes only (D&C, DP, greedy, modeling, runtime). NEVER call this for algorithm_execution mode — use build_example_graph instead. Call AFTER run_solver completes. Returns renderer recommendation and stage-by-stage viz plan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        problem_text: {
+          type: 'string',
+          description: 'The problem text being worked on',
         },
       },
       required: ['problem_text'],
@@ -462,6 +509,46 @@ KEY INSIGHT: ${result.keyInsight}
 SOLUTION: ${result.solution}
 =====`;
   return ctx;
+}
+
+function applyClassification(plan, session, ws, vizState) {
+  session.reasoningMode = plan.reasoning_mode;
+
+  if (plan.reasoning_mode === 'algorithm_execution') {
+    return {
+      success: true,
+      message: `Mode: algorithm_execution. Target: ${plan.target_algorithm || 'N/A'}. Now call build_example_graph to plan the visualization.`,
+    };
+  }
+
+  const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
+  const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
+  let rendererType = algoInfo?.renderer || 'graph';
+  const algoLower = (targetAlgo || '').toLowerCase();
+  if (algoLower.includes('interval') || algoLower.includes('schedule') || algoLower.includes('machine') || algoLower.includes('job') || algoLower.includes('activity')) {
+    rendererType = 'interval';
+  }
+
+  const rendererDocs = buildRendererDocs([rendererType]);
+  const modeDefaults = getModeDefaultPanels(plan.reasoning_mode);
+
+  let message = `Mode: ${plan.reasoning_mode}. Now call advise_renderer to plan the visualization.`;
+  if (modeDefaults) {
+    const autoRenderer = modeDefaults.renderer === null ? null : (modeDefaults.renderer || rendererType);
+    const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
+    sendJSON(ws, { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels });
+    if (autoRenderer && vizState) {
+      vizState.vizActive = true;
+      vizState.segmentsWithoutVizActions = 0;
+    }
+    const panelIds = modeDefaults.context_panels.map(p => p.id);
+    message += autoRenderer
+      ? ` Context panels [${panelIds.join(', ')}] and renderer "${autoRenderer}" are auto-configured. Do NOT call create_visualization. Fill panels via emit_segment viz_actions.`
+      : ` Context panels [${panelIds.join(', ')}] are auto-configured. No renderer pre-created — call create_visualization if a visualization adds value.`;
+  }
+  message += `\n\nRENDERER REFERENCE (${rendererType}):\n${rendererDocs}`;
+
+  return { success: true, message };
 }
 
 export async function startExplainSession(session, problemText, imageBase64, imageMimeType) {
@@ -509,8 +596,9 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
   const ws = liveWs(session);
   const myGeneration = session.runGeneration;
   let emptyEndTurnCount = 0;
-  let vizActive = false;
-  let segmentsWithoutVizActions = 0;
+  const vizState = { vizActive: false, segmentsWithoutVizActions: 0 };
+  let vizActive = vizState.vizActive;
+  let segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
   let systemPrompt = initialSystemPrompt;
   let solverResult = null;
   let solverResultsMap = {};
@@ -729,14 +817,27 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
           if (sr.success) {
             solverResult = sr;
             systemPrompt = EXPLAIN_SYSTEM_PROMPT + buildSolverContext(sr);
-            console.log(`[ExplainAgent] Solver succeeded: approach="${sr.approach}"`);
+            console.log(`[ExplainAgent] Solver succeeded: approach="${sr.approach}", mode="${sr.reasoning_mode}"`);
+            if (sr.reasoning_mode) {
+              const classResult = applyClassification(sr, session, ws, vizState);
+              vizActive = vizState.vizActive;
+              segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
+              result = {
+                success: true,
+                reasoning_mode: sr.reasoning_mode,
+                target_algorithm: sr.target_algorithm || null,
+                key_insight: sr.keyInsight,
+                message: classResult.message,
+              };
+            } else {
+              result = {
+                success: true,
+                message: `Solver complete. Approach: ${sr.approach}. Key insight: ${sr.keyInsight}. Now explain the solution directly.`,
+              };
+            }
+          } else {
+            result = { success: false, message: 'Solver failed. Proceed with your own analysis.' };
           }
-          result = {
-            success: sr.success,
-            message: sr.success
-              ? `Solver complete. Approach: ${sr.approach}. Key insight: ${sr.keyInsight}. Now explain the solution directly.`
-              : 'Solver failed. Proceed with your own analysis.',
-          };
         } else if (block.name === 'run_solver_batch') {
           const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
           const subproblems = block.input.subproblems.map((sp) => ({
@@ -758,14 +859,21 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
             solverResultsMap = batchResult.solutions;
             solverResult = solverResultsMap[activePart];
             systemPrompt = EXPLAIN_SYSTEM_PROMPT + buildSolverContext(solverResult);
-            console.log(`[ExplainAgent] Batch solver succeeded, active part: ${activePart}`);
+            console.log(`[ExplainAgent] Batch solver succeeded, active part: ${activePart}, mode="${solverResult?.reasoning_mode}"`);
+          }
+          let classMessage = '';
+          if (batchResult.success && solverResult?.reasoning_mode) {
+            const classResult = applyClassification(solverResult, session, ws, vizState);
+            vizActive = vizState.vizActive;
+            segmentsWithoutVizActions = vizState.segmentsWithoutVizActions;
+            classMessage = ' ' + classResult.message;
           }
           result = {
             success: batchResult.success,
             active_part: activePart,
             selected_parts: selectedParts,
             message: batchResult.success
-              ? `All parts solved. Starting with Part ${activePart}. Explain each part sequentially. After finishing one part, switch context and explain the next.`
+              ? `All parts solved. Starting with Part ${activePart}.${classMessage}`
               : 'Batch solver failed. Proceed with your own analysis.',
           };
         } else if (block.name === 'build_example_graph') {
@@ -807,6 +915,57 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
               ? `Visualization planned: ${plan.panels.length} panel(s). ${plan.graph_variants ? Object.keys(plan.graph_variants).length + ' graph variant(s) available.' : ''} ${plan.teaching_notes || ''} Now call create_visualization with these panels, then run_algorithm for each planned run. To swap graphs mid-lesson, call create_graph with variant_id.`
               : 'Viz planning failed. Construct visualization manually.',
           };
+        } else if (block.name === 'advise_renderer') {
+          if (!solverResult?.success) {
+            result = {
+              success: false,
+              message: 'Solver has not completed yet. Skip visualization planning and use your judgment — create visualization manually when you know what fits the problem.',
+            };
+          } else {
+            const statusCb = (label) => sendJSON(ws, { type: 'agent_status', status: 'tool', tool: label });
+            const dvPlan = await adviseRenderer(
+              block.input.problem_text,
+              solverResult,
+              session.reasoningMode,
+              statusCb,
+              session.imageBase64,
+              session.imageMimeType,
+              session.anthropicClient,
+            );
+            if (session.endSessionFlag) throw new Error('__end_session__');
+            if (dvPlan.success) {
+              let dvMsg = `Viz plan: renderer=${dvPlan.renderer || 'none'}, create_at=${dvPlan.create_at_stage}. ${dvPlan.reasoning}`;
+              if (dvPlan.recurrence_params) {
+                const { a, b, d } = dvPlan.recurrence_params;
+                dvMsg += `\nRecurrence pre-computed: a=${a}, b=${b}, d=${d}. When you reach the recurrence stage, call create_visualization with panels:[{renderer:"recursion_tree"}], then immediately emit set_recurrence_tree({a:${a}, b:${b}, d:${d}, n:16}) via viz_actions.`;
+              }
+              if (dvPlan.renderer && dvPlan.create_at_stage === 'immediately') {
+                dvMsg += `\nCall create_visualization now with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              } else if (dvPlan.renderer && dvPlan.create_at_stage !== 'never') {
+                dvMsg += `\nDo NOT create visualization yet — wait until the "${dvPlan.create_at_stage}" stage, then call create_visualization with panels:[{renderer:"${dvPlan.renderer}"}].`;
+              }
+              if (dvPlan.viz_stages?.length > 0) {
+                dvMsg += '\nStage plan:';
+                for (const s of dvPlan.viz_stages) {
+                  dvMsg += `\n  - ${s.stage}: ${s.description}`;
+                }
+              }
+              result = {
+                success: true,
+                renderer: dvPlan.renderer,
+                create_at_stage: dvPlan.create_at_stage,
+                viz_stages: dvPlan.viz_stages || [],
+                recurrence_params: dvPlan.recurrence_params,
+                extra_context_panels: dvPlan.extra_context_panels || [],
+                message: dvMsg,
+              };
+            } else {
+              result = {
+                success: false,
+                message: 'Design viz planning failed. Use your judgment — see mode-specific instructions for visualization choices. Default to no visualization rather than an empty one.',
+              };
+            }
+          }
         } else if (block.name === 'get_renderer_docs') {
           result = { docs: buildRendererDocs(block.input.renderers) };
         } else if (block.name === 'lesson_complete') {

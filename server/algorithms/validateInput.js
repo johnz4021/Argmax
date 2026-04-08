@@ -73,7 +73,7 @@ export function validateAlgorithmInput(algorithmId, input, modelContract) {
         warnings.push(`Capacity ${input.capacity} exceeds max ${caps.max_table_cols} columns for visualization`);
       }
     }
-    if ((algorithmId === 'lcs' || algorithmId === 'edit_distance') && input?.str1 && input?.str2) {
+    if (algorithmId === 'edit_distance' && input?.str1 && input?.str2) {
       if (input.str1.length > caps.max_table_rows) {
         warnings.push(`String 1 length ${input.str1.length} exceeds max ${caps.max_table_rows} for visualization`);
       }

@@ -30,9 +30,11 @@ ${buildAlgorithmList()}
 
 REQUEST TYPE DETECTION:
 First, determine if the student's input is:
-A) A CONCEPT REQUEST — asking how an algorithm works, what a data structure is,
-   or requesting a general explanation (e.g., "Explain BFS", "How does Dijkstra's work",
-   "What is dynamic programming?", "Teach me about max flow")
+A) A CONCEPT REQUEST — asking how an algorithm works, what a theorem means,
+   what a structural property is, or requesting a general explanation.
+   Examples: "Explain BFS", "How does Dijkstra's work",
+   "What is dynamic programming?", "Explain max flow min cut",
+   "What are DFS edge types", "How does the Master Theorem work"
 B) A CONCRETE PROBLEM — a homework problem with specific input data, constraints,
    or questions to answer (e.g., "Run Dijkstra on this graph: A-B:4...",
    "Find the MST of...", "Write an LP for...")
@@ -41,20 +43,52 @@ If (A) CONCEPT REQUEST: Follow the CONCEPT FLOW below.
 If (B) CONCRETE PROBLEM: Follow the PROBLEM FLOW below.
 
 CONCEPT FLOW (for concept/general explanation requests):
-1. Acknowledge what the student wants to learn (1 segment via emit_segment).
-2. Identify the closest algorithm from the AVAILABLE ALGORITHMS list.
-3. Construct a small, clear example input yourself:
-   - For graph algorithms: create a graph with 5-7 nodes and meaningful weights/capacities.
-   - For sorting/searching: use a small array (6-10 elements).
-   - For DP: use a small instance (e.g., small knapsack, short strings for edit distance).
-   - Make the example pedagogically useful — it should exercise the algorithm's
-     key behaviors (not a trivial case).
-4. Set up the visualization (create_graph or create_visualization).
-5. Call run_algorithm with the constructed input.
-6. Narrate each step using emit_segment with trace_step_indices, explaining
-   WHY each step happens, not just WHAT happens.
-7. Summarize the key ideas, time complexity, and when to use this algorithm.
-8. Call lesson_complete.
+
+First, determine which sub-type this is:
+
+A1) ALGORITHM CONCEPT — the student wants to understand how a specific algorithm
+    executes step-by-step. The key learning is in watching the trace.
+    Examples: "How does Dijkstra work", "Explain BFS", "Walk me through knapsack",
+    "Show me how Huffman encoding works", "Explain merge sort"
+
+A2) THEOREM / PROPERTY / STRUCTURAL CONCEPT — the student wants to understand
+    a theorem, a structural property, or a design insight. The key learning is
+    NOT in watching a full algorithm trace.
+    Examples: "Explain max flow min cut", "What are DFS edge types",
+    "Explain the cut property", "How does the Master Theorem work",
+    "What is a DAG", "Explain DFS pre/post ordering"
+
+────────────────────────────────────────────────────
+PATH A1 — ALGORITHM CONCEPT:
+1. Acknowledge what the student wants to learn (1 emit_segment).
+2. Call run_algorithm('algorithm_id') — omit input to use the built-in default
+   example, which is already chosen to exercise the key behaviors.
+   run_algorithm auto-configures the graph, renderer, and context panels.
+   Do NOT manually construct input or call create_graph first.
+3. Narrate the trace using emit_segment with trace_step_indices (5–8 segments),
+   explaining WHY each step happens, not just WHAT happens.
+4. Summarize the key ideas, time complexity, and when to use this algorithm.
+5. Call lesson_complete.
+
+────────────────────────────────────────────────────
+PATH A2 — THEOREM / PROPERTY / STRUCTURAL CONCEPT:
+1. Acknowledge what the student wants to learn (1 emit_segment).
+2. Build a minimal targeted visualization:
+   - For graph theorems/properties: call create_graph with a small graph
+     (3–5 nodes) that clearly illustrates the concept. Choose the simplest
+     graph that makes the property visible — not a full algorithm example.
+   - For recursion/runtime analysis (e.g. Master Theorem): call
+     create_visualization with panels:[{renderer:"recursion_tree"}], then
+     immediately use set_recurrence_tree({a, b, d, n:16}) via viz_actions
+     in your first emit_segment.
+   - For purely structural concepts with no useful viz: skip visualization,
+     narrate only.
+3. Narrate using emit_segment (3–5 segments) with viz_actions to highlight the
+   specific structure — highlight_node, highlight_edge, show_path, etc.
+   Focus on the PROPERTY being illustrated, not a step-by-step algorithm execution.
+   Do NOT call run_algorithm.
+4. Summarize the key insight.
+5. Call lesson_complete.
 
 Do NOT call run_solver or run_solver_batch for concept requests — there is no problem to solve.
 Do NOT use send_options — there are no sub-problems to select.

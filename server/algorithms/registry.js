@@ -1,7 +1,9 @@
-import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH } from './graph/index.js';
+import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH, dagShortest, DEFAULT_DAG_GRAPH } from './graph/index.js';
 import { mergesort } from './sorting/index.js';
 import { knapsack, editDistance } from './dp/index.js';
 import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
+import { quickselect } from './searching/index.js';
+import { huffman, buildHuffmanLeafGraph } from './compression/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -95,6 +97,30 @@ export const ALGORITHMS = {
     category: 'Complexity Theory',
     defaultInput: { formula: DEFAULT_REDUCTION_FORMULA, graph: { nodes: [], edges: [], directed: false, positions: {} } },
     capabilities: { supports_directed: false, max_nodes: 12 },
+  },
+  dag_shortest: {
+    run: (input) => dagShortest(input.graph, input.source),
+    renderer: 'graph',
+    category: 'Dynamic Programming',
+    defaultInput: { graph: DEFAULT_DAG_GRAPH, source: 'S' },
+    capabilities: { supports_directed: true, supports_undirected: false, supports_weighted: true, supports_negative_weights: true, max_nodes: 12, max_edges: 20 },
+  },
+  quickselect: {
+    run: (input) => quickselect(input.array, input.k ?? 0),
+    renderer: 'array',
+    category: 'Divide and Conquer',
+    defaultInput: { array: [7, 2, 10, 3, 8, 1, 5], k: 3 },
+    capabilities: { max_array_length: 12 },
+  },
+  huffman: {
+    run: (input) => huffman(input.string ?? 'abcde'),
+    renderer: 'graph',
+    category: 'Greedy Algorithms',
+    defaultInput: {
+      string: 'abcde',
+      graph: buildHuffmanLeafGraph('abcde'),
+    },
+    capabilities: { max_nodes: 30 },
   },
 };
 

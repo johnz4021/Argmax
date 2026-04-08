@@ -73,12 +73,35 @@ const PANEL_DEFAULTS = {
     { id: 'log', type: 'log', title: 'Construction Log' },
   ],
 
+  // --- Divide and Conquer ---
+  quickselect: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.quickselect } },
+    { id: 'stats', type: 'key_value', title: 'State' },
+  ],
+
   // --- Graph (continued) ---
   bellman_ford: [
     { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
       initial_data: { lines: PSEUDOCODE.bellman_ford } },
     { id: 'distances', type: 'key_value', title: 'Distances' },
     { id: 'round_info', type: 'key_value', title: 'Round' },
+  ],
+
+  dag_shortest: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.dag_shortest } },
+    { id: 'distances', type: 'key_value', title: 'Distances' },
+    { id: 'topo_order', type: 'collection', title: 'Topo Order' },
+  ],
+
+  // --- Greedy ---
+  huffman: [
+    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
+      initial_data: { lines: PSEUDOCODE.huffman } },
+    { id: 'freq_table', type: 'key_value', title: 'Frequencies' },
+    { id: 'pq', type: 'collection', title: 'Priority Queue' },
+    { id: 'codes', type: 'key_value', title: 'Codes' },
   ],
 };
 

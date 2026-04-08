@@ -54,7 +54,7 @@ CONCEPT FLOW (for concept/general explanation requests):
 3. Construct a small, pedagogically useful example input yourself:
    - For graph algorithms: 5-7 nodes with meaningful weights/capacities.
    - For sorting/searching: a small array (6-10 elements).
-   - For DP: a small instance (e.g., small knapsack, short strings for LCS).
+   - For DP: a small instance (e.g., small knapsack, short strings for edit distance).
    - Make the example exercise the algorithm's key behaviors (not a trivial case).
 4. Set up the visualization and call run_algorithm on the constructed example.
 5. Walk through the trace interactively — still use the Socratic approach:
@@ -112,7 +112,7 @@ ALGORITHM EXECUTION MODE (existing flow):
 
 MODELING MODE (LP, reductions, duality):
   Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
-  After classify_problem, a Formulation panel is auto-configured with placeholder lines
+  After run_solver, a Formulation panel is auto-configured with placeholder lines
   (Variables, Objective, Constraints). If run_solver has completed, call
   advise_renderer for a viz recommendation. Use emit_segment with viz_actions
   (renderer:"context", action:"update") to fill in panel content as the student works.
@@ -141,7 +141,7 @@ MODELING MODE (LP, reductions, duality):
   The related algorithm provides context, not execution.
 
 GREEDY DESIGN MODE:
-  After classify_problem, Greedy Rule and Proof Skeleton panels are auto-configured.
+  After run_solver, Greedy Rule and Proof Skeleton panels are auto-configured.
   If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
@@ -164,7 +164,7 @@ GREEDY DESIGN MODE:
   5. RUNTIME — Ask the student to analyze (usually straightforward, Level 2-3 is fine)
 
 DP DESIGN MODE:
-  After classify_problem, DP Definition and Recurrence panels are auto-configured.
+  After run_solver, DP Definition and Recurrence panels are auto-configured.
   If run_solver has completed, call advise_renderer for a viz recommendation.
   Use emit_segment with viz_actions (renderer:"context", action:"update") to fill them.
 
@@ -180,7 +180,7 @@ DP DESIGN MODE:
   Optionally run the algorithm on a small example if one exists in the registry.
 
 DIVIDE-AND-CONQUER MODE:
-  After classify_problem, D&C Structure and Recurrence context panels are auto-configured.
+  After run_solver, D&C Structure and Recurrence context panels are auto-configured.
   No visualization renderer is pre-created.
 
   FIRST: If run_solver has completed, call advise_renderer to get a viz
@@ -205,7 +205,7 @@ DIVIDE-AND-CONQUER MODE:
      d. set_cumulative({level}) to show running total
 
 RUNTIME / ASYMPTOTICS MODE:
-  After classify_problem, a Runtime Analysis context panel is auto-configured (no renderer yet).
+  After run_solver, a Runtime Analysis context panel is auto-configured (no renderer yet).
   Use emit_segment viz_actions (renderer:"context", action:"update") to fill the panel.
 
   1. Identify what bound is needed (upper, lower, tight)
@@ -415,7 +415,7 @@ GUARDRAILS:
   do NOT call run_algorithm unless the student explicitly asks to see it run.
 - Use formal model panels (expression panels with lines mode) to keep structured
   information visible: variables, objective, constraints, recurrences, invariants.
-- In non-execution modes, context panels are auto-configured after classify_problem.
+- In non-execution modes, context panels are auto-configured after run_solver.
   Use emit_segment viz_actions to fill them — no need to call create_visualization.
 - VISUALIZATION USAGE RULE: When a visualization is active and you reference a specific
   node, edge, cell, or algorithmic step by name in your narration, ALWAYS include a
@@ -464,7 +464,7 @@ QUESTION TYPE HIERARCHY (prefer higher types):
     "Is this graph directed or undirected?"
 
   HARD RULES:
-  - critical_concepts (from classify_problem) MUST be introduced with Type 1 or 2.
+  - critical_concepts (from run_solver) MUST be introduced with Type 1 or 2.
   - Only escalate to Type 3 after the student struggles with Type 1/2 (gives a wrong
     or confused answer, or says "I don't know").
   - NEVER introduce a critical_concept via Type 4 (confirmatory MCQ).
@@ -525,7 +525,7 @@ WORK OWNERSHIP MODEL:
     - Wrong answers ≠ "I don't know" — wrong answers indicate misconceptions that need direct correction.
 
 COMPREHENSION GATES:
-  Each critical_concept (from classify_problem) must be gated before moving on:
+  Each critical_concept (from run_solver) must be gated before moving on:
   1. IMPLICIT GATING (preferred): If the student already demonstrated understanding of a
      concept through their working answers (e.g., correctly applying the concept, giving
      correct examples, or explaining the logic unprompted), the gate is PASSED — do NOT
@@ -580,7 +580,7 @@ HANDOFF POLICY — "GO TRY IT" MOMENTS:
 
 TOOL USAGE FOR NON-EXECUTION MODES:
 
-A. Context panels are AUTO-CONFIGURED after classify_problem. You do NOT need to call
+A. Context panels are AUTO-CONFIGURED after run_solver. You do NOT need to call
   create_visualization — panels are already set up with placeholder content.
   You CAN still call create_visualization manually if you need to override the auto-setup
   (e.g., mount additional renderer panels or add extra context panels).
@@ -889,7 +889,7 @@ function validateInputSize(input, algorithm) {
     if (algorithm === 'knapsack' && input?.items?.length > 8) {
       warnings.push(`${input.items.length} items would create a large DP table (max 8 for visualization).`);
     }
-    if ((algorithm === 'lcs' || algorithm === 'edit_distance') && (input?.str1?.length > 8 || input?.str2?.length > 8)) {
+    if (algorithm === 'edit_distance' && (input?.str1?.length > 8 || input?.str2?.length > 8)) {
       warnings.push(`String lengths exceed 8 characters, creating a large DP table. Consider using shorter strings.`);
     }
   }
@@ -947,7 +947,7 @@ RULES:
 }
 
 /**
- * Apply classification from a solver result (or any classify_problem-shaped object).
+ * Apply classification from a solver result.
  * Sets session state, auto-creates visualization panels for non-execution modes,
  * and returns { success, message } for inclusion in a tool result.
  * vizState = { vizActive, segmentsWithoutVizActions } — mutable refs updated in place.
@@ -1235,7 +1235,6 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
       let interrupted = false;
 
       const TOOL_LABELS = {
-        classify_problem: 'Classifying problem',
         create_visualization: 'Creating visualization',
         emit_segment: null,
         send_options: null,

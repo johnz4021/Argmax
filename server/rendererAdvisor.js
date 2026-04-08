@@ -51,7 +51,7 @@ runtime (asymptotics):
 
 RULES:
 - DEFAULT TO NULL when unsure. An empty visualization panel is worse than no panel.
-- If you recommend a renderer, be specific about WHEN to create it — "immediately" means right after classify_problem, other values mean the agent should wait.
+- If you recommend a renderer, be specific about WHEN to create it — "immediately" means right after run_solver, other values mean the agent should wait.
 - If a recurrence T(n) = aT(n/b) + O(n^d) exists in the solution, ALWAYS extract a, b, d into recurrence_params. This is critical — it lets the agent populate the recursion tree without having to re-derive the parameters.
 - viz_stages should map to the mode's teaching stages (e.g., SPLIT/SUBPROBLEMS/COMBINE/RECURRENCE for D&C).
 - Keep viz_stages concise — the teaching agent handles the details.`;

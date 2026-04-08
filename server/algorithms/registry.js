@@ -1,11 +1,7 @@
 import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH } from './graph/index.js';
-import { quicksort, mergesort, insertionSort, selectionSort, bubbleSort } from './sorting/index.js';
-import { binarySearch } from './searching/index.js';
-import { knapsack, lcs, editDistance, coinChange } from './dp/index.js';
-import { linkedListReversal, stackOperations, queueOperations } from './linked/index.js';
-import { bstInsert, heapOperations } from './tree/index.js';
-import { gcd } from './math/gcd.js';
-import { graphColoringNP, DEFAULT_COLORING_GRAPH, polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
+import { mergesort } from './sorting/index.js';
+import { knapsack, editDistance } from './dp/index.js';
+import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -36,46 +32,11 @@ export const ALGORITHMS = {
     defaultInput: { graph: DEFAULT_GRAPH, source: 'A' },
     capabilities: { supports_directed: true, supports_undirected: true, supports_weighted: false, supports_unweighted: true, max_nodes: 12, max_edges: 20 },
   },
-  quicksort: {
-    run: (input) => quicksort(input.array),
-    renderer: 'array',
-    category: 'Sorting',
-    defaultInput: { array: [38, 27, 43, 3, 9, 82, 10] },
-    capabilities: { max_array_length: 15 },
-  },
   mergesort: {
     run: (input) => mergesort(input.array),
     renderer: 'array',
     category: 'Sorting',
     defaultInput: { array: [38, 27, 43, 3, 9, 82, 10] },
-    capabilities: { max_array_length: 15 },
-  },
-  insertion_sort: {
-    run: (input) => insertionSort(input.array),
-    renderer: 'array',
-    category: 'Sorting',
-    defaultInput: { array: [38, 27, 43, 3, 9, 82, 10] },
-    capabilities: { max_array_length: 15 },
-  },
-  selection_sort: {
-    run: (input) => selectionSort(input.array),
-    renderer: 'array',
-    category: 'Sorting',
-    defaultInput: { array: [38, 27, 43, 3, 9, 82, 10] },
-    capabilities: { max_array_length: 15 },
-  },
-  bubble_sort: {
-    run: (input) => bubbleSort(input.array),
-    renderer: 'array',
-    category: 'Sorting',
-    defaultInput: { array: [38, 27, 43, 3, 9, 82, 10] },
-    capabilities: { max_array_length: 15 },
-  },
-  binary_search: {
-    run: (input) => binarySearch(input.array, input.target),
-    renderer: 'array',
-    category: 'Searching',
-    defaultInput: { array: [2, 5, 8, 12, 16, 23, 38, 56, 72, 91], target: 23 },
     capabilities: { max_array_length: 15 },
   },
   knapsack: {
@@ -93,25 +54,11 @@ export const ALGORITHMS = {
     },
     capabilities: { max_table_rows: 8, max_table_cols: 8 },
   },
-  lcs: {
-    run: (input) => lcs(input.str1, input.str2),
-    renderer: 'table',
-    category: 'Dynamic Programming',
-    defaultInput: { str1: 'ABCBDAB', str2: 'BDCAB' },
-    capabilities: { max_table_rows: 8, max_table_cols: 8 },
-  },
   edit_distance: {
     run: (input) => editDistance(input.str1, input.str2),
     renderer: 'table',
     category: 'Dynamic Programming',
     defaultInput: { str1: 'kitten', str2: 'sitting' },
-    capabilities: { max_table_rows: 8, max_table_cols: 8 },
-  },
-  coin_change: {
-    run: (input) => coinChange(input.coins, input.amount),
-    renderer: 'table',
-    category: 'Dynamic Programming',
-    defaultInput: { coins: [1, 5, 10, 25], amount: 36 },
     capabilities: { max_table_rows: 8, max_table_cols: 8 },
   },
   kruskal: {
@@ -141,86 +88,6 @@ export const ALGORITHMS = {
     category: 'Graph Algorithms',
     defaultInput: { graph: DEFAULT_BELLMAN_FORD_GRAPH, source: 'A' },
     capabilities: { supports_directed: true, supports_undirected: true, supports_weighted: true, supports_negative_weights: true, max_nodes: 12, max_edges: 20 },
-  },
-  bst_insert: {
-    run: (input) => bstInsert(input.values),
-    renderer: 'tree',
-    category: 'Trees',
-    defaultInput: { values: [5, 3, 7, 1, 4, 6, 8] },
-    capabilities: {},
-  },
-  heap_operations: {
-    run: (input) => heapOperations(input.operations),
-    renderer: 'tree',
-    category: 'Trees',
-    defaultInput: {
-      operations: [
-        { type: 'insert', value: 10 },
-        { type: 'insert', value: 4 },
-        { type: 'insert', value: 15 },
-        { type: 'insert', value: 1 },
-        { type: 'insert', value: 7 },
-        { type: 'extract_min' },
-        { type: 'insert', value: 3 },
-        { type: 'extract_min' },
-      ],
-    },
-    capabilities: {},
-  },
-  linked_list_reversal: {
-    run: (input) => linkedListReversal(input.values),
-    renderer: 'linked',
-    category: 'Linked Structures',
-    defaultInput: { values: [1, 2, 3, 4, 5] },
-    capabilities: {},
-  },
-  stack_operations: {
-    run: (input) => stackOperations(input.operations),
-    renderer: 'linked',
-    category: 'Linked Structures',
-    defaultInput: {
-      operations: [
-        { type: 'push', value: 10 },
-        { type: 'push', value: 20 },
-        { type: 'push', value: 30 },
-        { type: 'peek' },
-        { type: 'pop' },
-        { type: 'pop' },
-        { type: 'peek' },
-      ],
-    },
-    capabilities: {},
-  },
-  queue_operations: {
-    run: (input) => queueOperations(input.operations),
-    renderer: 'linked',
-    category: 'Linked Structures',
-    defaultInput: {
-      operations: [
-        { type: 'enqueue', value: 10 },
-        { type: 'enqueue', value: 20 },
-        { type: 'enqueue', value: 30 },
-        { type: 'peek' },
-        { type: 'dequeue' },
-        { type: 'dequeue' },
-        { type: 'peek' },
-      ],
-    },
-    capabilities: {},
-  },
-  gcd: {
-    run: (input) => gcd(input.a, input.b),
-    renderer: 'array',
-    category: 'Math',
-    defaultInput: { a: 48, b: 18 },
-    capabilities: {},
-  },
-  graph_coloring_np: {
-    run: (input) => graphColoringNP(input.graph),
-    renderer: 'graph',
-    category: 'Complexity Theory',
-    defaultInput: { graph: DEFAULT_COLORING_GRAPH },
-    capabilities: { supports_directed: false, max_nodes: 6 },
   },
   poly_reduction: {
     run: (input) => polyReduction(input.formula),

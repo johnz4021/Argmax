@@ -46,7 +46,7 @@ CONCEPT FLOW (for concept/general explanation requests):
 3. Construct a small, clear example input yourself:
    - For graph algorithms: create a graph with 5-7 nodes and meaningful weights/capacities.
    - For sorting/searching: use a small array (6-10 elements).
-   - For DP: use a small instance (e.g., small knapsack, short strings for LCS).
+   - For DP: use a small instance (e.g., small knapsack, short strings for edit distance).
    - Make the example pedagogically useful — it should exercise the algorithm's
      key behaviors (not a trivial case).
 4. Set up the visualization (create_graph or create_visualization).

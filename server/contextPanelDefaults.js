@@ -44,27 +44,8 @@ const PANEL_DEFAULTS = {
   ],
 
   // --- Sorting algorithms ---
-  quicksort: [
-    { id: 'stats', type: 'key_value', title: 'Stats' },
-  ],
   mergesort: [
     { id: 'stats', type: 'key_value', title: 'Stats' },
-  ],
-  bubble_sort: [
-    { id: 'stats', type: 'key_value', title: 'Stats' },
-  ],
-  insertion_sort: [
-    { id: 'stats', type: 'key_value', title: 'Stats' },
-  ],
-  selection_sort: [
-    { id: 'stats', type: 'key_value', title: 'Stats' },
-  ],
-
-  // --- Searching ---
-  binary_search: [
-    { id: 'pseudocode', type: 'pseudocode', title: 'Algorithm',
-      initial_data: { lines: PSEUDOCODE.binary_search } },
-    { id: 'bounds', type: 'key_value', title: 'Search Bounds' },
   ],
 
   // --- DP algorithms ---
@@ -75,49 +56,12 @@ const PANEL_DEFAULTS = {
     { id: 'expression', type: 'expression', title: 'Recurrence' },
     { id: 'decisions', type: 'log', title: 'Decisions' },
   ],
-  lcs: [
-    { id: 'expression', type: 'expression', title: 'Recurrence' },
-    { id: 'decisions', type: 'log', title: 'Decisions' },
-  ],
   edit_distance: [
     { id: 'expression', type: 'expression', title: 'Recurrence' },
     { id: 'decisions', type: 'log', title: 'Decisions' },
   ],
-  coin_change: [
-    { id: 'expression', type: 'expression', title: 'Recurrence' },
-    { id: 'decisions', type: 'log', title: 'Decisions' },
-  ],
-
-  // --- Tree algorithms ---
-  bst_insert: [
-    { id: 'stats', type: 'key_value', title: 'Tree Info' },
-  ],
-  heap_operations: [
-    { id: 'heap_array', type: 'collection', title: 'Heap Array' },
-  ],
-
-  // --- Linked structure algorithms ---
-  linked_list_reversal: [
-    { id: 'pointers', type: 'key_value', title: 'Pointers' },
-  ],
-  stack_operations: [
-    { id: 'stats', type: 'key_value', title: 'Stack Info' },
-  ],
-  queue_operations: [
-    { id: 'stats', type: 'key_value', title: 'Queue Info' },
-  ],
-
-  // --- Math ---
-  gcd: [
-    { id: 'stats', type: 'key_value', title: 'GCD Progress' },
-  ],
 
   // --- Complexity Theory ---
-  graph_coloring_np: [
-    { id: 'stats', type: 'key_value', title: 'Statistics' },
-    { id: 'concepts', type: 'key_value', title: 'Key Concepts' },
-    { id: 'attempt_log', type: 'log', title: 'Coloring Attempts' },
-  ],
   poly_reduction: [
     { id: 'formula', type: 'expression', title: '3-SAT Formula',
       initial_data: { label: '3-SAT Formula', lines: [

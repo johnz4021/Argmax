@@ -84,25 +84,41 @@ export async function restoreGraphState(session, ws) {
     return;
   }
   const saved = session._savedGraphState;
-  console.log(`[restoreGraphState] restoring graph: ${saved.graph?.nodes?.length || 0} nodes, ${saved.emittedTraceSteps?.length || 0} emitted steps, algorithm=${saved.algorithm}`);
+  console.log(`[restoreGraphState] restoring: renderer=${saved.renderer}, ${saved.emittedTraceSteps?.length || 0} emitted steps, algorithm=${saved.algorithm}, vizType=${saved.lastVizMessage?.type}`);
   session.currentGraph = saved.graph;
   session.currentTrace = saved.trace;
   session.currentAlgorithm = saved.algorithm;
   session.currentRenderer = saved.renderer;
   session.mapperState = saved.mapperState;
   session._emittedTraceSteps = saved.emittedTraceSteps || [];
-  if (saved.graph) {
-    console.log('[restoreGraphState] sending create_graph with nodes:', saved.graph.nodes?.map(n => n.id));
-    sendJSON(ws, { type: 'create_graph', graph: saved.graph });
+  session._lastVizMessage = saved.lastVizMessage || null;
 
-    // Wait for the frontend to process create_graph and rebuild cytoscape
+  // Use the saved viz creation message (create_graph or create_visualization) to remount
+  // the correct renderer. Fall back to create_graph if only graph data is available.
+  const vizMessage = saved.lastVizMessage || (saved.graph ? { type: 'create_graph', graph: saved.graph } : null);
+
+  if (vizMessage) {
+    console.log('[restoreGraphState] re-sending viz creation message:', vizMessage.type);
+    sendJSON(ws, vizMessage);
+
+    // Wait for the frontend to process the viz creation and mount the renderer
     // before replaying viz actions — React state updates are async.
     await new Promise((r) => setTimeout(r, 300));
 
-    // Replay viz_actions for all trace steps emitted before the interrupt
-    if (saved.emittedTraceSteps?.length > 0 && saved.trace) {
+    // Determine the primary renderer to restore (from saved renderer or viz message)
+    const primaryRenderer = saved.renderer ||
+      (saved.lastVizMessage?.panels?.[0]?.renderer) || null;
+
+    // Prefer trace-step replay when available (deterministic). Fall back to
+    // viz_action history for renderers built via manual viz_actions (recursion_tree, interval, etc.)
+    const hasTraceReplay = saved.emittedTraceSteps?.length > 0 && saved.trace;
+    const vizHistory = primaryRenderer ? saved.rendererVizHistory?.[primaryRenderer] : null;
+    const hasVizHistory = vizHistory?.length > 0;
+
+    const replayActions = [];
+
+    if (hasTraceReplay) {
       const replayState = {};
-      const replayActions = [];
       for (const idx of saved.emittedTraceSteps) {
         const step = saved.trace[idx];
         if (!step) continue;
@@ -114,20 +130,23 @@ export async function restoreGraphState(session, ws) {
         );
         replayActions.push(...vizActs, ...ctxActs);
       }
-      if (replayActions.length > 0) {
-        console.log(`[restoreGraphState] replaying ${replayActions.length} viz actions for ${saved.emittedTraceSteps.length} trace steps`);
-        sendJSON(ws, {
-          type: 'segment_start',
-          segment_id: 'restore_' + Math.random().toString(36).slice(2, 8),
-          narration: '',
-          viz_actions: replayActions,
-          phase: '',
-        });
-        sendJSON(ws, { type: 'segment_end', segment_id: 'restore' });
-      }
+    } else if (hasVizHistory) {
+      replayActions.push(...vizHistory);
+    }
+
+    if (replayActions.length > 0) {
+      console.log(`[restoreGraphState] replaying ${replayActions.length} actions via ${hasTraceReplay ? 'trace steps' : 'viz history'} for renderer=${primaryRenderer}`);
+      sendJSON(ws, {
+        type: 'segment_start',
+        segment_id: 'restore_' + Math.random().toString(36).slice(2, 8),
+        narration: '',
+        viz_actions: replayActions,
+        phase: '',
+      });
+      sendJSON(ws, { type: 'segment_end', segment_id: 'restore' });
     }
   } else {
-    console.log('[restoreGraphState] no graph in saved state');
+    console.log('[restoreGraphState] no viz message in saved state, skipping renderer restore');
   }
   session._savedGraphState = null;
   console.log('[restoreGraphState] done, _savedGraphState cleared');
@@ -164,6 +183,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
       sendJSON(ws, { type: 'create_graph', graph: graphData });
       session.currentGraph = graphData;
+      session._lastVizMessage = { type: 'create_graph', graph: graphData };
+      if (!session._rendererVizHistory) session._rendererVizHistory = {};
+      session._rendererVizHistory['graph'] = [];
       // Also update in session.graphs for graph_id lookups
       if (session.graphs) {
         const panelId = Object.keys(session.graphs)[0] || 'graph';
@@ -217,6 +239,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       g.positions = autoLayout(g.nodes, g.edges, g.positions);
       sendJSON(ws, { type: 'create_graph', graph: g });
+      session._lastVizMessage = { type: 'create_graph', graph: g };
 
       return {
         success: true,
@@ -246,11 +269,20 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           if (!session.currentGraph) session.currentGraph = g;
         }
       }
-      sendJSON(ws, {
+      const vizMsg = {
         type: 'create_visualization',
         panels: panels.map(p => ({ ...p, id: p.id, title: p.title })),
         context_panels: input.context_panels || [],
-      });
+      };
+      sendJSON(ws, vizMsg);
+      // Only update _lastVizMessage / clear history when panels has a renderer
+      if (panels.length > 0) {
+        session._lastVizMessage = vizMsg;
+        if (!session._rendererVizHistory) session._rendererVizHistory = {};
+        for (const p of panels) {
+          if (p.renderer) session._rendererVizHistory[p.renderer] = [];
+        }
+      }
       return { success: true, message: 'Visualization and context panels created and displayed to learner.' };
     }
 
@@ -317,8 +349,10 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             if (graphData) {
               const directed = graphData.directed !== undefined ? graphData.directed : true;
               console.log(`[Agent] Auto-creating graph: ${graphData.nodes?.length} nodes, directed=${directed}`);
-              sendJSON(ws, { type: 'create_graph', graph: { ...graphData, directed } });
+              const autoGraphMsg = { type: 'create_graph', graph: { ...graphData, directed } };
+              sendJSON(ws, autoGraphMsg);
               session.currentGraph = graphData;
+              session._lastVizMessage = autoGraphMsg;
             }
             // Send context panels via create_visualization
             if (contextPanels.length > 0) {
@@ -330,11 +364,15 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             }
           } else {
             // Non-graph: auto-send create_visualization with renderer + context panels
-            sendJSON(ws, {
+            const autoVizMsg = {
               type: 'create_visualization',
               panels: [{ renderer: algoInfo.renderer, config: {} }],
               context_panels: contextPanels,
-            });
+            };
+            sendJSON(ws, autoVizMsg);
+            session._lastVizMessage = autoVizMsg;
+            if (!session._rendererVizHistory) session._rendererVizHistory = {};
+            session._rendererVizHistory[algoInfo.renderer] = [];
           }
 
           const panelNames = contextPanels.map((p) => p.id);
@@ -430,6 +468,18 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         }
       }
 
+      // Track viz_actions per renderer for state restoration (non-trace-step renderers like recursion_tree, interval, tree)
+      if (allVizActions.length > 0) {
+        if (!session._rendererVizHistory) session._rendererVizHistory = {};
+        for (const act of allVizActions) {
+          const r = act.renderer;
+          if (r && r !== 'context') {
+            if (!session._rendererVizHistory[r]) session._rendererVizHistory[r] = [];
+            session._rendererVizHistory[r].push(act);
+          }
+        }
+      }
+
       // Extract residual toggle actions and send as separate message
       const toggleAction = allVizActions.find(a => (a.action || a.params?.action) === 'toggle_residual');
       if (toggleAction) {
@@ -454,13 +504,13 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       // TTS or simulated delay (synthesizeAndStream waits for playback to finish)
       const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
       const sendJsonFn = (obj) => sendJSON(ws, obj);
-      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+      const ttsResult = await synthesizeAndStream(sendBinaryFn, input.narration, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag || session.interruptAbortFlag, session.ttsMuted);
       if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
         session._ttsDisabledNotified = true;
         sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
       }
 
-      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+      if (ttsResult?.aborted || session.pauseFlag || session.skipFlag || session.interruptAbortFlag) {
         sendJSON(ws, { type: 'audio_flush' });
         sendJSON(ws, { type: 'segment_end', segment_id: segmentId });
 
@@ -472,6 +522,16 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           return {
             success: true,
             message: 'Segment skipped. Continue with the next segment.',
+          };
+        }
+
+        // Interrupt abort — TTS stopped because student sent a message, continue normally
+        if (session.interruptAbortFlag) {
+          session.interruptAbortFlag = false;
+          if (session.endSessionFlag) throw new Error('__end_session__');
+          return {
+            success: true,
+            message: 'Segment interrupted by student message. Continue.',
           };
         }
 

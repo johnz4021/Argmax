@@ -1033,11 +1033,13 @@ function applyClassification(plan, session, ws, vizState) {
     if (modeDefaults) {
       const autoRenderer = modeDefaults.renderer === null ? null : (modeDefaults.renderer || rendererType);
       const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
-      sendJSON(ws, {
-        type: 'create_visualization',
-        panels,
-        context_panels: modeDefaults.context_panels,
-      });
+      const modeVizMsg = { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels };
+      sendJSON(ws, modeVizMsg);
+      if (autoRenderer) {
+        session._lastVizMessage = modeVizMsg;
+        if (!session._rendererVizHistory) session._rendererVizHistory = {};
+        session._rendererVizHistory[autoRenderer] = [];
+      }
       if (autoRenderer && vizState) {
         vizState.vizActive = true;
         vizState.segmentsWithoutVizActions = 0;
@@ -1365,6 +1367,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
           // Send updated graph to client
           sendJSON(ws, { type: 'create_graph', graph });
+          session._lastVizMessage = { type: 'create_graph', graph };
 
           result = {
             success: true,
@@ -1394,8 +1397,10 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               if (algoInfo.renderer === 'graph') {
                 const graphData = example.input.graph || algoInfo.defaultInput?.graph;
                 if (graphData) {
-                  sendJSON(ws, { type: 'create_graph', graph: graphData });
+                  const canonGraphMsg = { type: 'create_graph', graph: graphData };
+                  sendJSON(ws, canonGraphMsg);
                   session.currentGraph = graphData;
+                  session._lastVizMessage = canonGraphMsg;
                 }
                 if (contextPanels.length > 0) {
                   sendJSON(ws, {
@@ -1405,11 +1410,13 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                   });
                 }
               } else {
-                sendJSON(ws, {
+                const canonVizMsg = {
                   type: 'create_visualization',
                   panels: [{ renderer: algoInfo.renderer, config: {} }],
                   context_panels: contextPanels,
-                });
+                };
+                sendJSON(ws, canonVizMsg);
+                session._lastVizMessage = canonVizMsg;
               }
 
               result = {
@@ -1483,14 +1490,14 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           // TTS for the reply (abortable on pause/skip) — student can respond during this
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, text, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag || session.interruptAbortFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
           }
 
-          // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
-          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+          // Handle skip/pause/interrupt-abort — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag || session.interruptAbortFlag) {
             sendJSON(ws, { type: 'audio_flush' });
 
             if (session.skipFlag) {
@@ -1507,6 +1514,10 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                 skipped: true,
                 message: 'The student skipped this. Do NOT re-ask. Move on to the next part of the lesson immediately using emit_segment.',
               };
+            } else if (session.interruptAbortFlag) {
+              session.interruptAbortFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // TTS stopped because student sent a message — continue without pausing
             } else {
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
@@ -1603,14 +1614,14 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           // TTS for the prompt (abortable on pause/skip) — student can respond during this
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag || session.interruptAbortFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled', message: 'Voice narration temporarily unavailable. Continuing with text only.' });
           }
 
-          // Handle skip/pause — either TTS was aborted, or pause arrived after TTS finished
-          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+          // Handle skip/pause/interrupt-abort — either TTS was aborted, or pause arrived after TTS finished
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag || session.interruptAbortFlag) {
             sendJSON(ws, { type: 'audio_flush' });
 
             if (session.skipFlag && !block.input.multiSelect) {
@@ -1630,6 +1641,10 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               session.skipFlag = false;
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
+            } else if (session.interruptAbortFlag) {
+              session.interruptAbortFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // TTS stopped because student sent a message — continue without pausing
             } else {
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
@@ -2066,8 +2081,10 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
               renderer: session.currentRenderer,
               mapperState: { ...session.mapperState },
               emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+              lastVizMessage: session._lastVizMessage || null,
+              rendererVizHistory: session._rendererVizHistory ? { ...session._rendererVizHistory } : {},
             };
-            console.log('[GuidedAgent] saved _savedGraphState:', session._savedGraphState.graph?.nodes?.length, 'nodes, algorithm:', session._savedGraphState.algorithm);
+            console.log('[GuidedAgent] saved _savedGraphState:', session._savedGraphState.graph?.nodes?.length, 'nodes, algorithm:', session._savedGraphState.algorithm, 'vizType:', session._savedGraphState.lastVizMessage?.type);
           }
 
           for (const remaining of response.content) {

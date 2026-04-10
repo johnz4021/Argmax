@@ -570,7 +570,13 @@ function applyClassification(plan, session, ws, vizState) {
   if (modeDefaults) {
     const autoRenderer = modeDefaults.renderer === null ? null : (modeDefaults.renderer || rendererType);
     const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
-    sendJSON(ws, { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels });
+    const initVizMsg = { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels };
+    sendJSON(ws, initVizMsg);
+    if (autoRenderer) {
+      session._lastVizMessage = initVizMsg;
+      if (!session._rendererVizHistory) session._rendererVizHistory = {};
+      session._rendererVizHistory[autoRenderer] = [];
+    }
     if (autoRenderer && vizState) {
       vizState.vizActive = true;
       vizState.segmentsWithoutVizActions = 0;
@@ -785,13 +791,13 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
           // TTS for the prompt
           const sendBinaryFn = (buffer) => sendBinary(ws, buffer);
           const sendJsonFn = (obj) => sendJSON(ws, obj);
-          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag, session.ttsMuted);
+          const ttsResult = await synthesizeAndStream(sendBinaryFn, prompt, session.speedMultiplier, sendJsonFn, () => session.pauseFlag || session.skipFlag || session.interruptAbortFlag, session.ttsMuted);
           if (ttsResult?.ttsAutoDisabled && !session._ttsDisabledNotified) {
             session._ttsDisabledNotified = true;
             sendJSON(ws, { type: 'tts_auto_disabled' });
           }
 
-          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag) {
+          if (ttsResult?.aborted || session.pauseFlag || session.skipFlag || session.interruptAbortFlag) {
             sendJSON(ws, { type: 'audio_flush' });
 
             if (session.skipFlag) {
@@ -799,6 +805,10 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
               // Sub-problem selection is unskippable — just stop TTS, still wait for selection
+            } else if (session.interruptAbortFlag) {
+              session.interruptAbortFlag = false;
+              if (session.endSessionFlag) throw new Error('__end_session__');
+              // TTS stopped because student sent a message — continue without pausing
             } else {
               session.pauseFlag = false;
               if (session.endSessionFlag) throw new Error('__end_session__');
@@ -1073,6 +1083,8 @@ async function runExplainLoop(session, messages, initialSystemPrompt) {
               renderer: session.currentRenderer,
               mapperState: { ...session.mapperState },
               emittedTraceSteps: [...(session._emittedTraceSteps || [])],
+              lastVizMessage: session._lastVizMessage || null,
+              rendererVizHistory: session._rendererVizHistory ? { ...session._rendererVizHistory } : {},
             };
           }
 

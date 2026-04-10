@@ -328,9 +328,18 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
       abortCheckInterval = setInterval(() => {
         if (shouldAbort()) {
           aborted = true;
-          console.log('[TTS] Abort signal received, closing ElevenLabs WS');
+          console.log('[TTS] Abort signal received — resolving immediately, closing ElevenLabs WS in background');
           clearInterval(abortCheckInterval);
           abortCheckInterval = null;
+          clearTimeout(timeoutId);
+          timeoutId = null;
+          // Send audio_end before resolving so client knows stream is done
+          if (sendJsonFn && receivedAudio) {
+            sendJsonFn({ type: 'audio_end' });
+          }
+          // Resolve immediately — don't block on the ElevenLabs WS close handshake
+          resolve({ aborted: true });
+          // Close WS for cleanup; close event will fire but we guard against it below
           try { elWs.close(); } catch (_) {}
         }
       }, 50);
@@ -403,18 +412,15 @@ export async function synthesizeAndStream(sendBinaryFn, text, speedMultiplier = 
     });
 
     elWs.on('close', (code, reason) => {
-      clearTimeout(timeoutId);
+      if (timeoutId) { clearTimeout(timeoutId); timeoutId = null; }
       if (abortCheckInterval) {
         clearInterval(abortCheckInterval);
         abortCheckInterval = null;
       }
 
       if (aborted) {
-        console.log('[TTS] ElevenLabs WS closed after abort');
-        if (sendJsonFn && receivedAudio) {
-          sendJsonFn({ type: 'audio_end' });
-        }
-        resolve({ aborted: true });
+        // Already resolved in the abort polling check — nothing to do
+        console.log('[TTS] ElevenLabs WS closed after abort (already resolved)');
         return;
       }
 

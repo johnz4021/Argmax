@@ -264,6 +264,7 @@ function attachHandlers(ws, session) {
             return;
           }
           session.guidedMessageQueue.push(msg.text);
+          session.interruptAbortFlag = true;
           // If the agent is waiting for a response (send_options), resolve it with the freeform text
           if (session.guidedResponseResolver) {
             session.guidedResponse = { text: msg.text, timestamp: Date.now() };
@@ -289,6 +290,7 @@ function attachHandlers(ws, session) {
             question: msg.question,
             timestamp: Date.now(),
           };
+          session.interruptAbortFlag = true;
           console.log(`[WS] Interrupt queued: "${msg.question}"`);
           // Unblock guided response promise if waiting
           if (session.guidedResponseResolver) {

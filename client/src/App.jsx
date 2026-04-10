@@ -298,12 +298,13 @@ export default function App() {
   const handleGuidedMessage = useCallback(
     (text) => {
       processMessage({ type: 'add_student_message', text });
+      audioPlayer.flush();
       send({ type: 'guided_message', text });
       // Auto-resume if paused
       send({ type: 'resume' });
       processMessage({ type: 'resumed' });
     },
-    [send, processMessage]
+    [send, processMessage, audioPlayer]
   );
 
   const handlePause = useCallback(() => {
@@ -349,11 +350,12 @@ export default function App() {
     (question) => {
       track('interrupt_asked', { question_length: question.length });
       interrupt(question);
+      audioPlayer.flush();
       processMessage({ type: 'clear_guided_options' });
       send({ type: 'interrupt', question });
       send({ type: 'resume' });
     },
-    [send, interrupt, processMessage]
+    [send, interrupt, processMessage, audioPlayer]
   );
 
   const handleRestart = useCallback(() => {

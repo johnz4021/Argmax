@@ -58,6 +58,12 @@ A2) THEOREM / PROPERTY / STRUCTURAL CONCEPT — the student wants to understand
     "Explain the cut property", "How does the Master Theorem work",
     "What is a DAG", "Explain DFS pre/post ordering"
 
+A3) AMBIGUOUS — the student named a paradigm or design strategy that could
+    reasonably be taught either as a conceptual overview (A2) or through a
+    concrete algorithm trace (A1). No specific algorithm was named.
+    Examples: "Explain divide and conquer", "Explain dynamic programming",
+    "Explain greedy algorithms", "Explain graph traversal", "Explain backtracking"
+
 ────────────────────────────────────────────────────
 PATH A1 — ALGORITHM CONCEPT:
 1. Acknowledge what the student wants to learn (1 emit_segment).
@@ -89,6 +95,15 @@ PATH A2 — THEOREM / PROPERTY / STRUCTURAL CONCEPT:
    Do NOT call run_algorithm.
 4. Summarize the key insight.
 5. Call lesson_complete.
+
+────────────────────────────────────────────────────
+PATH A3 — AMBIGUOUS:
+1. Ask the student ONE clarifying question via emit_segment before doing anything else.
+   Offer two concrete options, e.g.:
+   "Would you like me to explain the core idea and recurrence structure of divide and conquer,
+    or would you prefer to see a concrete algorithm like merge sort traced step-by-step?"
+2. Do NOT create a visualization yet.
+3. Once the student responds, route to A1 or A2 and follow that path fully.
 
 Do NOT call run_solver or run_solver_batch for concept requests — there is no problem to solve.
 Do NOT use send_options — there are no sub-problems to select.

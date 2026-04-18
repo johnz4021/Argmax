@@ -2,6 +2,21 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { m, AnimatePresence } from 'motion/react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
 
+const BAR_GAP = 6; // matches gap-1.5 (0.375rem = 6px)
+const MAX_BAR_W = 60;
+
+function barGeometry(n, containerW) {
+  if (!n || !containerW) return { barW: 0, offset: 0 };
+  const barW = Math.min(MAX_BAR_W, (containerW - (n - 1) * BAR_GAP) / n);
+  const totalW = n * barW + (n - 1) * BAR_GAP;
+  return { barW, offset: (containerW - totalW) / 2 };
+}
+
+function barCenterPx(idx, n, containerW) {
+  const { barW, offset } = barGeometry(n, containerW);
+  return offset + idx * (barW + BAR_GAP) + barW / 2;
+}
+
 const CLASS_COLORS = {
   default: 'bg-gray-700 border-gray-600',
   comparing: 'bg-yellow-500/80 border-yellow-400',
@@ -35,6 +50,8 @@ export default function ArrayRenderer({
   const [stableIds, setStableIds] = useState([]);
   const [partitionRange, setPartitionRange] = useState(null);
   const [subarrayRanges, setSubarrayRanges] = useState([]);
+  const barContainerRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
 
@@ -277,6 +294,14 @@ export default function ArrayRenderer({
     }
   }, [explanationMode, takeArraySnapshot, restoreArraySnapshot]);
 
+  useEffect(() => {
+    const el = barContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => setContainerWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [data.length]);
+
   const maxVal = data.length > 0 ? Math.max(...data.map((v) => Math.abs(v)), 1) : 1;
 
   return (
@@ -299,20 +324,26 @@ export default function ArrayRenderer({
       ) : (
         <div className="w-full max-w-3xl">
           {/* Bar chart visualization */}
-          <div className="relative flex items-end justify-center gap-1.5" style={{ height: '250px' }}>
+          <div ref={barContainerRef} className="relative flex items-end justify-center gap-1.5" style={{ height: '250px' }}>
             {/* Partition range overlay */}
-            {partitionRange && data.length > 0 && (
-              <div
-                className="absolute bottom-0 rounded pointer-events-none"
-                style={{
-                  left: `${(partitionRange.left / data.length) * 100}%`,
-                  width: `${((partitionRange.right - partitionRange.left + 1) / data.length) * 100}%`,
-                  height: '100%',
-                  backgroundColor: 'rgba(147, 51, 234, 0.15)',
-                  border: '1px solid rgba(147, 51, 234, 0.3)',
-                  zIndex: 0,
-                }}
-              />
+            {partitionRange && data.length > 0 && containerWidth > 0 && (() => {
+              const { barW, offset } = barGeometry(data.length, containerWidth);
+              const pLeft = offset + partitionRange.left * (barW + BAR_GAP);
+              const pWidth = (partitionRange.right - partitionRange.left + 1) * barW + (partitionRange.right - partitionRange.left) * BAR_GAP;
+              return (
+                <div
+                  className="absolute bottom-0 rounded pointer-events-none"
+                  style={{
+                    left: pLeft,
+                    width: pWidth,
+                    height: '100%',
+                    backgroundColor: 'rgba(147, 51, 234, 0.15)',
+                    border: '1px solid rgba(147, 51, 234, 0.3)',
+                    zIndex: 0,
+                  }}
+                />
+              );
+            })()}
             )}
 
             <AnimatePresence>
@@ -399,17 +430,17 @@ export default function ArrayRenderer({
           )}
 
           {/* Pointers */}
-          {Object.keys(pointers).length > 0 && (
+          {Object.keys(pointers).length > 0 && containerWidth > 0 && (
             <div className="relative h-8 mt-2">
               {Object.entries(pointers).map(([name, idx]) => {
                 if (idx < 0 || idx >= data.length) return null;
-                const leftPercent = ((idx + 0.5) / data.length) * 100;
+                const leftPx = barCenterPx(idx, data.length, containerWidth);
                 return (
                   <m.div
                     key={name}
                     layout
                     className="absolute text-center"
-                    animate={{ left: `${leftPercent}%` }}
+                    animate={{ left: leftPx }}
                     transition={pointerSpring}
                     style={{ transform: 'translateX(-50%)' }}
                   >

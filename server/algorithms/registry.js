@@ -3,7 +3,7 @@ import { mergesort } from './sorting/index.js';
 import { knapsack, editDistance } from './dp/index.js';
 import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
 import { quickselect } from './searching/index.js';
-import { huffman, buildHuffmanLeafGraph } from './compression/index.js';
+import { huffman } from './compression/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -114,12 +114,9 @@ export const ALGORITHMS = {
   },
   huffman: {
     run: (input) => huffman(input.string ?? 'abcde'),
-    renderer: 'graph',
+    renderer: 'tree',
     category: 'Greedy Algorithms',
-    defaultInput: {
-      string: 'abcde',
-      graph: buildHuffmanLeafGraph('abcde'),
-    },
+    defaultInput: { string: 'abcde' },
     capabilities: { max_nodes: 30 },
   },
 };

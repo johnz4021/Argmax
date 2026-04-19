@@ -1031,6 +1031,20 @@ function applyClassification(plan, session, ws, vizState) {
     ? `Classification: DIVIDE-AND-CONQUER MODE. Context panels (dc_structure, recurrence) are auto-configured. No visualization renderer is pre-created — choose one based on the problem: (A) If the problem has a clean recurrence T(n)=aT(n/b)+O(n^d), call create_visualization with panels:[{renderer:"recursion_tree"}], then use set_recurrence_tree({a, b, d, n:16}) via viz_actions to populate it. Do this as soon as you know a, b, d — even if learned early from intake. (B) If the problem involves case analysis or branching logic (e.g. different test outcomes lead to different paths), call create_visualization with panels:[{renderer:"graph"}], then use update_graph to build a decision tree (nodes=states, edges labeled with conditions via weight field). (C) If no visualization adds value, skip it. Guide: (1) identify split, (2) define subproblems, (3) combine step, (4) analyze runtime.`
     : `Classification: RUNTIME/ASYMPTOTICS MODE. A Runtime Analysis context panel is auto-configured (no renderer yet). Guide through the proof structure: identify the bound, prove upper/lower, or solve the recurrence. For recurrences, FIRST guide the student to identify a, b, d, THEN call create_visualization with panels:[{renderer:"recursion_tree"}] and IMMEDIATELY populate it with set_recurrence_tree({a, b, d, n:16}) in the same emit_segment. Never create an empty recursion tree.`;
 
+  // Inject renderer docs for algorithm_execution (same pattern as non-execution modes)
+  if (plan.reasoning_mode === 'algorithm_execution' && plan.is_in_scope) {
+    const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
+    const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
+    let rendererType = algoInfo?.renderer || 'graph';
+    const algoLower = (targetAlgo || '').toLowerCase();
+    if (algoLower.includes('interval') || algoLower.includes('schedule') ||
+        algoLower.includes('machine') || algoLower.includes('job') ||
+        algoLower.includes('activity')) {
+      rendererType = 'interval';
+    }
+    message += `\n\nRENDERER REFERENCE (${rendererType}):\n${buildRendererDocs([rendererType])}`;
+  }
+
   // Auto-inject primary renderer docs and auto-create visualization for non-execution modes
   if (plan.reasoning_mode !== 'algorithm_execution') {
     const targetAlgo = plan.target_algorithm || plan.closest_algorithm;

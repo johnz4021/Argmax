@@ -666,9 +666,18 @@ function applyClassification(plan, session, ws, vizState) {
   session.reasoningMode = plan.reasoning_mode;
 
   if (plan.reasoning_mode === 'algorithm_execution') {
+    const targetAlgo = plan.target_algorithm || plan.closest_algorithm;
+    const algoInfo = targetAlgo ? ALGORITHMS[targetAlgo] : null;
+    let rendererType = algoInfo?.renderer || 'graph';
+    const algoLower = (targetAlgo || '').toLowerCase();
+    if (algoLower.includes('interval') || algoLower.includes('schedule') ||
+        algoLower.includes('machine') || algoLower.includes('job') ||
+        algoLower.includes('activity')) {
+      rendererType = 'interval';
+    }
     return {
       success: true,
-      message: `Mode: algorithm_execution. Target: ${plan.target_algorithm || 'N/A'}. Now call build_example_graph to plan the visualization.`,
+      message: `Mode: algorithm_execution. Target: ${plan.target_algorithm || 'N/A'}. Now call build_example_graph to plan the visualization.\n\nRENDERER REFERENCE (${rendererType}):\n${buildRendererDocs([rendererType])}`,
     };
   }
 

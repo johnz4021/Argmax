@@ -428,11 +428,13 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       // ── Build viz_actions from trace_step_indices (deterministic mapper) ──
       let allVizActions = [];
+      const mapperWarnings = [];
       if (input.trace_step_indices && input.trace_step_indices.length > 0 && activeTrace) {
         for (const idx of input.trace_step_indices) {
           const step = activeTrace[idx];
           if (!step) {
             console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
+            mapperWarnings.push(`index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
             continue;
           }
           const { viz: vizActs, ctx: ctxActs } = mapTraceStep(
@@ -441,6 +443,9 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             step,
             activeMapperState
           );
+          if (vizActs.length === 0 && ctxActs.length === 0) {
+            mapperWarnings.push(`step ${idx} (type: '${step.type}') produced 0 viz/ctx actions for renderer '${session.currentRenderer}' — this step may not be handled by the mapper`);
+          }
           // Rewrite renderer targets for multi-graph: 'graph' → graph_id
           if (emitGraphId) {
             for (const act of vizActs) {
@@ -451,6 +456,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         }
       } else if (input.trace_step_indices && !activeTrace) {
         console.warn('[Agent] trace_step_indices provided but no trace on session — was run_algorithm called?');
+        mapperWarnings.push('trace_step_indices provided but no trace on session — was run_algorithm called?');
       }
       // Merge any explicit viz_actions from agent (rare overrides / backward compat)
       if (input.viz_actions && input.viz_actions.length > 0) {
@@ -564,8 +570,12 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
 
       const vizWarnings = session._lastVizWarnings || [];
       session._lastVizWarnings = [];
-      const warningText = vizWarnings.length > 0
-        ? ` WARNING: ${vizWarnings.length} viz_action(s) dropped (invalid IDs): ${vizWarnings.join('; ')}`
+      const allWarnings = [
+        ...vizWarnings.map(w => `invalid viz_action: ${w}`),
+        ...mapperWarnings,
+      ];
+      const warningText = allWarnings.length > 0
+        ? ` WARNINGS: ${allWarnings.join('; ')}`
         : '';
       return {
         success: true,

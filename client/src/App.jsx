@@ -127,7 +127,7 @@ export default function App() {
 
         // Use sequenced application for multi-action segments
         if (normalized.length > 2) {
-          applyActionsSequenced(normalized, { staggerMs: 120 });
+          applyActionsSequenced(normalized, { staggerMs: 300 });
         } else {
           applyActions(normalized);
         }
@@ -268,6 +268,7 @@ export default function App() {
   const handleGuidedResponse = useCallback(
     (response) => {
       track('question_answered', { answer_mode: state.guidedOptions?.mode });
+      flushActiveTimeline();
       if (state.guidedOptions?.prompt) {
         processMessage({ type: 'add_guided_question', text: state.guidedOptions.prompt });
       }
@@ -298,6 +299,7 @@ export default function App() {
   const handleGuidedMessage = useCallback(
     (text) => {
       processMessage({ type: 'add_student_message', text });
+      flushActiveTimeline();
       audioPlayer.flush();
       send({ type: 'guided_message', text });
       // Auto-resume if paused
@@ -309,12 +311,14 @@ export default function App() {
 
   const handlePause = useCallback(() => {
     track('pause_used', {});
+    flushActiveTimeline();
     send({ type: 'pause' });
     audioPlayer.flush();
   }, [send, audioPlayer]);
 
   const handleSkip = useCallback(() => {
     track('skip_used', {});
+    flushActiveTimeline();
     send({ type: 'skip' });
     audioPlayer.flush();
   }, [send, audioPlayer]);

@@ -1378,8 +1378,14 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           }
 
           // Add edges
+          const skippedEdges = [];
           if (input.add_edges) {
+            const nodeIdSet = new Set(graph.nodes.map((n) => n.id));
             for (const edge of input.add_edges) {
+              if (!nodeIdSet.has(edge.source) || !nodeIdSet.has(edge.target)) {
+                skippedEdges.push(`${edge.source}->${edge.target}`);
+                continue;
+              }
               if (!graph.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
                 graph.edges.push(edge);
               }
@@ -1398,11 +1404,14 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
           sendJSON(ws, { type: 'create_graph', graph });
           session._lastVizMessage = { type: 'create_graph', graph };
 
+          const skippedWarning = skippedEdges.length > 0
+            ? ` WARNING: ${skippedEdges.length} edge(s) skipped because their nodes don't exist: ${skippedEdges.join(', ')}. Add those nodes first.`
+            : '';
           result = {
-            success: true,
+            success: skippedEdges.length === 0,
             node_count: graph.nodes.length,
             edge_count: graph.edges.length,
-            message: `Graph updated: ${graph.nodes.length} nodes, ${graph.edges.length} edges. Displayed to student.`,
+            message: `Graph updated: ${graph.nodes.length} nodes, ${graph.edges.length} edges. Displayed to student.${skippedWarning}`,
           };
         } else if (block.name === 'show_canonical_example') {
           const algo = block.input.algorithm;

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { registerRenderer, unregisterRenderer } from '../../lib/rendererRegistry';
 import { m, AnimatePresence } from 'motion/react';
 import * as d3 from 'd3';
@@ -42,6 +42,7 @@ function buildHierarchy(nodes, edges, rootId) {
     const parent = nodeMap[e.from];
     const child = nodeMap[e.to];
     if (parent && child) {
+      if (e.label !== undefined) child.parentEdgeLabel = e.label;
       if (e.side === 'right') {
         parent.children.push(child);
       } else {
@@ -221,7 +222,7 @@ export default function TreeRenderer({
           }
           const newNodes = [...prev.nodes, { id: params.id, value: params.value }];
           const newEdges = params.parent
-            ? [...prev.edges, { from: params.parent, to: params.id, side: params.side || 'left' }]
+            ? [...prev.edges, { from: params.parent, to: params.id, side: params.side || 'left', ...(params.label !== undefined && { label: params.label }) }]
             : prev.edges;
           return { nodes: newNodes, edges: newEdges, root: prev.root };
         });
@@ -560,31 +561,63 @@ export default function TreeRenderer({
                       const sourceId = link.source.data.id;
                       const targetId = link.target.data.id;
                       const edgeKey = `${sourceId}-${targetId}`;
+                      const edgeLabel = link.target.data.parentEdgeLabel;
+                      const midX = (link.source.x + link.target.x) / 2;
+                      const midY = (link.source.y + link.target.y) / 2;
                       return (
-                        <m.line
-                          key={edgeKey}
-                          initial={{
-                            x1: link.source.x,
-                            y1: link.source.y,
-                            x2: link.source.x,
-                            y2: link.source.y,
-                            opacity: 0,
-                          }}
-                          animate={{
-                            x1: link.source.x,
-                            y1: link.source.y,
-                            x2: link.target.x,
-                            y2: link.target.y,
-                            opacity: getEdgeOpacity(sourceId, targetId),
-                          }}
-                          exit={{
-                            opacity: 0,
-                          }}
-                          transition={SPRING_TRANSITION}
-                          stroke={getEdgeStroke(sourceId, targetId)}
-                          strokeWidth={getEdgeStrokeWidth(sourceId, targetId)}
-                          strokeDasharray={getEdgeDasharray(sourceId, targetId)}
-                        />
+                        <React.Fragment key={edgeKey}>
+                          <m.line
+                            initial={{
+                              x1: link.source.x,
+                              y1: link.source.y,
+                              x2: link.source.x,
+                              y2: link.source.y,
+                              opacity: 0,
+                            }}
+                            animate={{
+                              x1: link.source.x,
+                              y1: link.source.y,
+                              x2: link.target.x,
+                              y2: link.target.y,
+                              opacity: getEdgeOpacity(sourceId, targetId),
+                            }}
+                            exit={{
+                              opacity: 0,
+                            }}
+                            transition={SPRING_TRANSITION}
+                            stroke={getEdgeStroke(sourceId, targetId)}
+                            strokeWidth={getEdgeStrokeWidth(sourceId, targetId)}
+                            strokeDasharray={getEdgeDasharray(sourceId, targetId)}
+                          />
+                          {edgeLabel !== undefined && (
+                            <m.g
+                              initial={{ x: link.source.x, y: link.source.y, opacity: 0 }}
+                              animate={{ x: midX, y: midY, opacity: getEdgeOpacity(sourceId, targetId) }}
+                              exit={{ opacity: 0 }}
+                              transition={SPRING_TRANSITION}
+                            >
+                              <rect
+                                x={-(edgeLabel.length * 7 + 8) / 2}
+                                y={-9}
+                                width={edgeLabel.length * 7 + 8}
+                                height={14}
+                                rx={3}
+                                fill="#111827"
+                                fillOpacity={0.85}
+                              />
+                              <text
+                                textAnchor="middle"
+                                dy="0.35em"
+                                fill="#9CA3AF"
+                                fontSize="11px"
+                                fontFamily="monospace"
+                                style={{ pointerEvents: 'none', userSelect: 'none' }}
+                              >
+                                {edgeLabel}
+                              </text>
+                            </m.g>
+                          )}
+                        </React.Fragment>
                       );
                     })}
                   </AnimatePresence>

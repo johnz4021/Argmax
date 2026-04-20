@@ -232,7 +232,12 @@ export default function Controls({ status, agentStatus, onInterrupt, onPause, on
           </button>
           <button
             onClick={onSkip}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors bg-surface-2 text-text-secondary hover:text-text-primary hover:bg-surface-3 border border-border"
+            disabled={!!agentStatus}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-border ${
+              agentStatus
+                ? 'bg-surface-2 text-text-tertiary cursor-not-allowed opacity-50'
+                : 'bg-surface-2 text-text-secondary hover:text-text-primary hover:bg-surface-3'
+            }`}
           >
             Skip
           </button>

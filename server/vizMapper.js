@@ -174,14 +174,6 @@ function mapGraphStep(algo, step, state) {
           items: step.topo_order.map(n => ({ value: n })),
           style: 'queue',
         }));
-      } else if (algo === 'huffman' && step.frequencies) {
-        c.push(ctxUpdate('freq_table', {
-          entries: Object.entries(step.frequencies).map(([k, val]) => ({ key: k, value: val })),
-        }));
-        c.push(ctxUpdate('pq', {
-          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
-          style: 'queue',
-        }));
       } else if (algo === 'maxflow') {
         // Set initial edge labels
         if (step.edge_labels) {
@@ -332,56 +324,6 @@ function mapGraphStep(algo, step, state) {
       break;
     }
 
-    // ── huffman ───────────────────────────────────────────────────────────
-    case 'extract_mins': {
-      v.push(viz('graph', 'highlight_node', { node: step.left_id, className: 'comparing' }));
-      v.push(viz('graph', 'highlight_node', { node: step.right_id, className: 'comparing' }));
-      if (step.heap) {
-        c.push(ctxUpdate('pq', {
-          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
-          style: 'queue',
-        }));
-      }
-      break;
-    }
-
-    case 'create_parent': {
-      v.push(viz('graph', 'add_node', {
-        id: step.parent_id,
-        label: String(step.parent_freq),
-        position: step.position,
-      }));
-      v.push(viz('graph', 'highlight_node', { node: step.parent_id, className: 'visited' }));
-      break;
-    }
-
-    case 'add_edges': {
-      v.push(viz('graph', 'add_edge', { from: step.parent_id, to: step.left_id, label: '0' }));
-      v.push(viz('graph', 'add_edge', { from: step.parent_id, to: step.right_id, label: '1' }));
-      break;
-    }
-
-    case 'update_heap': {
-      if (step.heap) {
-        c.push(ctxUpdate('pq', {
-          items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })),
-          style: 'queue',
-        }));
-      }
-      break;
-    }
-
-    case 'assign_codes': {
-      if (step.codes) {
-        c.push(ctxUpdate('codes', {
-          entries: Object.entries(step.codes).map(([char, code]) => ({
-            key: char, value: code, status: 'default',
-          })),
-        }));
-      }
-      break;
-    }
-
     case 'discover': {
       v.push(viz('graph', 'highlight_node', { node: step.node, className: 'highlighted' }));
       if (step.from) {
@@ -438,13 +380,6 @@ function mapGraphStep(algo, step, state) {
             ],
           }));
         }
-      }
-      if (algo === 'huffman' && step.codes) {
-        c.push(ctxUpdate('codes', {
-          entries: Object.entries(step.codes).map(([char, code]) => ({
-            key: char, value: code, status: 'default',
-          })),
-        }));
       }
       if (algo === 'maxflow') {
         c.push(ctxUpdate('flow_status', {
@@ -1422,7 +1357,14 @@ function mapTreeStep(algo, step, state) {
 
   switch (step.type) {
     case 'init': {
-      if (algo === 'bst_insert') {
+      if (algo === 'huffman' && step.frequencies) {
+        c.push(ctxUpdate('freq_table', {
+          entries: Object.entries(step.frequencies).map(([k, val]) => ({ key: k, value: val })),
+        }));
+        if (step.heap) {
+          c.push(ctxUpdate('pq', { items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })), style: 'queue' }));
+        }
+      } else if (algo === 'bst_insert') {
         c.push(ctxUpdate('stats', {
           entries: [
             { key: 'Values to insert', value: step.values?.join(', ') || '' },
@@ -1555,11 +1497,58 @@ function mapTreeStep(algo, step, state) {
     }
 
     case 'result': {
-      v.push(viz('tree', 'reset', {}));
+      if (algo === 'huffman') {
+        if (step.codes) {
+          c.push(ctxUpdate('codes', {
+            entries: Object.entries(step.codes).map(([char, code]) => ({ key: char, value: code, status: 'default' })),
+          }));
+        }
+      } else {
+        v.push(viz('tree', 'reset', {}));
+        if (step.tree) {
+          v.push(viz('tree', 'set_tree', step.tree));
+        } else if (step.heap) {
+          v.push(viz('tree', 'set_tree', heapToTree(step.heap)));
+        }
+      }
+      break;
+    }
+
+    // ── Huffman ──────────────────────────────────────────────────────────────
+    case 'extract_mins': {
+      v.push(viz('tree', 'highlight_node', { id: step.left_id,  className: 'comparing' }));
+      v.push(viz('tree', 'highlight_node', { id: step.right_id, className: 'comparing' }));
+      if (step.heap) {
+        c.push(ctxUpdate('pq', { items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })), style: 'queue' }));
+      }
+      break;
+    }
+
+    case 'create_parent': {
+      // no-op for viz — tree is updated at add_edges once edges are established
+      break;
+    }
+
+    case 'add_edges': {
       if (step.tree) {
         v.push(viz('tree', 'set_tree', step.tree));
-      } else if (step.heap) {
-        v.push(viz('tree', 'set_tree', heapToTree(step.heap)));
+        v.push(viz('tree', 'highlight_node', { id: step.parent_id, className: 'inserted' }));
+      }
+      break;
+    }
+
+    case 'update_heap': {
+      if (step.heap) {
+        c.push(ctxUpdate('pq', { items: step.heap.map(n => ({ value: `${n.id}:${n.freq}` })), style: 'queue' }));
+      }
+      break;
+    }
+
+    case 'assign_codes': {
+      if (step.codes) {
+        c.push(ctxUpdate('codes', {
+          entries: Object.entries(step.codes).map(([char, code]) => ({ key: char, value: code, status: 'default' })),
+        }));
       }
       break;
     }

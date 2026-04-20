@@ -29,6 +29,7 @@ export default function LinkedRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
 }) {
   const [nodes, setNodes] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -41,6 +42,7 @@ export default function LinkedRenderer({
   const [arrowPositions, setArrowPositions] = useState([]);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
   const containerRef = useRef(null);
   const nodeRefs = useRef([]);
 
@@ -390,9 +392,9 @@ export default function LinkedRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || nodes.length === 0) return;
-    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeLinkedSnapshot());
-  }, [segmentCount, takeLinkedSnapshot, explanationMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
 
   // Handle explanation mode
   useEffect(() => {
@@ -400,6 +402,7 @@ export default function LinkedRenderer({
       preExplanationRef.current = takeLinkedSnapshot();
       const stepsBack = explanationMode.config?.steps_back || 2;
       const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreLinkedSnapshot(snapshotsRef.current[idx]);
       }
@@ -429,8 +432,18 @@ export default function LinkedRenderer({
       setGhostState(null);
       restoreLinkedSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
+      rewindStartIdxRef.current = null;
     }
-  }, [explanationMode, takeLinkedSnapshot, restoreLinkedSnapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreLinkedSnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   const isVertical = mode === 'stack';
 

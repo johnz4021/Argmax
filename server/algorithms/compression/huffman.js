@@ -34,6 +34,19 @@ export function buildHuffmanLeafGraph(str) {
   };
 }
 
+function buildSubtree(rootId, nodeValues, childrenMap) {
+  const nodes = [], edges = [];
+  function dfs(id) {
+    nodes.push({ id, value: nodeValues[id] ?? id });
+    for (const child of (childrenMap[id] ?? [])) {
+      edges.push({ from: id, to: child.id, side: child.side, label: child.label });
+      dfs(child.id);
+    }
+  }
+  dfs(rootId);
+  return { nodes, edges, root: rootId };
+}
+
 export function huffman(str) {
   const trace = [];
 
@@ -54,6 +67,11 @@ export function huffman(str) {
     positions[ch] = { x: 100 + i * spacing, y: 400 };
   });
   let internalCount = 0;
+
+  // Tree state for viz (tree renderer)
+  const nodeValues = {};   // id → display string
+  const childrenMap = {};  // parent id → [{ id, side, label }]
+  chars.forEach(ch => { nodeValues[ch] = `${ch}:${freq[ch]}`; });
 
   trace.push({
     type: 'init',
@@ -92,6 +110,8 @@ export function huffman(str) {
     };
     positions[parentId] = parentPos;
 
+    nodeValues[parentId] = String(parentFreq);
+
     trace.push({
       type: 'create_parent',
       pseudocode_line: 5,
@@ -103,12 +123,18 @@ export function huffman(str) {
       description: `Create internal node with freq ${parentFreq} = ${left.freq} + ${right.freq}`,
     });
 
+    childrenMap[parentId] = [
+      { id: left.id,  side: 'left',  label: '0' },
+      { id: right.id, side: 'right', label: '1' },
+    ];
+
     trace.push({
       type: 'add_edges',
       pseudocode_line: 6,
       parent_id: parentId,
       left_id: left.id,
       right_id: right.id,
+      tree: buildSubtree(parentId, nodeValues, childrenMap),
       description: `Connect: ${parentId}→${left.id} (code 0), ${parentId}→${right.id} (code 1)`,
     });
 

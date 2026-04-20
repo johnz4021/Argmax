@@ -249,7 +249,7 @@ export const tools = [
         },
         overlay: {
           type: 'object',
-          description: 'Config for overlay mode. Required when explanation_mode is "overlay".',
+          description: 'Config for overlay mode. Required when explanation_mode is "overlay". Example: { "spotlight_nodes": ["A", "B"], "spotlight_edges": [{"from": "A", "to": "B"}], "annotations": [{"target": "A", "text": "source node", "position": "top"}, {"target": "B", "text": "relaxed to dist 4", "position": "right"}] }',
           properties: {
             spotlight_nodes: {
               type: 'array',
@@ -305,7 +305,7 @@ export const tools = [
         },
         rewind: {
           type: 'object',
-          description: 'Config for rewind mode. Required when explanation_mode is "rewind".',
+          description: 'Config for rewind mode. Required when explanation_mode is "rewind". Must be a JSON object — never XML or plain text. Example: { "steps_back": 3, "narration_per_step": ["First we relaxed edge A→B setting its distance to 4...", "Then we updated D\'s tentative distance via B...", "Finally we finalized node C with distance 6..."] }',
           properties: {
             steps_back: { type: 'number', description: 'How many segments to rewind (1-5)' },
             narration_per_step: {
@@ -319,7 +319,7 @@ export const tools = [
         ghost_alternative: {
           type: 'object',
           description:
-            'Config for ghost_alternative mode. Required when explanation_mode is "ghost_alternative".',
+            'Config for ghost_alternative mode. Required when explanation_mode is "ghost_alternative". Example: { "ghost_path": ["A", "C", "D"], "actual_path": ["A", "B", "D"], "ghost_label": "cost: 9 (suboptimal)", "actual_label": "cost: 7 (chosen)" }',
           properties: {
             ghost_path: {
               type: 'array',
@@ -353,7 +353,7 @@ export const tools = [
         },
         illustrate: {
           type: 'object',
-          description: 'Build a temporary small example graph and animate through it step-by-step. Use for conceptual "why?" questions where the current graph cannot demonstrate the concept. The lesson graph auto-restores after. Required when explanation_mode is "illustrate".',
+          description: 'Build a temporary small example graph and animate through it step-by-step. Use for conceptual "why?" questions where the current graph cannot demonstrate the concept. The lesson graph auto-restores after. Required when explanation_mode is "illustrate". Example: { "graph": { "nodes": [{"id": "A", "label": "A"}, {"id": "B", "label": "B"}, {"id": "C", "label": "C"}], "edges": [{"source": "A", "target": "B"}, {"source": "B", "target": "C"}], "directed": true } }',
           properties: {
             graph: {
               type: 'object',

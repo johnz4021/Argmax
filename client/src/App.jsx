@@ -593,6 +593,7 @@ export default function App() {
                     panels={state.vizPanels}
                     explanationMode={state.explanationMode}
                     segmentCount={state.segmentCount}
+                    rewindStep={state.rewindStep}
                     algorithm={state.algorithm}
                     residualEdges={state.latestResidualEdges}
                     residualToggle={state.residualToggle}

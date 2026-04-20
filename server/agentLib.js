@@ -601,7 +601,17 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         await restoreGraphState(session, ws);
       }
 
-      // Validate illustrate mode has required data before committing
+      // Validate mode-specific object is present before committing — once interrupt_response
+      // is sent the client has already applied the mode, so catch malformed input here
+      if (input.explanation_mode === 'overlay' && !input.overlay) {
+        return { success: false, message: 'overlay mode requires the "overlay" property. Please retry with the overlay object populated.' };
+      }
+      if (input.explanation_mode === 'rewind' && (!input.rewind || !Array.isArray(input.rewind?.narration_per_step) || input.rewind.narration_per_step.length === 0)) {
+        return { success: false, message: 'rewind mode requires a "rewind" object with steps_back (number) and narration_per_step (non-empty array of strings). Please retry with the correct structure.' };
+      }
+      if (input.explanation_mode === 'ghost_alternative' && !input.ghost_alternative) {
+        return { success: false, message: 'ghost_alternative mode requires the "ghost_alternative" property. Please retry with the ghost_alternative object populated.' };
+      }
       if (input.explanation_mode === 'illustrate') {
         if (!input.illustrate?.graph?.nodes?.length) {
           return {

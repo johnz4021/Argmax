@@ -11,6 +11,7 @@ const initialState = {
   error: null,
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
+  rewindStep: 0,
   latestResidualEdges: null,
   residualToggle: null, // null | { show: boolean, ts: number }
   mode: 'direct',            // 'direct' | 'guided'
@@ -62,8 +63,10 @@ function reducer(state, action) {
       return { ...state, residualToggle: { show: action.show, ts: Date.now() } };
 
     case 'CREATE_GRAPH': {
-      const graphPanel = { id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } };
       const existingPanels = state.vizPanels;
+      // Preserve existing graph panel id to avoid key change → remount → snapshot loss
+      const existingGraphId = existingPanels?.find((p) => p.renderer === 'graph')?.id || 'graph';
+      const graphPanel = { id: existingGraphId, renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } };
       // If a multi-panel layout is active, replace only the graph panel in place
       // rather than wiping the whole layout (preserves co-mounted panels like table)
       const hasMultiPanel = existingPanels && existingPanels.length > 1;
@@ -112,10 +115,14 @@ function reducer(state, action) {
         ),
       };
 
+    case 'REWIND_STEP':
+      return { ...state, rewindStep: state.rewindStep + 1 };
+
     case 'INTERRUPT_RESPONSE':
       return {
         ...state,
         agentStatus: null,
+        rewindStep: 0,
         status: state.previousStatus === 'complete' ? 'complete' : 'teaching',
         explanationMode:
           action.explanation_mode !== 'none'
@@ -139,7 +146,7 @@ function reducer(state, action) {
       return { ...state, explanationMode: action.explanationMode };
 
     case 'CLEAR_EXPLANATION_MODE':
-      return { ...state, explanationMode: null };
+      return { ...state, explanationMode: null, rewindStep: 0 };
 
     case 'LESSON_COMPLETE':
       return { ...state, agentStatus: null, status: 'complete' };
@@ -405,6 +412,9 @@ export function useTutorState() {
         break;
       case 'explanation_complete':
         dispatch({ type: 'CLEAR_EXPLANATION_MODE' });
+        break;
+      case 'rewind_step_narration':
+        dispatch({ type: 'REWIND_STEP' });
         break;
       case 'residual_toggle':
         dispatch({ type: 'RESIDUAL_TOGGLE', show: msg.show });

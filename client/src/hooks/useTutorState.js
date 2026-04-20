@@ -61,14 +61,28 @@ function reducer(state, action) {
     case 'RESIDUAL_TOGGLE':
       return { ...state, residualToggle: { show: action.show, ts: Date.now() } };
 
-    case 'CREATE_GRAPH':
+    case 'CREATE_GRAPH': {
+      const graphPanel = { id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } };
+      const existingPanels = state.vizPanels;
+      // If a multi-panel layout is active, replace only the graph panel in place
+      // rather than wiping the whole layout (preserves co-mounted panels like table)
+      const hasMultiPanel = existingPanels && existingPanels.length > 1;
+      let newPanels;
+      if (hasMultiPanel) {
+        const hasGraphPanel = existingPanels.some((p) => p.renderer === 'graph');
+        newPanels = hasGraphPanel
+          ? existingPanels.map((p) => (p.renderer === 'graph' ? graphPanel : p))
+          : [...existingPanels, graphPanel];
+      } else {
+        newPanels = [graphPanel];
+      }
       return {
         ...state,
         agentStatus: null,
         graph: action.graph,
-        // Auto-create a graph panel when create_graph is used (backward compat)
-        vizPanels: [{ id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } }],
+        vizPanels: newPanels,
       };
+    }
 
     case 'SET_VIZ_PANELS':
       return { ...state, agentStatus: null, vizPanels: action.panels };

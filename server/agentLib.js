@@ -254,7 +254,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         success: skippedEdges.length === 0,
         node_count: g.nodes.length,
         edge_count: g.edges.length,
-        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges.${skippedWarning}`,
+        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges. Displayed to student.${skippedWarning}`,
       };
     }
 

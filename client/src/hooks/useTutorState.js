@@ -62,8 +62,10 @@ function reducer(state, action) {
       return { ...state, residualToggle: { show: action.show, ts: Date.now() } };
 
     case 'CREATE_GRAPH': {
-      const graphPanel = { id: 'graph', renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } };
       const existingPanels = state.vizPanels;
+      // Preserve existing graph panel id to avoid key change → remount → snapshot loss
+      const existingGraphId = existingPanels?.find((p) => p.renderer === 'graph')?.id || 'graph';
+      const graphPanel = { id: existingGraphId, renderer: 'graph', props: { graph: action.graph, directed: action.graph.directed } };
       // If a multi-panel layout is active, replace only the graph panel in place
       // rather than wiping the whole layout (preserves co-mounted panels like table)
       const hasMultiPanel = existingPanels && existingPanels.length > 1;

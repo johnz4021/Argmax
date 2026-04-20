@@ -228,8 +228,14 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           }
         }
       }
+      const skippedEdges = [];
       if (input.add_edges) {
+        const nodeIdSet = new Set(g.nodes.map((n) => n.id));
         for (const edge of input.add_edges) {
+          if (!nodeIdSet.has(edge.source) || !nodeIdSet.has(edge.target)) {
+            skippedEdges.push(`${edge.source}->${edge.target}`);
+            continue;
+          }
           if (!g.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
             g.edges.push(edge);
           }
@@ -241,11 +247,14 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       sendJSON(ws, { type: 'create_graph', graph: g });
       session._lastVizMessage = { type: 'create_graph', graph: g };
 
+      const skippedWarning = skippedEdges.length > 0
+        ? ` WARNING: ${skippedEdges.length} edge(s) skipped because their nodes don't exist: ${skippedEdges.join(', ')}. Add those nodes first.`
+        : '';
       return {
-        success: true,
+        success: skippedEdges.length === 0,
         node_count: g.nodes.length,
         edge_count: g.edges.length,
-        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges.`,
+        message: `Graph updated: ${g.nodes.length} nodes, ${g.edges.length} edges. Displayed to student.${skippedWarning}`,
       };
     }
 

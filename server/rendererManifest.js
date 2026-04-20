@@ -101,10 +101,10 @@ export const RENDERER_MANIFEST = {
 
   tree: {
     actions: [
-      { name: 'set_tree', params: { nodes: 'array', edges: 'array', root: 'string', heap_array: 'number[]?' }, description: 'Initialize tree with nodes, edges, and root' },
+      { name: 'set_tree', params: { nodes: 'array', edges: 'array', root: 'string', heap_array: 'number[]?' }, description: 'Initialize tree with nodes, edges, and root. Edge objects: {from, to, side, label?} — label is optional text shown on the edge (e.g. "0"/"1" for Huffman).' },
       { name: 'highlight_node', params: { id: 'string', className: 'string?' }, description: 'Highlight a tree node' },
       { name: 'highlight_edge', params: { from: 'string', to: 'string', className: 'string?' }, description: 'Highlight a tree edge' },
-      { name: 'insert_node', params: { id: 'string', value: 'any', parent: 'string?', side: "'left'|'right'?" }, description: 'Insert a new node' },
+      { name: 'insert_node', params: { id: 'string', value: 'any', parent: 'string?', side: "'left'|'right'?", label: 'string?' }, description: 'Insert a new node' },
       { name: 'delete_node', params: { id: 'string' }, description: 'Delete a node from the tree' },
       { name: 'rotate_left', params: { pivot: 'string' }, description: 'Left rotation around pivot' },
       { name: 'rotate_right', params: { pivot: 'string' }, description: 'Right rotation around pivot' },
@@ -128,7 +128,7 @@ export const RENDERER_MANIFEST = {
     example: `emit_segment({
   narration: "Let's build the binary search tree...",
   viz_actions: [
-    { renderer: "tree", action: "set_tree", params: { nodes: [{id:"10",value:10},{id:"5",value:5},{id:"15",value:15}], edges: [{from:"10",to:"5"},{from:"10",to:"15"}], root: "10" } },
+    { renderer: "tree", action: "set_tree", params: { nodes: [{id:"10",value:10},{id:"5",value:5},{id:"15",value:15}], edges: [{from:"10",to:"5",side:"left",label:"0"},{from:"10",to:"15",side:"right",label:"1"}], root: "10" } },
     { renderer: "tree", action: "highlight_node", params: { id: "10", className: "current" } }
   ]
 })`,

@@ -1333,78 +1333,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
 
         let result;
 
-        if (block.name === 'update_graph') {
-          // Incremental graph construction
-          const input = block.input;
-          if (!session.currentGraph) {
-            session.currentGraph = {
-              nodes: [],
-              edges: [],
-              positions: {},
-              directed: input.directed !== undefined ? input.directed : true,
-            };
-          }
-
-          const graph = session.currentGraph;
-
-          // Remove nodes
-          if (input.remove_nodes) {
-            const removeSet = new Set(input.remove_nodes);
-            graph.nodes = graph.nodes.filter((n) => !removeSet.has(n.id));
-            graph.edges = graph.edges.filter(
-              (e) => !removeSet.has(e.source) && !removeSet.has(e.target)
-            );
-            for (const id of input.remove_nodes) {
-              delete graph.positions[id];
-            }
-          }
-
-          // Remove edges
-          if (input.remove_edges) {
-            for (const re of input.remove_edges) {
-              graph.edges = graph.edges.filter(
-                (e) => !(e.source === re.source && e.target === re.target)
-              );
-            }
-          }
-
-          // Add nodes
-          if (input.add_nodes) {
-            for (const node of input.add_nodes) {
-              if (!graph.nodes.some((n) => n.id === node.id)) {
-                graph.nodes.push({ id: node.id, label: node.label || node.id });
-              }
-            }
-          }
-
-          // Add edges
-          if (input.add_edges) {
-            for (const edge of input.add_edges) {
-              if (!graph.edges.some((e) => e.source === edge.source && e.target === edge.target)) {
-                graph.edges.push(edge);
-              }
-            }
-          }
-
-          // Update directedness
-          if (input.directed !== undefined) {
-            graph.directed = input.directed;
-          }
-
-          // Auto-layout new nodes
-          graph.positions = autoLayout(graph.nodes, graph.edges, graph.positions);
-
-          // Send updated graph to client
-          sendJSON(ws, { type: 'create_graph', graph });
-          session._lastVizMessage = { type: 'create_graph', graph };
-
-          result = {
-            success: true,
-            node_count: graph.nodes.length,
-            edge_count: graph.edges.length,
-            message: `Graph updated: ${graph.nodes.length} nodes, ${graph.edges.length} edges. Displayed to student.`,
-          };
-        } else if (block.name === 'show_canonical_example') {
+        if (block.name === 'show_canonical_example') {
           const algo = block.input.algorithm;
           const example = CANONICAL_EXAMPLES[algo];
 

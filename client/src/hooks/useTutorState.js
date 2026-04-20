@@ -373,11 +373,17 @@ export function useTutorState() {
       case 'create_visualization': {
         // Only update viz panels if panels array is non-empty — empty array would destroy existing viz
         if (msg.panels && msg.panels.length > 0) {
-          const panels = msg.panels.map((p, i) => ({
-            id: p.id || p.renderer,
-            renderer: p.renderer,
-            props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
-          }));
+          const seenIds = {};
+          const panels = msg.panels.map((p) => {
+            let id = p.id || p.renderer;
+            if (seenIds[id]) { id = `${id}_${seenIds[id]}`; }
+            seenIds[p.id || p.renderer] = (seenIds[p.id || p.renderer] || 0) + 1;
+            return {
+              id,
+              renderer: p.renderer,
+              props: { ...(p.config || {}), title: typeof p.title === 'string' ? p.title : p.title?.text || (p.title ? String(p.title) : undefined) },
+            };
+          });
           console.log('[State] SET_VIZ_PANELS:', JSON.stringify(panels));
           dispatch({ type: 'SET_VIZ_PANELS', panels });
         } else {

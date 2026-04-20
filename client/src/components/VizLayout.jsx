@@ -104,8 +104,9 @@ function RendererSwitch({ type, ...props }) {
  *   panels: [{ id, renderer, props }] — which renderers to show
  *   explanationMode — passed through to active renderers
  *   segmentCount — passed through for snapshot tracking
+ *   rewindStep — increments once per rewind_step_narration, triggers snapshot advance in renderers
  */
-export default function VizLayout({ panels, explanationMode, segmentCount, algorithm, residualEdges, residualToggle, onElementClick }) {
+export default function VizLayout({ panels, explanationMode, segmentCount, rewindStep, algorithm, residualEdges, residualToggle, onElementClick }) {
   if (!panels || panels.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -135,6 +136,7 @@ export default function VizLayout({ panels, explanationMode, segmentCount, algor
             rendererId={panel.id}
             explanationMode={explanationMode}
             segmentCount={segmentCount}
+            rewindStep={rewindStep}
             {...(panel.renderer === 'graph' ? { algorithm, residualEdges, residualToggle, onElementClick } : {})}
             {...panel.props}
           />

@@ -39,6 +39,7 @@ export default function ArrayRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
 }) {
   const [data, setData] = useState([]);
   const [classes, setClasses] = useState([]);
@@ -54,6 +55,7 @@ export default function ArrayRenderer({
   const [containerWidth, setContainerWidth] = useState(0);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
 
   const takeArraySnapshot = useCallback(() => {
     return {
@@ -252,9 +254,9 @@ export default function ArrayRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || data.length === 0) return;
-    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeArraySnapshot());
-  }, [segmentCount, takeArraySnapshot, explanationMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
 
   // Handle explanation mode
   useEffect(() => {
@@ -262,6 +264,7 @@ export default function ArrayRenderer({
       preExplanationRef.current = takeArraySnapshot();
       const stepsBack = explanationMode.config?.steps_back || 2;
       const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreArraySnapshot(snapshotsRef.current[idx]);
       }
@@ -291,8 +294,18 @@ export default function ArrayRenderer({
       setGhostState(null);
       restoreArraySnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
+      rewindStartIdxRef.current = null;
     }
-  }, [explanationMode, takeArraySnapshot, restoreArraySnapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreArraySnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   useEffect(() => {
     const el = barContainerRef.current;

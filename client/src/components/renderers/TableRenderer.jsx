@@ -39,6 +39,7 @@ export default function TableRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
 }) {
   const [grid, setGrid] = useState([]);
   const [cellClasses, setCellClasses] = useState([]);
@@ -48,6 +49,7 @@ export default function TableRenderer({
   const [overlayState, setOverlayState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
   const tableRef = useRef(null);
   const panZoom = usePanZoom();
 
@@ -188,12 +190,12 @@ export default function TableRenderer({
     return () => unregisterRenderer(rendererId);
   }, [rendererId, applyTableAction, takeTableSnapshot, restoreTableSnapshot]);
 
-  // Take snapshot after each segment
+  // Take snapshot after each segment — segmentCount only, matching GraphRenderer
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || grid.length === 0) return;
-    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeTableSnapshot());
-  }, [segmentCount, takeTableSnapshot, explanationMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
 
   // Handle explanation mode
   useEffect(() => {
@@ -201,6 +203,7 @@ export default function TableRenderer({
       preExplanationRef.current = takeTableSnapshot();
       const stepsBack = explanationMode.config?.steps_back || 2;
       const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreTableSnapshot(snapshotsRef.current[idx]);
       }
@@ -213,8 +216,18 @@ export default function TableRenderer({
       setOverlayState(null);
       restoreTableSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
+      rewindStartIdxRef.current = null;
     }
-  }, [explanationMode, takeTableSnapshot, restoreTableSnapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreTableSnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   // Build a lookup for dependency arrow source cells -> role
   const depSourceMap = useMemo(() => {

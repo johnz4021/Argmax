@@ -171,6 +171,7 @@ export default function RecursionTreeRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
 }) {
   const svgRef = useRef(null);
   const containerRef = useRef(null);
@@ -187,6 +188,7 @@ export default function RecursionTreeRenderer({
   const [customAnnotations, setCustomAnnotations] = useState({});
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
 
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
 
@@ -350,9 +352,9 @@ export default function RecursionTreeRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || !treeData) return;
-    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeSnapshot());
-  }, [segmentCount, takeSnapshot, explanationMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
 
   // Handle explanation mode (rewind)
   useEffect(() => {
@@ -360,14 +362,25 @@ export default function RecursionTreeRenderer({
       preExplanationRef.current = takeSnapshot();
       const stepsBack = explanationMode.config?.steps_back || 2;
       const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreSnapshot(snapshotsRef.current[idx]);
       }
     } else if (explanationMode === null && preExplanationRef.current) {
       restoreSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
+      rewindStartIdxRef.current = null;
     }
-  }, [explanationMode, takeSnapshot, restoreSnapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreSnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   // Filter nodes/edges by revealedLevels
   const visibleData = useMemo(() => {

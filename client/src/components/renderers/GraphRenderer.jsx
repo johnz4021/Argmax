@@ -342,6 +342,7 @@ export default function GraphRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
   rendererId = 'graph',
   algorithm,
   residualEdges,
@@ -352,6 +353,7 @@ export default function GraphRenderer({
   const cyRef = useRef(null);
   const snapshotsRef = useRef([]);
   const preExplanationSnapshotRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
   const preToggleSnapshotRef = useRef(null);
   const [annotations, setAnnotations] = useState([]);
   const [showingResidual, setShowingResidual] = useState(false);
@@ -568,6 +570,7 @@ export default function GraphRenderer({
         0,
         snapshotsRef.current.length - (explanationMode.config?.steps_back || 2)
       );
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreSnapshot(cy, snapshotsRef.current[idx]);
       }
@@ -578,9 +581,20 @@ export default function GraphRenderer({
       removeGhostAlternative(cy);
       restoreSnapshot(cy, preExplanationSnapshotRef.current);
       preExplanationSnapshotRef.current = null;
+      rewindStartIdxRef.current = null;
       setAnnotations([]);
     }
   }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const cy = cyRef.current;
+    if (!cy) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreSnapshot(cy, snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   // Auto-reset residual toggle when a new segment arrives
   useEffect(() => {

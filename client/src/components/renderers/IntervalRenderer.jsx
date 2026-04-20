@@ -29,6 +29,7 @@ export default function IntervalRenderer({
   phase,
   explanationMode,
   segmentCount,
+  rewindStep = 0,
 }) {
   const [jobs, setJobs] = useState([]);
   const [machines, setMachines] = useState([]);
@@ -41,6 +42,7 @@ export default function IntervalRenderer({
   const [ghostState, setGhostState] = useState(null);
   const snapshotsRef = useRef([]);
   const preExplanationRef = useRef(null);
+  const rewindStartIdxRef = useRef(null);
   const panZoom = usePanZoom();
 
   const takeSnapshot = useCallback(() => ({
@@ -198,9 +200,9 @@ export default function IntervalRenderer({
   // Take snapshot after each segment
   useEffect(() => {
     if (segmentCount === undefined || segmentCount === 0 || jobs.length === 0) return;
-    if (explanationMode?.mode === 'rewind') return;
     snapshotsRef.current.push(takeSnapshot());
-  }, [segmentCount, takeSnapshot, explanationMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentCount]);
 
   // Handle explanation mode
   useEffect(() => {
@@ -208,6 +210,7 @@ export default function IntervalRenderer({
       preExplanationRef.current = takeSnapshot();
       const stepsBack = explanationMode.config?.steps_back || 2;
       const idx = Math.max(0, snapshotsRef.current.length - stepsBack);
+      rewindStartIdxRef.current = idx;
       if (snapshotsRef.current[idx]) {
         restoreSnapshot(snapshotsRef.current[idx]);
       }
@@ -230,8 +233,18 @@ export default function IntervalRenderer({
       setGhostState(null);
       restoreSnapshot(preExplanationRef.current);
       preExplanationRef.current = null;
+      rewindStartIdxRef.current = null;
     }
-  }, [explanationMode, takeSnapshot, restoreSnapshot]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [explanationMode]);
+
+  // Advance one snapshot per rewind narration step
+  useEffect(() => {
+    if (!rewindStep || rewindStartIdxRef.current === null) return;
+    const snap = snapshotsRef.current[rewindStartIdxRef.current + rewindStep];
+    if (snap) restoreSnapshot(snap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rewindStep]);
 
   // Compute time range
   const timeMin = jobs.length > 0 ? Math.min(...jobs.map(j => j.start)) : 0;

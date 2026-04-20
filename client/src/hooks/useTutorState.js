@@ -11,6 +11,7 @@ const initialState = {
   error: null,
   explanationMode: null, // null | { mode: 'overlay'|'rewind'|'ghost_alternative', config: {...} }
   segmentCount: 0,
+  rewindStep: 0,
   latestResidualEdges: null,
   residualToggle: null, // null | { show: boolean, ts: number }
   mode: 'direct',            // 'direct' | 'guided'
@@ -114,10 +115,14 @@ function reducer(state, action) {
         ),
       };
 
+    case 'REWIND_STEP':
+      return { ...state, rewindStep: state.rewindStep + 1 };
+
     case 'INTERRUPT_RESPONSE':
       return {
         ...state,
         agentStatus: null,
+        rewindStep: 0,
         status: state.previousStatus === 'complete' ? 'complete' : 'teaching',
         explanationMode:
           action.explanation_mode !== 'none'
@@ -141,7 +146,7 @@ function reducer(state, action) {
       return { ...state, explanationMode: action.explanationMode };
 
     case 'CLEAR_EXPLANATION_MODE':
-      return { ...state, explanationMode: null };
+      return { ...state, explanationMode: null, rewindStep: 0 };
 
     case 'LESSON_COMPLETE':
       return { ...state, agentStatus: null, status: 'complete' };
@@ -407,6 +412,9 @@ export function useTutorState() {
         break;
       case 'explanation_complete':
         dispatch({ type: 'CLEAR_EXPLANATION_MODE' });
+        break;
+      case 'rewind_step_narration':
+        dispatch({ type: 'REWIND_STEP' });
         break;
       case 'residual_toggle':
         dispatch({ type: 'RESIDUAL_TOGGLE', show: msg.show });

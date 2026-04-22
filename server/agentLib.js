@@ -38,6 +38,42 @@ export function sendBinary(ws, buffer) {
   }
 }
 
+// Registry of declared panels (both renderer and context).
+// Call whenever create_visualization or create_graph sends panels to the client.
+export function registerPanels(session, panels, contextPanels) {
+  if (!session._panels) session._panels = {};
+  for (const p of (panels || [])) {
+    const id = p.id || p.renderer;
+    if (id) session._panels[id] = { renderer: p.renderer, type: 'renderer' };
+  }
+  for (const p of (contextPanels || [])) {
+    if (p.id) session._panels[p.id] = { renderer: 'context', type: 'context' };
+  }
+}
+
+// Validate viz_actions against the panel registry.
+// Returns { valid, warnings } — actions targeting unknown panels are stripped.
+function validatePanelIds(actions, panels) {
+  const valid = [];
+  const warnings = [];
+  for (const action of actions) {
+    const renderer = action.renderer;
+    if (!renderer) { valid.push(action); continue; }
+    if (renderer === 'context') {
+      const panelId = action.params?.panel_id;
+      if (panelId && !panels[panelId]) {
+        warnings.push(`context update targets unknown panel '${panelId}'`);
+        continue;
+      }
+    } else if (!panels[renderer]) {
+      warnings.push(`renderer '${renderer}' not declared in create_visualization`);
+      continue;
+    }
+    valid.push(action);
+  }
+  return { valid, warnings };
+}
+
 // Validate agent-emitted viz_actions against the known graph.
 // Returns { valid, warnings } — invalid actions are stripped and reported back to the agent.
 function validateVizActions(actions, graph) {
@@ -191,6 +227,12 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         const panelId = Object.keys(session.graphs)[0] || 'graph';
         session.graphs[panelId] = graphData;
       }
+      // Register both 'graph' and the named panel ID so either form of renderer target is valid
+      registerPanels(session, [{ id: 'graph', renderer: 'graph' }], []);
+      if (session.graphs) {
+        const panelId = Object.keys(session.graphs)[0];
+        if (panelId && panelId !== 'graph') registerPanels(session, [{ id: panelId, renderer: 'graph' }], []);
+      }
       return {
         success: true,
         message: input.variant_id
@@ -284,6 +326,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
         context_panels: input.context_panels || [],
       };
       sendJSON(ws, vizMsg);
+      registerPanels(session, panels, input.context_panels || []);
       // Only update _lastVizMessage / clear history when panels has a renderer
       if (panels.length > 0) {
         session._lastVizMessage = vizMsg;
@@ -370,6 +413,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
                 panels: [],
                 context_panels: contextPanels,
               });
+              registerPanels(session, [], contextPanels);
             }
           } else {
             // Non-graph: auto-send create_visualization with renderer + context panels
@@ -379,6 +423,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
               context_panels: contextPanels,
             };
             sendJSON(ws, autoVizMsg);
+            registerPanels(session, [{ renderer: algoInfo.renderer }], contextPanels);
             session._lastVizMessage = autoVizMsg;
             if (!session._rendererVizHistory) session._rendererVizHistory = {};
             session._rendererVizHistory[algoInfo.renderer] = [];
@@ -469,18 +514,34 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
       }
       // Merge any explicit viz_actions from agent (rare overrides / backward compat)
       if (input.viz_actions && input.viz_actions.length > 0) {
+        let actionsToProcess = input.viz_actions;
+        const allActionWarnings = [];
+
+        // Panel registry validation — strip actions targeting undeclared panels/IDs
+        if (session._panels) {
+          const { valid: panelValid, warnings: panelWarnings } = validatePanelIds(actionsToProcess, session._panels);
+          if (panelWarnings.length > 0) {
+            console.warn('[Agent] panel registry warnings:', panelWarnings);
+          }
+          allActionWarnings.push(...panelWarnings);
+          actionsToProcess = panelValid;
+        }
+
+        // Node/edge ID validation against the current graph (graph renderer only)
         const graph = session.currentGraph;
         if (graph?.nodes?.length > 0) {
-          const { valid, warnings } = validateVizActions(input.viz_actions, graph);
+          const { valid, warnings } = validateVizActions(actionsToProcess, graph);
           if (warnings.length > 0) {
-            console.warn('[Agent] viz_action validation warnings:', warnings);
+            console.warn('[Agent] viz_action node warnings:', warnings);
           }
+          allActionWarnings.push(...warnings);
           allVizActions.push(...valid);
-          session._lastVizWarnings = warnings;
         } else {
-          // No graph loaded yet — pass through (non-graph renderers like recursion_tree, table)
-          allVizActions.push(...input.viz_actions);
+          // No graph loaded — pass through (non-graph renderers like recursion_tree, table)
+          allVizActions.push(...actionsToProcess);
         }
+
+        session._lastVizWarnings = allActionWarnings;
       }
 
       // Track viz_actions per renderer for state restoration (non-trace-step renderers like recursion_tree, interval, tree)

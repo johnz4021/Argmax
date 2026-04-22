@@ -2,7 +2,7 @@
 
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs, getClient, registerPanels } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { CANONICAL_EXAMPLES } from './examples/canonicalExamples.js';
 import { getDefaultContextPanels, getModeDefaultPanels } from './contextPanelDefaults.js';
@@ -1064,6 +1064,7 @@ function applyClassification(plan, session, ws, vizState) {
       const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
       const modeVizMsg = { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels };
       sendJSON(ws, modeVizMsg);
+      registerPanels(session, panels, modeDefaults.context_panels);
       if (autoRenderer) {
         session._lastVizMessage = modeVizMsg;
         if (!session._rendererVizHistory) session._rendererVizHistory = {};
@@ -1102,6 +1103,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   session.mapperStates = {};
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
+  session._panels = {};
 
   const ws = liveWs(session);
   sendJSON(ws, { type: 'guided_start', problemText });
@@ -1366,6 +1368,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                     panels: [],
                     context_panels: contextPanels,
                   });
+                  registerPanels(session, [], contextPanels);
                 }
               } else {
                 const canonVizMsg = {
@@ -1375,6 +1378,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
                 };
                 sendJSON(ws, canonVizMsg);
                 session._lastVizMessage = canonVizMsg;
+                registerPanels(session, [{ renderer: algoInfo.renderer }], contextPanels);
               }
 
               result = {

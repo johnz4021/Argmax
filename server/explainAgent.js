@@ -2,7 +2,7 @@
 
 import { tools } from './tools.js';
 import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
-import { handleToolCall, sendJSON, sendBinary, liveWs, getClient } from './agentLib.js';
+import { handleToolCall, sendJSON, sendBinary, liveWs, getClient, registerPanels } from './agentLib.js';
 import { synthesizeAndStream, resetTTSDisabled } from './tts.js';
 import { buildRendererDocs } from './rendererManifest.js';
 import { solveProblem, solveProblems } from './solver.js';
@@ -698,6 +698,7 @@ function applyClassification(plan, session, ws, vizState) {
     const panels = autoRenderer ? [{ renderer: autoRenderer, config: {} }] : [];
     const initVizMsg = { type: 'create_visualization', panels, context_panels: modeDefaults.context_panels };
     sendJSON(ws, initVizMsg);
+    registerPanels(session, panels, modeDefaults.context_panels);
     if (autoRenderer) {
       session._lastVizMessage = initVizMsg;
       if (!session._rendererVizHistory) session._rendererVizHistory = {};
@@ -729,6 +730,7 @@ export async function startExplainSession(session, problemText, imageBase64, ima
   session.mapperStates = {};
   session._emittedTraceSteps = [];
   session._savedGraphState = null;
+  session._panels = {};
 
   const ws = liveWs(session);
 

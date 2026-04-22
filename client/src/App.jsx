@@ -41,6 +41,8 @@ export default function App() {
 
   const contextPanelsRef = useRef(state.contextPanels);
   contextPanelsRef.current = state.contextPanels;
+  const vizPanelsRef = useRef(state.vizPanels);
+  vizPanelsRef.current = state.vizPanels;
 
   useEffect(() => {
     initContextManager(dispatchContext);
@@ -74,7 +76,8 @@ export default function App() {
       // Load graph into Cytoscape synchronously so it's ready before any
       // subsequent viz actions arrive (React useEffect would defer this).
       if (msg.type === 'create_graph' && msg.graph) {
-        loadGraphImmediate('graph', msg.graph);
+        const graphPanelId = vizPanelsRef.current?.find(p => p.renderer === 'graph')?.id || 'graph';
+        loadGraphImmediate(graphPanelId, msg.graph);
       }
       if (msg.type === 'create_visualization' && msg.panels) {
         for (const panel of msg.panels) {
@@ -602,6 +605,7 @@ export default function App() {
                 ) : (
                   <GraphRenderer
                     key={state.algorithm}
+                    rendererId={state.vizPanels?.[0]?.id || 'graph'}
                     graph={state.graph}
                     phase={state.currentPhase}
                     explanationMode={state.explanationMode}

@@ -35,6 +35,8 @@ export default function App() {
   const [apiKeyResult, setApiKeyResult] = useState(null);
   const [ttsToast, setTtsToast] = useState(null);
   const [showCreditsModal, setShowCreditsModal] = useState(false);
+  const [lcParsed, setLcParsed] = useState(null);
+  const [lcSessions, setLcSessions] = useState([]);
   const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
   const sendRef = useRef(null);
@@ -213,6 +215,24 @@ export default function App() {
           hints: msg.hints,
         });
       }
+      if (msg.type === 'lc_parsed') {
+        setLcParsed(msg);
+      }
+      if (msg.type === 'lc_viz_ready') {
+        if (msg.renderer === 'graph' && msg.input?.graph) {
+          const graphPanelId = vizPanelsRef.current?.find(p => p.renderer === 'graph')?.id || 'graph';
+          loadGraphImmediate(graphPanelId, msg.input.graph);
+        }
+      }
+      if (msg.type === 'guided_start') {
+        setLcParsed(null);
+      }
+      if (msg.type === 'lc_sessions_listed') {
+        setLcSessions(msg.sessions || []);
+      }
+      if (msg.type === 'lc_mastered') {
+        setLcSessions(prev => prev.map(s => s.id === msg.sessionId ? { ...s, mastered: true } : s));
+      }
     },
     [processMessage, dispatchContext, audioPlayer, reset]
   );
@@ -240,6 +260,14 @@ export default function App() {
       audioPlayer.init(); // Must be from user gesture
       reset();
       sessionStartRef.current = Date.now();
+
+      if (algorithm === 'leetcode') {
+        track('leetcode_started', {});
+        setLcParsed({ loading: true });
+        send({ type: 'start_leetcode', problemText: data.problemText });
+        return;
+      }
+
       track('session_started', {
         mode: algorithm === 'guided' ? 'guided' : 'explain',
         algorithm,
@@ -382,8 +410,16 @@ export default function App() {
     sessionStartRef.current = null;
     audioPlayer.flush();
     audioPlayer.stop();
+    setLcParsed(null);
     reset();
   }, [reset, send, audioPlayer, state.status, state.mode, state.algorithm, state.segmentCount]);
+
+  const handleMasterLcSession = useCallback(
+    (sessionId) => {
+      send({ type: 'lc_master_session', sessionId });
+    },
+    [send]
+  );
 
   const handleSpeedChange = useCallback(
     (multiplier) => {
@@ -505,11 +541,14 @@ export default function App() {
                 disabled={!connected}
                 send={send}
                 conversations={state.conversations}
+                lcSessions={lcSessions}
                 loadedConversation={state.loadedConversation}
                 viewingHistory={state.viewingHistory}
                 onClearHistory={handleClearHistory}
                 processMessage={processMessage}
                 onResumeConversation={handleResumeConversation}
+                lcParsed={lcParsed}
+                onMasterLcSession={handleMasterLcSession}
               />
             )}
             {pendingFeedback && (

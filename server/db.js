@@ -171,6 +171,63 @@ export async function getUserSettings(userId) {
 }
 
 /**
+ * Create a new LeetCode practice session record.
+ */
+export async function createLcSession(userId, title, algorithmKey, confidence, hasViz) {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from('lc_sessions')
+    .insert({
+      user_id: userId,
+      problem_title: title,
+      algorithm_key: algorithmKey,
+      confidence,
+      has_viz: hasViz,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('[DB] createLcSession error:', error.message);
+    return null;
+  }
+  return data.id;
+}
+
+/**
+ * Mark a LeetCode session as mastered.
+ */
+export function masterLcSession(sessionId, userId) {
+  if (!supabase || !sessionId) return;
+  supabase
+    .from('lc_sessions')
+    .update({ mastered: true })
+    .eq('id', sessionId)
+    .eq('user_id', userId)
+    .then(({ error }) => {
+      if (error) console.error('[DB] masterLcSession error:', error.message);
+    });
+}
+
+/**
+ * List LeetCode sessions for a user, most recent first.
+ */
+export async function listLcSessions(userId) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from('lc_sessions')
+    .select('id, problem_title, algorithm_key, confidence, has_viz, mastered, attempted_at')
+    .eq('user_id', userId)
+    .order('attempted_at', { ascending: false });
+
+  if (error) {
+    console.error('[DB] listLcSessions error:', error.message);
+    return [];
+  }
+  return data;
+}
+
+/**
  * Upsert user settings.
  */
 export async function saveUserSettings(userId, fields) {

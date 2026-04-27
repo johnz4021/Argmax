@@ -1123,9 +1123,19 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
   const textPart = problemText
     ? `Here is the problem the student wants to solve:\n\n${problemText}`
     : 'See the attached image for the problem the student wants to solve.';
+
+  let lcContext = '';
+  if (session._leetcodeAlgorithmKey) {
+    const conf = session._leetcodeConfidence != null ? ` (confidence: ${session._leetcodeConfidence.toFixed(2)})` : '';
+    lcContext = `\n\n[LEETCODE MODE] Primary algorithm identified: ${session._leetcodeAlgorithmKey}${conf}. The student pasted this LeetCode problem to learn through interactive tutoring.`;
+    if (session.hasViz === false) {
+      lcContext += '\n\n[TEXT ONLY MODE] No visualization is available for this problem. Begin your first spoken message with: "For this problem, I\'ll guide you through the concepts step by step — we\'ll work through the ideas together."';
+    }
+  }
+
   userContent.push({
     type: 'text',
-    text: `${textPart}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, start with the STAGE 0 intake question to learn what the student has tried, then check for multiple parts (use send_options if needed), then call run_solver or run_solver_batch — classification is returned in the tool result, proceed directly to teaching.`,
+    text: `${textPart}${lcContext}\n\nFirst, determine if this is a concept/general explanation request or a concrete problem with specific input. If it's a concept request, follow the CONCEPT FLOW — construct your own example and guide the student through it interactively. If it's a concrete problem, start with the STAGE 0 intake question to learn what the student has tried, then check for multiple parts (use send_options if needed), then call run_solver or run_solver_batch — classification is returned in the tool result, proceed directly to teaching.`,
   });
 
   const messages = [{ role: 'user', content: userContent }];
@@ -1218,7 +1228,7 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         model: 'claude-opus-4-6',
         max_tokens: 4096,
         system: systemPrompt,
-        tools: guidedTools,
+        tools: session.hasViz === false ? guidedTools.filter(t => t.name !== 'create_visualization') : guidedTools,
         messages,
       });
     } catch (err) {

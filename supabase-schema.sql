@@ -27,7 +27,22 @@ create table public.agent_states (
   constraint agent_states_conversation_id_key unique (conversation_id)
 );
 
+create table public.lc_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  problem_title text,
+  algorithm_key text,
+  confidence float,
+  has_viz boolean not null default false,
+  mastered boolean not null default false,
+  attempted_at timestamptz not null default now()
+);
+
 -- RLS: users see only their own data
+alter table public.lc_sessions enable row level security;
+create policy "Users see own lc_sessions" on public.lc_sessions
+  for all using (auth.uid() = user_id);
+
 alter table public.conversations enable row level security;
 alter table public.messages enable row level security;
 alter table public.agent_states enable row level security;

@@ -10,7 +10,9 @@ import { startGuidedSession, resumeGuidedSession } from './guidedAgent.js';
 import { startExplainSession } from './explainAgent.js';
 import Anthropic from '@anthropic-ai/sdk';
 import { verifyJWT } from './supabase.js';
-import { createConversation, listConversations, loadConversationMessages, loadAgentState, countConversations, getUserSettings, saveUserSettings, saveFeedback } from './db.js';
+import { createConversation, listConversations, loadConversationMessages, loadAgentState, countConversations, getUserSettings, saveUserSettings, saveFeedback, createLcSession, masterLcSession, listLcSessions } from './db.js';
+import { parseLeetcodeProblem } from './leetcodeAgent.js';
+import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
 import { encrypt, decrypt } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -510,6 +512,147 @@ function attachHandlers(ws, session) {
             limit: FREE_SESSION_LIMIT,
             hasByok,
           }));
+          break;
+        }
+
+        case 'start_leetcode': {
+          console.log(`[WS] start_leetcode received (active=${session.active}, gen=${session.runGeneration})`);
+          if (session.active) {
+            console.log(`[WS] start_leetcode — force-terminating old session (mode=${session.mode}, gen=${session.runGeneration})`);
+            session.endSessionFlag = true;
+            session.pauseFlag = true;
+            if (session.pauseResolver) { session.pauseResolver(); session.pauseResolver = null; }
+            if (session.guidedResponseResolver) { session.guidedResponseResolver('__end_session__'); session.guidedResponseResolver = null; }
+            if (session.followUpResolver) { session.followUpResolver('__end_session__'); session.followUpResolver = null; }
+          }
+          session.active = false;
+          session.endSessionFlag = false;
+          session.pauseFlag = false;
+          session.skipFlag = false;
+          session.runGeneration++;
+          session.currentGraph = null;
+          session.currentTrace = null;
+          session._emittedTraceSteps = [];
+          const lcGen = session.runGeneration;
+          {
+            const gate = await checkSessionGate(session);
+            if (!gate.allowed) {
+              ws.send(JSON.stringify({ type: 'session_limit_reached', count: gate.count, limit: FREE_SESSION_LIMIT }));
+              return;
+            }
+            if (gate.byok) {
+              const settings = await getUserSettings(session.userId);
+              const apiKey = decrypt(settings.anthropic_api_key_encrypted);
+              session.anthropicClient = new Anthropic({ apiKey, maxRetries: 5 });
+            }
+          }
+
+          // Parse the LeetCode problem
+          let parsed;
+          try {
+            parsed = await parseLeetcodeProblem(msg.problemText, session.anthropicClient);
+          } catch (err) {
+            console.error('[LeetCode] parseLeetcodeProblem failed:', err.message);
+            ws.send(JSON.stringify({ type: 'error', message: 'Failed to parse problem: ' + err.message }));
+            return;
+          }
+
+          const { title, algorithm_key, confidence, test_case } = parsed;
+          let hasViz = !!(algorithm_key && confidence >= 0.7 && ALGORITHMS[algorithm_key]);
+
+          // Pre-run the trace so client gets viz immediately
+          if (hasViz) {
+            try {
+              const { trace, renderer, input } = runRegisteredAlgorithm(algorithm_key, test_case);
+              session._leetcodeTrace = trace;
+              session._leetcodeRenderer = renderer;
+              session._leetcodeInput = input;
+              ws.send(JSON.stringify({ type: 'lc_viz_ready', algorithm_key, renderer, trace, input }));
+            } catch (err) {
+              console.warn('[LeetCode] Failed to pre-run trace:', err.message);
+              hasViz = false;
+            }
+          }
+
+          session.hasViz = hasViz;
+          session._leetcodeAlgorithmKey = algorithm_key;
+          session._leetcodeTestCase = test_case;
+          session._leetcodeTitle = title;
+          session._leetcodeConfidence = confidence;
+
+          ws.send(JSON.stringify({
+            type: 'lc_parsed',
+            title,
+            algorithm_key,
+            confidence,
+            has_viz: hasViz,
+            fallback_reason: parsed.fallback_reason || null,
+          }));
+
+          session.active = true;
+          session.mode = 'leetcode';
+
+          if (session.userId) {
+            const convId = await createConversation(session.userId, `[LeetCode] ${title || msg.problemText.slice(0, 100)}`);
+            session.conversationId = convId;
+            if (convId) {
+              ws.send(JSON.stringify({ type: 'conversation_created', conversationId: convId }));
+            }
+          }
+
+          try {
+            await startGuidedSession(session, msg.problemText);
+          } catch (err) {
+            if (err.message === '__end_session__') {
+              console.log('[LeetCode] Session ended by user');
+            } else {
+              console.error('[LeetCode] Error:', err);
+              if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'error', message: 'LeetCode session failed: ' + err.message }));
+            }
+          }
+
+          // Write to lc_sessions after session completes
+          if (session.userId) {
+            await createLcSession(session.userId, title, algorithm_key, confidence, hasViz);
+          }
+
+          if (session.runGeneration === lcGen) {
+            console.log(`[LeetCode] Cleanup: setting active=false (gen=${lcGen})`);
+            session.active = false;
+            session.endSessionFlag = false;
+            session.mode = 'direct';
+            session.followUpResolver = null;
+            session.followUpSent = false;
+            session.conversationId = null;
+            session.hasViz = false;
+            session._leetcodeTrace = null;
+            session._leetcodeRenderer = null;
+            session._leetcodeInput = null;
+            session._leetcodeAlgorithmKey = null;
+            session._leetcodeTestCase = null;
+            session._leetcodeTitle = null;
+            session._leetcodeConfidence = null;
+            if (session.ws.readyState === 1) session.ws.send(JSON.stringify({ type: 'session_ended' }));
+          } else {
+            console.log(`[LeetCode] Cleanup skipped — gen mismatch (mine=${lcGen}, current=${session.runGeneration})`);
+          }
+          break;
+        }
+
+        case 'lc_master_session': {
+          if (!session.userId) return;
+          masterLcSession(msg.sessionId, session.userId);
+          ws.send(JSON.stringify({ type: 'lc_mastered', sessionId: msg.sessionId }));
+          break;
+        }
+
+        case 'list_lc_sessions': {
+          if (!session.userId) {
+            ws.send(JSON.stringify({ type: 'lc_sessions_listed', sessions: [] }));
+            return;
+          }
+          const lcSessionsList = await listLcSessions(session.userId);
+          ws.send(JSON.stringify({ type: 'lc_sessions_listed', sessions: lcSessionsList }));
           break;
         }
       }

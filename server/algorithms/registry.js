@@ -1,9 +1,10 @@
-import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH, dagShortest, DEFAULT_DAG_GRAPH } from './graph/index.js';
+import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH, dagShortest, DEFAULT_DAG_GRAPH, unionFind, DEFAULT_UNION_FIND_GRAPH } from './graph/index.js';
 import { mergesort } from './sorting/index.js';
 import { knapsack, editDistance } from './dp/index.js';
 import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
-import { quickselect } from './searching/index.js';
+import { quickselect, slidingWindow, DEFAULT_SLIDING_WINDOW_INPUT } from './searching/index.js';
 import { huffman } from './compression/index.js';
+import { heapOperations, trie, DEFAULT_TRIE_INPUT } from './tree/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -118,6 +119,34 @@ export const ALGORITHMS = {
     category: 'Greedy Algorithms',
     defaultInput: { string: 'abcde' },
     capabilities: { max_nodes: 30 },
+  },
+  heap_ops: {
+    run: (input) => heapOperations(input.operations),
+    renderer: 'tree',
+    category: 'Data Structures',
+    defaultInput: { operations: [{ type: 'insert', value: 3 }, { type: 'insert', value: 1 }, { type: 'insert', value: 5 }, { type: 'extract_min' }] },
+    capabilities: { max_ops: 10 },
+  },
+  sliding_window: {
+    run: (input) => slidingWindow(input.array, input.window_size ?? 3),
+    renderer: 'array',
+    category: 'Algorithms',
+    defaultInput: DEFAULT_SLIDING_WINDOW_INPUT,
+    capabilities: { max_array_length: 15 },
+  },
+  trie: {
+    run: (input) => trie(input.operations),
+    renderer: 'graph',
+    category: 'Data Structures',
+    defaultInput: DEFAULT_TRIE_INPUT,
+    capabilities: { max_words: 10 },
+  },
+  union_find: {
+    run: (input) => unionFind(input.graph),
+    renderer: 'graph',
+    category: 'Graph Algorithms',
+    defaultInput: { graph: DEFAULT_UNION_FIND_GRAPH },
+    capabilities: { max_nodes: 12, max_edges: 20 },
   },
 };
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import ProblemSolver from './ProblemSolver';
+import LeetCodeSolver from './LeetCodeSolver';
 import ConversationHistory from './ConversationHistory';
 import ConversationTranscript from './ConversationTranscript';
 import HelpCenter from './HelpCenter';
@@ -7,7 +7,7 @@ import { posthog, POSTHOG_KEY } from '../lib/posthog';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
-export default function LandingTabs({ onSelect, disabled, send, conversations, loadedConversation, viewingHistory, onClearHistory, processMessage, onResumeConversation }) {
+export default function LandingTabs({ onSelect, disabled, send, conversations, lcSessions, loadedConversation, viewingHistory, onClearHistory, processMessage, onResumeConversation, lcParsed, onMasterLcSession }) {
   const [activeTab, setActiveTab] = useState('solver');
 
   const handleViewTranscript = (conversationId) => {
@@ -23,7 +23,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
   };
 
   const tabs = [
-    { id: 'solver', label: 'Problem Help' },
+    { id: 'solver', label: 'Practice' },
     { id: 'history', label: 'History' },
     { id: 'help', label: 'Help Center' },
   ];
@@ -53,7 +53,7 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
       </div>
       <div className="flex-1 overflow-auto">
         {activeTab === 'solver' ? (
-          <ProblemSolver onSelect={onSelect} disabled={disabled} />
+          <LeetCodeSolver onSelect={onSelect} disabled={disabled} lcParsed={lcParsed} />
         ) : activeTab === 'help' ? (
           <HelpCenter />
         ) : viewingHistory && loadedConversation ? (
@@ -64,9 +64,11 @@ export default function LandingTabs({ onSelect, disabled, send, conversations, l
         ) : (
           <ConversationHistory
             conversations={conversations}
+            lcSessions={lcSessions}
             send={send}
             onViewTranscript={handleViewTranscript}
             onResume={handleResume}
+            onMasterLcSession={onMasterLcSession}
           />
         )}
       </div>

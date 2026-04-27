@@ -1,4 +1,5 @@
 export { dijkstra, bfs, dfs, DEFAULT_GRAPH } from '../../algorithms.js';
+export { unionFind, DEFAULT_UNION_FIND_GRAPH } from './unionFind.js';
 export { kruskal } from './kruskal.js';
 export { prim } from './prim.js';
 export { maxflow, DEFAULT_FLOW_NETWORK } from './maxflow.js';

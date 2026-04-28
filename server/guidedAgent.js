@@ -1129,7 +1129,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     const conf = session._leetcodeConfidence != null ? ` (confidence: ${session._leetcodeConfidence.toFixed(2)})` : '';
     lcContext = `\n\n[LEETCODE MODE] Primary algorithm identified: ${session._leetcodeAlgorithmKey}${conf}. The student pasted this LeetCode problem to learn through interactive tutoring.`;
     if (session.hasViz === false) {
-      lcContext += '\n\n[TEXT ONLY MODE] No visualization is available for this problem. Begin your first spoken message with: "For this problem, I\'ll guide you through the concepts step by step — we\'ll work through the ideas together."';
+      lcContext += '\n\n[NO PRE-BUILT TRACE] This problem has no pre-computed interactive trace. Begin your first spoken message with: "For this problem, I\'ll guide you through the concepts step by step — we\'ll work through the ideas together." You may still create visualizations (tables, key-value panels, graphs) to illustrate state as the student works through it — call create_visualization when it would help.';
     }
   }
 
@@ -1228,7 +1228,9 @@ async function runGuidedLoop(session, messages, initialSystemPrompt, initialSolv
         model: 'claude-opus-4-6',
         max_tokens: 4096,
         system: systemPrompt,
-        tools: session.hasViz === false ? guidedTools.filter(t => t.name !== 'create_visualization') : guidedTools,
+        tools: (session.hasViz === false && (!session.reasoningMode || session.reasoningMode === 'algorithm_execution'))
+          ? guidedTools.filter(t => t.name !== 'create_visualization')
+          : guidedTools,
         messages,
       });
     } catch (err) {

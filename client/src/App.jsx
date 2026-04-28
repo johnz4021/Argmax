@@ -219,9 +219,15 @@ export default function App() {
         setLcParsed(msg);
       }
       if (msg.type === 'lc_viz_ready') {
-        if (msg.renderer === 'graph' && msg.input?.graph) {
+        if (msg.renderer === 'graph') {
           const graphPanelId = vizPanelsRef.current?.find(p => p.renderer === 'graph')?.id || 'graph';
-          loadGraphImmediate(graphPanelId, msg.input.graph);
+          if (msg.input?.graph) {
+            loadGraphImmediate(graphPanelId, msg.input.graph);
+          } else {
+            // No graph in input (e.g. backtracking builds tree from trace init step).
+            // Initialize an empty Cytoscape canvas so add_node/add_edge actions land correctly.
+            loadGraphImmediate(graphPanelId, { nodes: [], edges: [], directed: false });
+          }
         }
       }
       if (msg.type === 'guided_start') {

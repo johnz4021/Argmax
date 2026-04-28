@@ -86,8 +86,9 @@ export function mapTraceStep(algorithm, rendererType, step, state) {
     case 'array':  result = mapArrayStep(algorithm, step, state); break;
     case 'table':  result = mapTableStep(algorithm, step, state); break;
     case 'tree':   result = mapTreeStep(algorithm, step, state); break;
-    case 'linked': result = mapLinkedStep(algorithm, step, state); break;
-    default:       result = { viz: [], ctx: [] };
+    case 'linked':   result = mapLinkedStep(algorithm, step, state); break;
+    case 'interval': result = mapIntervalStep(algorithm, step, state); break;
+    default:         result = { viz: [], ctx: [] };
   }
 
   // Generic pseudocode line update — any step with pseudocode_line automatically updates the panel
@@ -194,6 +195,21 @@ function mapGraphStep(algo, step, state) {
             { key: 'Status', value: 'Searching for augmenting paths' },
           ],
         }));
+      } else if (algo === 'topological_sort' && step.in_degrees) {
+        c.push(ctxUpdate('in_degrees', {
+          entries: Object.entries(step.in_degrees).map(([k, d]) => ({
+            key: k, value: d, status: 'default',
+          })),
+        }));
+        c.push(ctxUpdate('queue', { items: [], style: 'queue' }));
+        c.push(ctxUpdate('sorted', { items: [], style: 'queue' }));
+      } else if (algo === 'backtracking' && step.nodes) {
+        for (const n of step.nodes) {
+          v.push(viz('graph', 'add_node', { id: n.id, label: n.label, position: n.position }));
+        }
+        for (const e of step.edges || []) {
+          v.push(viz('graph', 'add_edge', { from: e.from, to: e.to }));
+        }
       }
       break;
     }
@@ -316,6 +332,13 @@ function mapGraphStep(algo, step, state) {
           style: 'queue',
         }));
       }
+      if (algo === 'topological_sort' && step.sorted) {
+        v.push(viz('graph', 'mark_visited', { node: step.node }));
+        c.push(ctxUpdate('sorted', {
+          items: step.sorted.map(n => ({ value: n, status: n === step.node ? 'added' : 'default' })),
+          style: 'queue',
+        }));
+      }
       break;
     }
 
@@ -407,6 +430,28 @@ function mapGraphStep(algo, step, state) {
           ],
         }));
         c.push(ctxLog('log', 'Reduction complete: Independent Set is NP-Complete', 'result'));
+      }
+      if (algo === 'topological_sort') {
+        if (step.cycle_detected) {
+          for (const n of step.unprocessed_nodes || []) {
+            v.push(viz('graph', 'highlight_node', { node: n, className: 'examining' }));
+          }
+          c.push(ctxUpdate('sorted', {
+            items: [{ value: 'CYCLE DETECTED', status: 'highlight' }],
+            style: 'queue',
+          }));
+        } else {
+          for (const n of step.sorted || []) {
+            v.push(viz('graph', 'mark_visited', { node: n }));
+          }
+          c.push(ctxUpdate('sorted', {
+            items: (step.sorted || []).map(n => ({ value: n, status: 'updated' })),
+            style: 'queue',
+          }));
+        }
+      }
+      if (algo === 'backtracking') {
+        v.push(viz('graph', 'reset_highlights', {}));
       }
       break;
     }
@@ -807,6 +852,44 @@ function mapGraphStep(algo, step, state) {
       }
       break;
     }
+
+    // ── Topological Sort (Kahn's) ─────────────────────────────────────────
+    case 'enqueue_zero_in_degree': {
+      for (const n of step.nodes || []) {
+        v.push(viz('graph', 'highlight_node', { node: n, className: 'highlighted' }));
+      }
+      c.push(ctxUpdate('queue', {
+        items: (step.nodes || []).map(n => ({ value: n, status: 'added' })),
+        style: 'queue',
+      }));
+      break;
+    }
+
+    case 'reduce_in_degree': {
+      v.push(viz('graph', 'highlight_edge', { from: step.from, to: step.node, className: 'examining' }));
+      break;
+    }
+
+    case 'enqueue_neighbor': {
+      v.push(viz('graph', 'highlight_node', { node: step.node, className: 'highlighted' }));
+      break;
+    }
+
+    // ── Backtracking ──────────────────────────────────────────────────────
+    case 'choose': {
+      v.push(viz('graph', 'mark_current', { node: step.nodeId }));
+      break;
+    }
+
+    case 'found': {
+      v.push(viz('graph', 'highlight_node', { node: step.nodeId, className: 'visited' }));
+      break;
+    }
+
+    case 'unchoose': {
+      v.push(viz('graph', 'highlight_node', { node: step.nodeId, className: 'default' }));
+      break;
+    }
   }
 
   return { viz: v, ctx: c };
@@ -839,6 +922,16 @@ function mapArrayStep(algo, step, state) {
           entries: [
             { key: 'Target k', value: step.k ?? '–' },
             { key: 'Array size', value: step.array?.length ?? '–' },
+          ],
+        }));
+      } else if (algo === 'two_pointers') {
+        v.push(viz('array', 'set_pointer', { name: 'left', index: 0 }));
+        v.push(viz('array', 'set_pointer', { name: 'right', index: (step.array?.length ?? 1) - 1 }));
+        c.push(ctxUpdate('search_state', {
+          entries: [
+            { key: 'Target', value: step.target },
+            { key: 'Left', value: 0 },
+            { key: 'Right', value: (step.array?.length ?? 1) - 1 },
           ],
         }));
       } else if (algo === 'gcd') {
@@ -1020,13 +1113,31 @@ function mapArrayStep(algo, step, state) {
     }
 
     case 'found': {
-      v.push(viz('array', 'mark_sorted', { indices: [step.index] }));
-      c.push(ctxUpdate('bounds', {
-        entries: [
-          { key: 'Target', value: step.value },
-          { key: 'Found at', value: step.index, status: 'updated' },
-        ],
-      }));
+      if (algo === 'two_pointers') {
+        v.push(viz('array', 'mark_sorted', { indices: [step.left, step.right] }));
+        c.push(ctxUpdate('search_state', {
+          entries: [
+            { key: 'Found!', value: `[${(step.values || []).join(', ')}]`, status: 'updated' },
+            { key: 'Indices', value: `[${step.left}, ${step.right}]`, status: 'highlight' },
+          ],
+        }));
+      } else if (step.k !== undefined) {
+        if (step.index !== undefined) v.push(viz('array', 'mark_sorted', { indices: [step.index] }));
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Target k', value: step.k },
+            { key: `${step.k}-th element`, value: step.value, status: 'highlight' },
+          ],
+        }));
+      } else {
+        v.push(viz('array', 'mark_sorted', { indices: [step.index] }));
+        c.push(ctxUpdate('bounds', {
+          entries: [
+            { key: 'Target', value: step.value },
+            { key: 'Found at', value: step.index, status: 'updated' },
+          ],
+        }));
+      }
       break;
     }
 
@@ -1089,18 +1200,29 @@ function mapArrayStep(algo, step, state) {
       break;
     }
 
-    case 'found': {
-      if (step.index !== undefined) {
-        v.push(viz('array', 'mark_sorted', { indices: [step.index] }));
-      }
-      if (step.k !== undefined) {
-        c.push(ctxUpdate('stats', {
-          entries: [
-            { key: 'Target k', value: step.k },
-            { key: `${step.k}-th element`, value: step.value, status: 'highlight' },
-          ],
-        }));
-      }
+    // ── Two Pointers ─────────────────────────────────────────────────────
+    case 'check_sum': {
+      v.push(viz('array', 'set_pointer', { name: 'left', index: step.left }));
+      v.push(viz('array', 'set_pointer', { name: 'right', index: step.right }));
+      v.push(viz('array', 'highlight', { indices: [step.left, step.right], className: 'comparing' }));
+      c.push(ctxUpdate('search_state', {
+        entries: [
+          { key: 'Target', value: step.target },
+          { key: 'Left idx', value: step.left },
+          { key: 'Right idx', value: step.right },
+          { key: 'Sum', value: step.sum, status: step.sum === step.target ? 'updated' : 'highlight' },
+        ],
+      }));
+      break;
+    }
+
+    case 'move_left': {
+      v.push(viz('array', 'set_pointer', { name: 'left', index: step.left }));
+      break;
+    }
+
+    case 'move_right': {
+      v.push(viz('array', 'set_pointer', { name: 'right', index: step.right }));
       break;
     }
 
@@ -1565,7 +1687,7 @@ function mapLinkedStep(algo, step, state) {
 
   switch (step.type) {
     case 'init': {
-      const mode = algo === 'stack_operations' ? 'stack'
+      const mode = (algo === 'stack_operations' || algo === 'monotonic_stack') ? 'stack'
         : algo === 'queue_operations' ? 'queue'
         : 'list';
       const values = step.list || step.stack || step.queue || [];
@@ -1593,6 +1715,10 @@ function mapLinkedStep(algo, step, state) {
             { key: 'Front', value: values[0] ?? 'empty' },
             { key: 'Rear', value: values[values.length - 1] ?? 'empty' },
           ],
+        }));
+      } else if (algo === 'monotonic_stack') {
+        c.push(ctxUpdate('answers', {
+          entries: (step.array || []).map((val, i) => ({ key: `arr[${i}]=${val}`, value: '?', status: 'default' })),
         }));
       }
       break;
@@ -1644,13 +1770,21 @@ function mapLinkedStep(algo, step, state) {
     case 'push': {
       v.push(viz('linked', 'push', { value: step.value }));
       v.push(viz('linked', 'highlight_node', { index: 0, className: 'inserted' }));
-      c.push(ctxUpdate('stats', {
-        entries: [
-          { key: 'Size', value: step.stack?.length ?? '?' },
-          { key: 'Top', value: step.value, status: 'updated' },
-          { key: 'Operation', value: `push(${step.value})`, status: 'highlight' },
-        ],
-      }));
+      if (algo === 'monotonic_stack') {
+        c.push(ctxUpdate('answers', {
+          entries: [
+            { key: 'Stack', value: `[${(step.stack || []).join(', ')}]`, status: 'highlight' },
+          ],
+        }));
+      } else {
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Size', value: step.stack?.length ?? '?' },
+            { key: 'Top', value: step.value, status: 'updated' },
+            { key: 'Operation', value: `push(${step.value})`, status: 'highlight' },
+          ],
+        }));
+      }
       break;
     }
 
@@ -1722,7 +1856,38 @@ function mapLinkedStep(algo, step, state) {
       break;
     }
 
+    // ── Monotonic Stack ──────────────────────────────────────────────────
+    case 'pop_smaller': {
+      v.push(viz('linked', 'highlight_node', { index: 0, className: 'deleted' }));
+      v.push(viz('linked', 'pop', {}));
+      c.push(ctxUpdate('answers', {
+        entries: [
+          { key: `arr[${step.index}]=${step.value}`, value: `NGE = ${step.nge}`, status: 'updated' },
+          { key: 'Stack', value: `[${(step.stack || []).join(', ')}]` },
+        ],
+      }));
+      break;
+    }
+
+    case 'record_answer': {
+      c.push(ctxUpdate('answers', {
+        entries: (step.answers || []).map((nge, i) => ({
+          key: `arr[${i}]`, value: nge === -1 ? '?' : nge,
+          status: i === step.index ? 'updated' : 'default',
+        })),
+      }));
+      break;
+    }
+
     case 'result': {
+      if (algo === 'monotonic_stack') {
+        c.push(ctxUpdate('answers', {
+          entries: (step.answers || []).map((nge, i) => ({
+            key: `arr[${i}]`, value: nge === -1 ? 'none' : nge, status: 'default',
+          })),
+        }));
+        break;
+      }
       v.push(viz('linked', 'reset', {}));
       const values = step.list || step.stack || step.queue || [];
       if (values.length > 0) {
@@ -1730,6 +1895,121 @@ function mapLinkedStep(algo, step, state) {
           : algo === 'queue_operations' ? 'queue'
           : 'list';
         v.push(viz('linked', 'set_list', { values, mode }));
+      }
+      break;
+    }
+  }
+
+  return { viz: v, ctx: c };
+}
+
+// ─── INTERVAL mapper ──────────────────────────────────────────────────────────
+
+function mapIntervalStep(algo, step, state) {
+  const v = [];
+  const c = [];
+
+  switch (step.type) {
+    case 'init': {
+      if (step.intervals) {
+        state.jobMap = {};
+        for (const iv of step.intervals) state.jobMap[iv.id] = iv;
+        v.push(viz('interval', 'set_jobs', { jobs: step.intervals }));
+        c.push(ctxUpdate('stats', {
+          entries: [
+            { key: 'Intervals', value: step.intervals.length },
+            { key: 'Phase', value: 'Initialized' },
+          ],
+        }));
+      }
+      break;
+    }
+
+    case 'init_machines': {
+      if (step.jobs) {
+        state.jobMap = {};
+        for (const j of step.jobs) state.jobMap[j.id] = j;
+        v.push(viz('interval', 'set_jobs', { jobs: step.jobs }));
+      }
+      if (step.machine_count) {
+        v.push(viz('interval', 'set_machines', { count: step.machine_count }));
+      }
+      state.acceptedCount = 0;
+      c.push(ctxUpdate('stats', {
+        entries: [
+          { key: 'Jobs', value: step.jobs?.length ?? '–' },
+          { key: 'Machines', value: step.machine_count ?? 1 },
+          { key: 'Accepted', value: 0 },
+        ],
+      }));
+      break;
+    }
+
+    case 'sort': {
+      v.push(viz('interval', 'mark_sorted', { job_ids: step.job_ids || [] }));
+      const criterion = algo === 'interval_scheduling' ? 'by finish time' : 'by start time';
+      c.push(ctxUpdate('stats', {
+        entries: [{ key: 'Sorted', value: criterion, status: 'highlight' }],
+      }));
+      break;
+    }
+
+    case 'consider_interval': {
+      v.push(viz('interval', 'highlight_job', { job_id: step.job_id, className: 'current' }));
+      const job = state.jobMap?.[step.job_id];
+      if (job) {
+        v.push(viz('interval', 'sweep_line', { time: job.start }));
+      }
+      break;
+    }
+
+    case 'overlap_check': {
+      v.push(viz('interval', 'highlight_overlap', { job1: step.job1, job2: step.job2 }));
+      break;
+    }
+
+    case 'extend_current': {
+      v.push(viz('interval', 'clear_overlaps', {}));
+      v.push(viz('interval', 'highlight_job', { job_id: step.job_id, className: 'selected' }));
+      c.push(ctxUpdate('stats', {
+        entries: [{ key: 'Extended end', value: step.new_end, status: 'highlight' }],
+      }));
+      break;
+    }
+
+    case 'no_overlap': {
+      v.push(viz('interval', 'clear_overlaps', {}));
+      v.push(viz('interval', 'mark_selected', { job_ids: [step.job_id] }));
+      break;
+    }
+
+    case 'assign_job': {
+      v.push(viz('interval', 'assign_machine', { job_id: step.job_id, machine: step.machine }));
+      if (!state.acceptedCount) state.acceptedCount = 0;
+      state.acceptedCount++;
+      c.push(ctxUpdate('stats', {
+        entries: [{ key: 'Accepted', value: state.acceptedCount, status: 'updated' }],
+      }));
+      break;
+    }
+
+    case 'reject_overlap': {
+      v.push(viz('interval', 'mark_rejected', { job_ids: [step.job_id] }));
+      break;
+    }
+
+    case 'result': {
+      v.push(viz('interval', 'clear_sweep_line', {}));
+      v.push(viz('interval', 'clear_overlaps', {}));
+      if (algo === 'interval_merge' && step.job_ids) {
+        v.push(viz('interval', 'mark_selected', { job_ids: step.job_ids }));
+        c.push(ctxUpdate('stats', {
+          entries: [{ key: 'Merged intervals', value: step.job_ids.length, status: 'updated' }],
+        }));
+      } else if (algo === 'interval_scheduling') {
+        c.push(ctxUpdate('stats', {
+          entries: [{ key: 'Accepted', value: step.count, status: 'updated' }],
+        }));
       }
       break;
     }

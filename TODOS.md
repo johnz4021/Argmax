@@ -13,13 +13,15 @@ Prerequisite order matters — items marked with [REQUIRES] must follow their de
 - [ ] **Mock interview mode** — timed practice sessions with problem sets. [REQUIRES: problem catalog]
 - [ ] **Personalized study plan / spaced repetition** — based on lc_sessions history. [REQUIRES: progress tracking + 2+ weeks of user data]
 
-## Algorithm Expansion — Deferred (from /plan-ceo-review 2026-04-27)
+## Algorithm Expansion — Deferred (from /plan-ceo-review 2026-04-27, eng review 2026-04-27)
 
 - [ ] **interval_scheduling v2: multi-machine** — Sort by start time + min-heap of finish times (Meeting Rooms II exact algorithm). v1 (activity selection, single-machine) ships first. [REQUIRES: interval renderer validated from v1 production data]
 - [ ] **Backtracking hierarchical layout** — Add `layout: 'tree'` mode to GraphRenderer so decision trees render in a clean top-down hierarchy instead of force-directed. [REQUIRES: backtracking registered + user feedback showing layout is confusing]
 - [ ] **Backtracking permutations variant** — Different traversal than subsets (no start-index, full array pass each level). Route to text-only until this is implemented. [REQUIRES: backtracking subsets working]
 - [ ] **Container With Most Water (11) / Trapping Rain Water (42)** — Two-pointer variants that need unsorted-array traversal logic. Different algorithm than two_pointers sorted-array. Route to text-only for now. [REQUIRES: two_pointers validated]
 - [ ] **Sorting suite (bubble, insertion, quicksort, selection)** — Files exist in server/algorithms/sorting/, array renderer handles compare/swap steps generically. Low LeetCode value; deferred until class-mode is revived. [REQUIRES: none — standalone, low priority]
+- [ ] **StackRenderer** — Dedicated renderer for stack-based algorithms. Vertical stack display + animated push/pop + input array cursor (shows what element is currently being processed) + result array panel. Would replace LinkedRenderer for `stack_operations` and `monotonic_stack`. ~200 lines: `client/src/components/renderers/StackRenderer.jsx` + `mapStackStep` in vizMapper + `case 'stack'` dispatch. [REQUIRES: monotonic_stack shipped + user feedback that stack visualization is confusing]
+- [ ] **sliding_window + union_find vizMapper coverage** — Both algorithms are registered but have no vizMapper step handlers: `sliding_window` emits `initial_window`, `slide`, `new_max`; `union_find` emits `find`, `already_connected`, `union`, `process_edge`. All produce empty viz actions currently. [REQUIRES: none — standalone fix pass]
 
 ## Extraction Quality (from Outside Voice review)
 - [x] **Few-shot examples in extraction prompt** — BUNDLED INTO THIS PR. Per-algorithm test_case schema examples (including graph adjacency list → {nodes, edges} format) included in parseLeetcodeProblem() extraction prompt. Resolved by /plan-eng-review 2026-04-24.

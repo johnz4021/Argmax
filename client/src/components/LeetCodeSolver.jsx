@@ -3,6 +3,16 @@ import { posthog, POSTHOG_KEY } from '../lib/posthog';
 
 const track = (event, props) => POSTHOG_KEY && posthog.capture(event, props);
 
+const DISPLAY_NAMES = {
+  lcs: 'LCS',
+  bfs: 'BFS',
+  dfs: 'DFS',
+  bst_insert: 'BST Insert',
+  dag_shortest: 'DAG Shortest Path',
+  bell_ford: 'Bellman-Ford',
+  bellman_ford: 'Bellman-Ford',
+};
+
 export default function LeetCodeSolver({ onSelect, disabled, lcParsed }) {
   const [problemText, setProblemText] = useState('');
 
@@ -46,7 +56,7 @@ export default function LeetCodeSolver({ onSelect, disabled, lcParsed }) {
           <div className="flex items-center justify-between px-4 pb-3">
             <div aria-live="polite" className="text-xs text-text-tertiary font-body">
               {isLoading && !lcParsed?.algorithm_key && 'Analyzing problem...'}
-              {lcParsed?.algorithm_key && `Detected: ${lcParsed.algorithm_key.replace(/_/g, ' ')} — loading session...`}
+              {lcParsed?.algorithm_key && `Detected: ${DISPLAY_NAMES[lcParsed.algorithm_key] ?? lcParsed.algorithm_key.replace(/_/g, ' ')} — loading session...`}
               {lcParsed && !lcParsed.algorithm_key && !lcParsed.loading && lcParsed.fallback_reason && 'No matching visualization — using text-only mode'}
             </div>
             <button

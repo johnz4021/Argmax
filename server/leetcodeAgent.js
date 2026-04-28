@@ -78,6 +78,70 @@ knapsack:
 edit_distance:
   Input: { "str1": "kitten", "str2": "sitting" }
 
+binary_search:
+  Input: { "array": [1, 3, 5, 7, 9, 11, 13], "target": 7 }
+  Use for: Binary search on sorted array, search insert position, find peak element.
+
+two_pointers:
+  Input: { "array": [2, 7, 11, 15], "target": 9 }
+  Note: array MUST be sorted. Use for: Two Sum II (sorted), valid palindrome, container with most water.
+
+sliding_window:
+  Input: { "array": [1, 2, 3, 4, 5], "window_size": 3 }
+  Use for: Maximum sum subarray of size k, minimum size subarray sum (set window_size = inferred k).
+
+coin_change:
+  Input: { "coins": [1, 5, 11], "amount": 15 }
+  Use for: Coin Change, minimum coins to make amount.
+
+lcs:
+  Input: { "str1": "ABCBDAB", "str2": "BDCAB" }
+  Use for: Longest Common Subsequence, Longest Common Substring.
+
+bst_insert:
+  Input: { "values": [5, 3, 7, 1, 4] }
+  Use for: Insert into BST, construct BST from sorted array. Max 15 values.
+
+linked_list_reversal:
+  Input: { "values": [1, 2, 3, 4, 5] }
+  Use for: Reverse Linked List, reverse a portion of linked list.
+
+stack_operations:
+  Input: { "operations": [{"type": "push", "value": 3}, {"type": "push", "value": 1}, {"type": "pop"}] }
+  Use for: Valid Parentheses, implement stack using queues.
+
+queue_operations:
+  Input: { "operations": [{"type": "enqueue", "value": 1}, {"type": "enqueue", "value": 2}, {"type": "dequeue"}] }
+  Use for: Implement Queue, BFS queue management problems.
+
+topological_sort:
+  Input: { "graph": { "nodes": [{"id": "0"}, {"id": "1"}, {"id": "2"}], "edges": [{"source": "0", "target": "1"}, {"source": "1", "target": "2"}], "directed": true } }
+  Use for: Course Schedule (detect cycle), task ordering, build dependencies. Must be directed graph.
+  Disambiguation: Use topological_sort (not bfs/dfs) when the problem asks for an ordering of prerequisites/dependencies.
+
+interval_merge:
+  Input: { "intervals": [{"start": 1, "end": 3}, {"start": 2, "end": 6}, {"start": 8, "end": 10}] }
+  Use for: Merge Intervals, insert interval, meeting rooms.
+
+interval_scheduling:
+  Input: { "jobs": [{"id": "a", "name": "A", "start": 1, "end": 4}, {"id": "b", "name": "B", "start": 3, "end": 5}] }
+  Use for: Non-overlapping Intervals, activity selection, maximum number of non-overlapping intervals.
+  Disambiguation: Use interval_scheduling (not interval_merge) when the goal is to SELECT maximum non-overlapping intervals, not merge them.
+
+monotonic_stack:
+  Input: { "array": [2, 1, 5, 3, 6, 4, 8] }
+  Use for: Next Greater Element, Daily Temperatures, Largest Rectangle in Histogram.
+
+backtracking:
+  Input: { "elements": [1, 2, 3] }
+  Use for: Subsets, Permutations, Combination Sum. Max 3 elements for visualization clarity.
+
+DISAMBIGUATION RULES:
+- interval_merge vs interval_scheduling: "merge" = combine overlapping ranges → interval_merge; "select max non-overlapping" → interval_scheduling
+- topological_sort vs bfs/dfs: when problem explicitly involves dependency ordering or cycle detection in directed graph → topological_sort
+- two_pointers vs sliding_window: two_pointers is for pair-sum on sorted array; sliding_window is for fixed/variable window on unsorted array
+- binary_search vs two_pointers: binary_search for finding a value; two_pointers for finding a pair summing to target
+
 RULES:
 - Prefer graph algorithms (bfs/dfs) for grid/matrix traversal problems — convert grid to graph
 - Use confidence >= 0.7 only when you are certain of the algorithm

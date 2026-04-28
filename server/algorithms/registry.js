@@ -1,10 +1,11 @@
-import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH, dagShortest, DEFAULT_DAG_GRAPH, unionFind, DEFAULT_UNION_FIND_GRAPH } from './graph/index.js';
+import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GRAPH, maxflow, DEFAULT_FLOW_NETWORK, bellmanFord, DEFAULT_BELLMAN_FORD_GRAPH, dagShortest, DEFAULT_DAG_GRAPH, unionFind, DEFAULT_UNION_FIND_GRAPH, topologicalSort, backtracking } from './graph/index.js';
 import { mergesort } from './sorting/index.js';
-import { knapsack, editDistance } from './dp/index.js';
+import { knapsack, editDistance, lcs, coinChange } from './dp/index.js';
 import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
-import { quickselect, slidingWindow, DEFAULT_SLIDING_WINDOW_INPUT } from './searching/index.js';
+import { quickselect, slidingWindow, DEFAULT_SLIDING_WINDOW_INPUT, binarySearch, twoPointers, intervalMerge, intervalScheduling, monotonicStack } from './searching/index.js';
 import { huffman } from './compression/index.js';
-import { heapOperations, trie, DEFAULT_TRIE_INPUT } from './tree/index.js';
+import { heapOperations, trie, DEFAULT_TRIE_INPUT, bstInsert } from './tree/index.js';
+import { linkedListReversal, stackOperations, queueOperations } from './linked/index.js';
 
 /**
  * Central algorithm registry. Each entry defines:
@@ -147,6 +148,118 @@ export const ALGORITHMS = {
     category: 'Graph Algorithms',
     defaultInput: { graph: DEFAULT_UNION_FIND_GRAPH },
     capabilities: { max_nodes: 12, max_edges: 20 },
+  },
+
+  // ── Phase 1: Free wins ────────────────────────────────────────────────────
+  binary_search: {
+    run: (input) => binarySearch(input.array, input.target),
+    renderer: 'array',
+    category: 'Searching',
+    defaultInput: { array: [1, 3, 5, 7, 9, 11, 13], target: 7 },
+    capabilities: { max_array_length: 20 },
+  },
+  coin_change: {
+    run: (input) => coinChange(input.coins, input.amount),
+    renderer: 'table',
+    category: 'Dynamic Programming',
+    defaultInput: { coins: [1, 5, 11], amount: 15 },
+    capabilities: { max_table_cols: 20 },
+  },
+  lcs: {
+    run: (input) => lcs(input.str1, input.str2),
+    renderer: 'table',
+    category: 'Dynamic Programming',
+    defaultInput: { str1: 'ABCBDAB', str2: 'BDCAB' },
+    capabilities: { max_table_rows: 8, max_table_cols: 8 },
+  },
+  bst_insert: {
+    run: (input) => bstInsert(input.values),
+    renderer: 'tree',
+    category: 'Data Structures',
+    defaultInput: { values: [5, 3, 7, 1, 4, 6, 8] },
+    capabilities: { max_nodes: 15 },
+  },
+  linked_list_reversal: {
+    run: (input) => linkedListReversal(input.values),
+    renderer: 'linked',
+    category: 'Data Structures',
+    defaultInput: { values: [1, 2, 3, 4, 5] },
+    capabilities: { max_length: 10 },
+  },
+  stack_operations: {
+    run: (input) => stackOperations(input.operations),
+    renderer: 'linked',
+    category: 'Data Structures',
+    defaultInput: { operations: [{ type: 'push', value: 3 }, { type: 'push', value: 1 }, { type: 'push', value: 5 }, { type: 'pop' }, { type: 'push', value: 2 }] },
+    capabilities: { max_ops: 15 },
+  },
+  queue_operations: {
+    run: (input) => queueOperations(input.operations),
+    renderer: 'linked',
+    category: 'Data Structures',
+    defaultInput: { operations: [{ type: 'enqueue', value: 1 }, { type: 'enqueue', value: 2 }, { type: 'dequeue' }] },
+    capabilities: { max_ops: 15 },
+  },
+
+  // ── Phase 2: New implementations ─────────────────────────────────────────
+  topological_sort: {
+    run: (input) => topologicalSort(input.graph),
+    renderer: 'graph',
+    category: 'Graph Algorithms',
+    defaultInput: {
+      graph: {
+        nodes: [{ id: '0' }, { id: '1' }, { id: '2' }, { id: '3' }],
+        edges: [{ source: '0', target: '1' }, { source: '0', target: '2' }, { source: '1', target: '3' }, { source: '2', target: '3' }],
+        directed: true,
+      },
+    },
+    capabilities: { supports_directed: true, supports_undirected: false, max_nodes: 12, max_edges: 20 },
+  },
+  two_pointers: {
+    run: (input) => twoPointers(input.array, input.target),
+    renderer: 'array',
+    category: 'Searching',
+    defaultInput: { array: [2, 7, 11, 15], target: 9 },
+    capabilities: { max_array_length: 15 },
+  },
+  interval_merge: {
+    run: (input) => intervalMerge(input.intervals),
+    renderer: 'interval',
+    category: 'Greedy Algorithms',
+    defaultInput: { intervals: [{ start: 1, end: 3 }, { start: 2, end: 6 }, { start: 8, end: 10 }, { start: 15, end: 18 }] },
+    capabilities: { max_intervals: 12 },
+  },
+  interval_scheduling: {
+    run: (input) => intervalScheduling(input.jobs),
+    renderer: 'interval',
+    category: 'Greedy Algorithms',
+    defaultInput: {
+      jobs: [
+        { id: 'a', name: 'A', start: 1, end: 4 },
+        { id: 'b', name: 'B', start: 3, end: 5 },
+        { id: 'c', name: 'C', start: 0, end: 6 },
+        { id: 'd', name: 'D', start: 5, end: 7 },
+        { id: 'e', name: 'E', start: 3, end: 9 },
+        { id: 'f', name: 'F', start: 5, end: 9 },
+        { id: 'g', name: 'G', start: 6, end: 10 },
+        { id: 'h', name: 'H', start: 8, end: 11 },
+      ],
+    },
+    capabilities: { max_jobs: 10, max_machines: 1 },
+  },
+  monotonic_stack: {
+    run: (input) => monotonicStack(input.array),
+    renderer: 'linked',
+    category: 'Data Structures',
+    defaultInput: { array: [2, 1, 5, 3, 6, 4, 8] },
+    capabilities: { max_array_length: 12 },
+  },
+  backtracking: {
+    run: (input) => backtracking(input.elements, 3),
+    renderer: 'graph',
+    category: 'Backtracking',
+    defaultInput: { elements: [1, 2, 3] },
+    capabilities: { max_nodes: 30, max_depth: 3, max_edges: 40 },
   },
 };
 

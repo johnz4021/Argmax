@@ -103,6 +103,51 @@ const PANEL_DEFAULTS = {
     { id: 'pq', type: 'collection', title: 'Priority Queue' },
     { id: 'codes', type: 'key_value', title: 'Codes' },
   ],
+
+  // --- Phase 1 free wins ---
+  binary_search: [
+    { id: 'bounds', type: 'key_value', title: 'Search Bounds' },
+  ],
+  coin_change: [
+    { id: 'expression', type: 'expression', title: 'Recurrence' },
+    { id: 'decisions', type: 'log', title: 'Decisions' },
+  ],
+  lcs: [
+    { id: 'expression', type: 'expression', title: 'Recurrence' },
+    { id: 'decisions', type: 'log', title: 'Decisions' },
+  ],
+  bst_insert: [
+    { id: 'stats', type: 'key_value', title: 'State' },
+  ],
+  linked_list_reversal: [
+    { id: 'pointers', type: 'key_value', title: 'Pointers' },
+  ],
+  stack_operations: [
+    { id: 'stats', type: 'key_value', title: 'Stack State' },
+  ],
+  queue_operations: [
+    { id: 'stats', type: 'key_value', title: 'Queue State' },
+  ],
+
+  // --- Phase 2 new implementations ---
+  topological_sort: [
+    { id: 'in_degrees', type: 'key_value', title: 'In-Degrees' },
+    { id: 'queue', type: 'collection', title: 'Zero-Degree Queue' },
+    { id: 'sorted', type: 'collection', title: 'Sorted Order' },
+  ],
+  two_pointers: [
+    { id: 'search_state', type: 'key_value', title: 'Search State' },
+  ],
+  interval_merge: [
+    { id: 'stats', type: 'key_value', title: 'State' },
+  ],
+  interval_scheduling: [
+    { id: 'stats', type: 'key_value', title: 'State' },
+  ],
+  monotonic_stack: [
+    { id: 'answers', type: 'key_value', title: 'Next Greater Elements' },
+  ],
+  backtracking: [],
 };
 
 /**

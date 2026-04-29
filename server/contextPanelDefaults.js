@@ -148,6 +148,53 @@ const PANEL_DEFAULTS = {
     { id: 'answers', type: 'key_value', title: 'Next Greater Elements' },
   ],
   backtracking: [],
+
+  // --- Tier 2 synthetic algorithms (context renderer) ---
+  hash_map_grouping: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Hash Map State' },
+  ],
+  frequency_count: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Frequency Table' },
+  ],
+  two_sum_hash: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Seen Values' },
+  ],
+  string_hash: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Char Map' },
+  ],
+  greedy_choice: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  set_operations: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Set State' },
+  ],
+  bit_ops: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  math_simulation: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+
+  // --- Tier 2 synthetic algorithms (array/table renderer) ---
+  prefix_sum: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Prefix Sums' },
+  ],
+  matrix_dp: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  array_manipulation: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  string_dp: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  divide_conquer_array: [
+    { id: 'algorithm_state', type: 'key_value', title: 'State' },
+  ],
+  recursion_memoization: [
+    { id: 'algorithm_state', type: 'key_value', title: 'Memo Table' },
+  ],
+  backtrack_grid: [],
 };
 
 /**
@@ -200,7 +247,7 @@ const MODE_DEFAULTS = {
     ],
   },
   modeling: {
-    renderer: 'graph',
+    renderer: null,
     context_panels: [
       {
         id: 'formulation', type: 'expression', title: 'Formulation',
@@ -209,6 +256,9 @@ const MODE_DEFAULTS = {
           { label: 'Objective', text: '___' },
           { label: 'Constraints', text: '___' },
         ] },
+      },
+      {
+        id: 'algorithm_state', type: 'key_value', title: 'Algorithm State',
       },
     ],
   },

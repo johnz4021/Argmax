@@ -261,6 +261,84 @@ export const ALGORITHMS = {
     defaultInput: { elements: [1, 2, 3] },
     capabilities: { max_nodes: 30, max_depth: 3, max_edges: 40 },
   },
+
+  // ── Tier 2 synthetic keys (no Tier 1 hand-written trace; generated on demand) ──
+  // run: null marks these as Tier 2-only — runAlgorithmWithFallback skips to Tier 2.
+  hash_map_grouping: {
+    run: null, renderer: 'context', category: 'Data Structures', tier: 2,
+    defaultInput: { words: ['eat', 'tea', 'tan', 'ate', 'nat', 'bat'] },
+    capabilities: { max_array_length: 12 },
+  },
+  frequency_count: {
+    run: null, renderer: 'context', category: 'Data Structures', tier: 2,
+    defaultInput: { nums: [1, 1, 1, 2, 2, 3], k: 2 },
+    capabilities: { max_array_length: 15 },
+  },
+  two_sum_hash: {
+    run: null, renderer: 'context', category: 'Data Structures', tier: 2,
+    defaultInput: { nums: [2, 7, 11, 15], target: 9 },
+    capabilities: { max_array_length: 15 },
+  },
+  prefix_sum: {
+    run: null, renderer: 'array', category: 'Algorithms', tier: 2,
+    defaultInput: { nums: [1, 2, 3, 4, 5], target: 9 },
+    capabilities: { max_array_length: 15 },
+  },
+  matrix_dp: {
+    run: null, renderer: 'table', category: 'Dynamic Programming', tier: 2,
+    defaultInput: { grid: [[1,3,1],[1,5,1],[4,2,1]] },
+    capabilities: { max_table_rows: 8, max_table_cols: 8 },
+  },
+  string_hash: {
+    run: null, renderer: 'context', category: 'Data Structures', tier: 2,
+    defaultInput: { s: 'egg', t: 'add' },
+    capabilities: { max_array_length: 15 },
+  },
+  greedy_choice: {
+    run: null, renderer: 'context', category: 'Greedy Algorithms', tier: 2,
+    defaultInput: { nums: [2, 3, 1, 1, 4] },
+    capabilities: { max_array_length: 15 },
+  },
+  set_operations: {
+    run: null, renderer: 'context', category: 'Data Structures', tier: 2,
+    defaultInput: { nums: [1, 2, 3, 1] },
+    capabilities: { max_array_length: 15 },
+  },
+  bit_ops: {
+    run: null, renderer: 'context', category: 'Algorithms', tier: 2,
+    defaultInput: { nums: [4, 1, 2, 1, 2] },
+    capabilities: { max_array_length: 15 },
+  },
+  math_simulation: {
+    run: null, renderer: 'context', category: 'Algorithms', tier: 2,
+    defaultInput: { n: 19 },
+    capabilities: {},
+  },
+  array_manipulation: {
+    run: null, renderer: 'array', category: 'Algorithms', tier: 2,
+    defaultInput: { nums: [1, 2, 3, 4, 5], k: 2 },
+    capabilities: { max_array_length: 15 },
+  },
+  string_dp: {
+    run: null, renderer: 'table', category: 'Dynamic Programming', tier: 2,
+    defaultInput: { s: 'leetcode', wordDict: ['leet', 'code'] },
+    capabilities: { max_table_rows: 15, max_table_cols: 15 },
+  },
+  divide_conquer_array: {
+    run: null, renderer: 'array', category: 'Divide and Conquer', tier: 2,
+    defaultInput: { nums: [-2, 1, -3, 4, -1, 2, 1, -5, 4] },
+    capabilities: { max_array_length: 15 },
+  },
+  recursion_memoization: {
+    run: null, renderer: 'table', category: 'Dynamic Programming', tier: 2,
+    defaultInput: { n: 6 },
+    capabilities: { max_table_cols: 15 },
+  },
+  backtrack_grid: {
+    run: null, renderer: 'graph', category: 'Backtracking', tier: 2,
+    defaultInput: { board: [['A','B','C','E'],['S','F','C','S'],['A','D','E','E']], word: 'ABCCED' },
+    capabilities: { max_nodes: 20, max_edges: 40 },
+  },
 };
 
 /**
@@ -280,11 +358,13 @@ export function runRegisteredAlgorithm(algorithmId, input) {
 
 /**
  * Run an algorithm with Tier 2 fallback (author agent).
- * Tier 1: Hand-written registry → Tier 2: Cached generated → Tier 2: Generate new
+ * Tier 1: Hand-written registry (run != null) → Tier 2: Cached generated → Tier 2: Generate new
  */
 export async function runAlgorithmWithFallback(algorithmId, input, context) {
-  // Tier 1: Hand-written trace generator
-  if (ALGORITHMS[algorithmId]) {
+  const algo = ALGORITHMS[algorithmId];
+
+  // Tier 1: Hand-written trace generator (only when run function exists)
+  if (algo?.run) {
     const result = runRegisteredAlgorithm(algorithmId, input);
     return { ...result, tier: 1 };
   }
@@ -293,23 +373,27 @@ export async function runAlgorithmWithFallback(algorithmId, input, context) {
   const { getCachedGenerator, incrementHitCount, cacheGenerator } = await import('./cache.js');
   const { executeTraceInSandbox } = await import('./sandbox.js');
 
+  // Renderer: use registry entry if available, otherwise guess from name
+  const renderer = algo?.renderer || guessRenderer(algorithmId);
+  // Merge default input from registry with provided input
+  const actualInput = algo?.defaultInput ? { ...algo.defaultInput, ...input } : input;
+
   // Check cache
-  const cached = getCachedGenerator(algorithmId);
+  const cached = await getCachedGenerator(algorithmId);
   if (cached) {
-    incrementHitCount(algorithmId);
-    const trace = executeTraceInSandbox(cached.code, input, 5000, cached.renderer);
-    return { trace, renderer: cached.renderer, tier: 2 };
+    await incrementHitCount(algorithmId);
+    const trace = executeTraceInSandbox(cached.code, actualInput, 5000, cached.renderer);
+    return { trace, renderer: cached.renderer, input: actualInput, tier: 2 };
   }
 
   // Generate new trace generator
   const { generateTraceGenerator } = await import('../authorAgent.js');
-  const renderer = guessRenderer(algorithmId);
   const code = await generateTraceGenerator(algorithmId, renderer, undefined, context);
-  const trace = executeTraceInSandbox(code, input, 5000, renderer);
+  const trace = executeTraceInSandbox(code, actualInput, 5000, renderer === 'context' ? null : renderer);
 
   // Validate node IDs in trace exist in input graph (for graph algorithms)
-  if (renderer === 'graph' && input?.graph?.nodes) {
-    const validNodeIds = new Set(input.graph.nodes.map(n => n.id));
+  if (renderer === 'graph' && actualInput?.graph?.nodes) {
+    const validNodeIds = new Set(actualInput.graph.nodes.map(n => n.id));
     for (const step of trace) {
       if (step.node && !validNodeIds.has(step.node)) {
         console.warn(`[Registry] Trace references unknown node: ${step.node}`);
@@ -325,19 +409,25 @@ export async function runAlgorithmWithFallback(algorithmId, input, context) {
 
   // Basic verification before caching
   if (trace.length >= 2) {
-    cacheGenerator(algorithmId, { code, renderer, verifiedAt: Date.now() });
+    await cacheGenerator(algorithmId, { code, renderer, verifiedAt: Date.now() });
   }
 
-  return { trace, renderer, tier: 2 };
+  return { trace, renderer, input: actualInput, tier: 2 };
 }
 
 /**
  * Heuristic to guess the renderer for an unknown algorithm.
+ * Checks registry entry first, then falls back to name-based pattern matching.
  */
 function guessRenderer(algorithmId) {
+  // Registry entry takes priority
+  if (ALGORITHMS[algorithmId]?.renderer) return ALGORITHMS[algorithmId].renderer;
+
   const id = algorithmId.toLowerCase();
-  if (id.includes('sort') || id.includes('search') || id.includes('pointer') || id.includes('window')) return 'array';
-  if (id.includes('knapsack') || id.includes('lcs') || id.includes('edit') || id.includes('coin') || id.includes('matrix') || id.includes('dp')) return 'table';
+  // Context renderer: hash maps, frequency tables, sets, counting
+  if (id.includes('hash') || id.includes('freq') || id.includes('group') || id.includes('set_op') || id.includes('bit_op') || id.includes('math_sim') || id.includes('greedy_choice')) return 'context';
+  if (id.includes('sort') || id.includes('search') || id.includes('pointer') || id.includes('window') || id.includes('prefix') || id.includes('array_manip') || id.includes('divide_conquer')) return 'array';
+  if (id.includes('knapsack') || id.includes('lcs') || id.includes('edit') || id.includes('coin') || id.includes('matrix') || id.includes('string_dp') || id.includes('recursion_memo') || id.includes('dp')) return 'table';
   if (id.includes('tree') || id.includes('bst') || id.includes('avl') || id.includes('heap') || id.includes('red_black')) return 'tree';
   if (id.includes('linked') || id.includes('stack') || id.includes('queue')) return 'linked';
   if (id.includes('interval') || id.includes('schedule') || id.includes('machine') || id.includes('job') || id.includes('timeline') || id.includes('gantt') || id.includes('activity_selection')) return 'interval';

@@ -53,3 +53,16 @@ create policy "Users see own messages" on public.messages
   for all using (conversation_id in (select id from public.conversations where user_id = auth.uid()));
 create policy "Users see own agent states" on public.agent_states
   for all using (conversation_id in (select id from public.conversations where user_id = auth.uid()));
+
+-- Persistent cache for AI-generated algorithm trace generators (server-side only, no RLS)
+create table public.generated_traces (
+  id uuid primary key default gen_random_uuid(),
+  algorithm_id text not null unique,
+  code text not null,
+  renderer text not null,
+  hit_count integer not null default 0,
+  verified_at bigint not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.generated_traces disable row level security;

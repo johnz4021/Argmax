@@ -37,6 +37,7 @@ export default function App() {
   const [showCreditsModal, setShowCreditsModal] = useState(false);
   const [lcParsed, setLcParsed] = useState(null);
   const [lcSessions, setLcSessions] = useState([]);
+  const [vizTier, setVizTier] = useState(null);
   const sessionStartRef = useRef(null);
   const insertRefHolder = useRef(null);
   const sendRef = useRef(null);
@@ -219,6 +220,7 @@ export default function App() {
         setLcParsed(msg);
       }
       if (msg.type === 'lc_viz_ready') {
+        if (msg.tier) setVizTier(msg.tier);
         if (msg.renderer === 'graph') {
           const graphPanelId = vizPanelsRef.current?.find(p => p.renderer === 'graph')?.id || 'graph';
           if (msg.input?.graph) {
@@ -229,6 +231,7 @@ export default function App() {
             loadGraphImmediate(graphPanelId, { nodes: [], edges: [], directed: false });
           }
         }
+        // context renderer: no main viz panel needed — panels are set up when agent calls run_algorithm
       }
       if (msg.type === 'guided_start') {
         setLcParsed(null);
@@ -265,6 +268,7 @@ export default function App() {
     (algorithm, data) => {
       audioPlayer.init(); // Must be from user gesture
       reset();
+      setVizTier(null);
       sessionStartRef.current = Date.now();
 
       if (algorithm === 'leetcode') {
@@ -417,6 +421,7 @@ export default function App() {
     audioPlayer.flush();
     audioPlayer.stop();
     setLcParsed(null);
+    setVizTier(null);
     reset();
   }, [reset, send, audioPlayer, state.status, state.mode, state.algorithm, state.segmentCount]);
 
@@ -494,6 +499,14 @@ export default function App() {
           {state.algorithm && (
             <span className="text-sm text-text-secondary font-body">
               {state.algorithm.charAt(0).toUpperCase() + state.algorithm.slice(1)}
+            </span>
+          )}
+          {vizTier === 2 && !showSelector && (
+            <span
+              title="This problem type doesn't have a hand-written trace, so Argmax generated one on-the-fly using AI. It may be less polished than built-in visualizations."
+              className="text-[10px] font-medium text-amber-600/80 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400/80 border border-amber-200 dark:border-amber-800/40 px-1.5 py-0.5 rounded-full cursor-help"
+            >
+              live viz
             </span>
           )}
         </div>

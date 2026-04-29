@@ -12,7 +12,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { verifyJWT } from './supabase.js';
 import { createConversation, listConversations, loadConversationMessages, loadAgentState, countConversations, getUserSettings, saveUserSettings, saveFeedback, createLcSession, masterLcSession, listLcSessions } from './db.js';
 import { parseLeetcodeProblem } from './leetcodeAgent.js';
-import { ALGORITHMS, runRegisteredAlgorithm } from './algorithms/registry.js';
+import { ALGORITHMS, runRegisteredAlgorithm, runAlgorithmWithFallback } from './algorithms/registry.js';
 import { encrypt, decrypt } from './crypto.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -558,19 +558,26 @@ function attachHandlers(ws, session) {
           }
 
           const { title, algorithm_key, confidence, test_case } = parsed;
-          let hasViz = !!(algorithm_key && confidence >= 0.7 && ALGORITHMS[algorithm_key]);
+          const algoEntry = ALGORITHMS[algorithm_key];
+          const tier1Available = !!(algorithm_key && confidence >= 0.7 && algoEntry?.run);
+          const tier2Available = !!(algorithm_key && confidence >= 0.7 && algoEntry && !algoEntry.run);
+          let hasViz = tier1Available || tier2Available;
+          let vizTier = null;
 
           // Pre-run the trace so client gets viz immediately
           if (hasViz) {
             try {
-              const { trace, renderer, input } = runRegisteredAlgorithm(algorithm_key, test_case);
-              session._leetcodeTrace = trace;
-              session._leetcodeRenderer = renderer;
-              session._leetcodeInput = input;
-              ws.send(JSON.stringify({ type: 'lc_viz_ready', algorithm_key, renderer, trace, input }));
+              const result = await runAlgorithmWithFallback(algorithm_key, test_case);
+              session._leetcodeTrace = result.trace;
+              session._leetcodeRenderer = result.renderer;
+              session._leetcodeInput = result.input;
+              session._leetcodeTier = result.tier;
+              vizTier = result.tier;
+              ws.send(JSON.stringify({ type: 'lc_viz_ready', algorithm_key, renderer: result.renderer, trace: result.trace, input: result.input, tier: result.tier }));
             } catch (err) {
               console.warn('[LeetCode] Failed to pre-run trace:', err.message);
               hasViz = false;
+              vizTier = null;
             }
           }
 
@@ -579,6 +586,7 @@ function attachHandlers(ws, session) {
           session._leetcodeTestCase = test_case;
           session._leetcodeTitle = title;
           session._leetcodeConfidence = confidence;
+          session._leetcodeVizTier = vizTier;
 
           ws.send(JSON.stringify({
             type: 'lc_parsed',
@@ -586,6 +594,7 @@ function attachHandlers(ws, session) {
             algorithm_key,
             confidence,
             has_viz: hasViz,
+            viz_tier: vizTier,
             fallback_reason: parsed.fallback_reason || null,
           }));
 

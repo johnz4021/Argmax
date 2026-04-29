@@ -161,33 +161,36 @@ ALGORITHM EXECUTION MODE (existing flow):
   2. REFRESH (optional — offer canonical example)
   3. REDUCTION SKETCH (build input → run algorithm → narrate → verify)
 
-MODELING MODE (LP, reductions, duality):
-  Problems that ask "write an LP," "define variables," "take a dual," or "reduce X to Y."
-  After run_solver, a Formulation panel is auto-configured with placeholder lines
-  (Variables, Objective, Constraints). If run_solver has completed, call
-  advise_renderer for a viz recommendation. Use emit_segment with viz_actions
-  (renderer:"context", action:"update") to fill in panel content as the student works.
+MODELING MODE (LP, reductions, data structure tracing, duality):
+  Problems that ask "write an LP," "define variables," "take a dual," "reduce X to Y,"
+  or implement a data structure solution (hash maps, sets, etc.).
+  After run_solver, two panels are auto-configured: "formulation" (Variables/Objective/Constraints)
+  and "algorithm_state" (key_value — use this to show intermediate state as you trace through
+  examples, e.g., growing hash map entries, visited sets, counter values).
+  No renderer is auto-created — call create_visualization if a graph, table, or array would help.
 
-  Follow the Modeling Template:
+  For LP/formulation problems, follow the Modeling Template:
   NOTE: For each step below, the student should PROPOSE the content first.
   Ask "What are the decision variables?" and WAIT — do not fill in the panel
   yourself until the student has responded. Update the panel with their answer
   (corrected if needed), not with your pre-planned version.
 
   1. OBJECTS — Ask "What are the decision variables?"
-     Set up the example graph via update_graph if applicable.
+     Call create_visualization with a graph renderer if a network structure applies.
   2. OBJECTIVE — Ask "What is being optimized?"
-     Use emit_segment with viz_actions to update the formulation panel (add objective line)
-     and highlight relevant graph edges.
+     Use emit_segment with viz_actions to update the formulation panel (add objective line).
   3. CONSTRAINTS — Ask "What constraints must hold?"
-     Update panel with each new constraint line. Highlight graph structures that
-     correspond to each constraint.
+     Update panel with each new constraint line.
   4. TRICK — "Is there a transformation needed?" (absolute value linearization, graph layering, etc.)
   5. SANITY CHECK — "Does this enforce exactly what the problem states? Missing anything?"
 
+  For data structure tracing problems (hash map, stack, queue grouping), use the
+  algorithm_state panel to show state as the student traces through examples:
+    viz_actions: [{ renderer: "context", action: "update", params: { panel_id: "algorithm_state",
+      entries: [{ key: "aet", value: "eat, tea" }, { key: "ant", value: "tan" }] } }]
+  Update after EACH step the student traces — do not batch-update at the end.
+
   IMPORTANT: Each panel update must include ALL accumulated lines, not just the new one.
-  IMPORTANT: Use emit_segment viz_actions with renderer:"graph" to highlight — do NOT
-  just say "let me highlight" without sending actual highlight actions.
   Do NOT call run_algorithm unless the student explicitly asks.
   The related algorithm provides context, not execution.
 
@@ -1022,7 +1025,7 @@ function applyClassification(plan, session, ws, vizState) {
       ? `Classification: algorithm_execution. Target: ${plan.target_algorithm}. Internal model contract stored (NOT shown to student). Now offer a refresher via send_options, then proceed to the reduction sketch. If the problem has sample I/O, remember to call verify_result at the end.`
       : `Problem is out of scope. Closest algorithm: ${plan.closest_algorithm}. Guide the student with the closest available algorithm.`)
     : plan.reasoning_mode === 'modeling'
-    ? `Classification: MODELING MODE. Use the Modeling Template to guide the student. Set up a formal model panel via create_visualization. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
+    ? `Classification: MODELING MODE. Two context panels are auto-configured: "formulation" (expression, for Variables/Objective/Constraints) and "algorithm_state" (key_value, for tracking intermediate state as you walk through examples — e.g., growing hash map entries, running totals, set membership). No visualization renderer is pre-created — call create_visualization if a graph, table, or other renderer would help the student visualize the structure. Update "algorithm_state" via emit_segment viz_actions as the student traces through examples. Do NOT call run_algorithm unless the student explicitly asks. Related algorithm: ${plan.closest_algorithm || plan.target_algorithm}.`
     : plan.reasoning_mode === 'greedy_design'
     ? `Classification: GREEDY DESIGN MODE. Guide the student to: (1) propose a greedy rule, (2) prove it via exchange argument. Use a formal model panel for the invariant/exchange proof structure.`
     : plan.reasoning_mode === 'dp_design'
@@ -1130,6 +1133,10 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     lcContext = `\n\n[LEETCODE MODE] Primary algorithm identified: ${session._leetcodeAlgorithmKey}${conf}. The student pasted this LeetCode problem to learn through interactive tutoring.`;
     if (session.hasViz === false) {
       lcContext += '\n\n[NO PRE-BUILT TRACE] This problem has no pre-computed interactive trace. Begin your first spoken message with: "For this problem, I\'ll guide you through the concepts step by step — we\'ll work through the ideas together." You may still create visualizations (tables, key-value panels, graphs) to illustrate state as the student works through it — call create_visualization when it would help.';
+    } else if (session._leetcodeTier === 2) {
+      const trace = session._leetcodeTrace;
+      const traceLen = trace ? trace.length : 0;
+      lcContext += `\n\n[TIER 2 TRACE] A generated trace (${traceLen} steps) is pre-loaded for ${session._leetcodeAlgorithmKey}. The context panel "algorithm_state" is already configured and visible to the student. When teaching, call run_solver first to classify the problem, then call run_algorithm with algorithm="${session._leetcodeAlgorithmKey}" to load the trace — the viz and panels will auto-configure. Use emit_segment with trace_step_indices to narrate each step. The trace steps have embedded viz_actions that update the algorithm_state panel automatically.`;
     }
   }
 

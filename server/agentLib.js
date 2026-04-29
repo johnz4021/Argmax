@@ -395,7 +395,17 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           // Use 'algorithm_step' instead of 'lesson_start' to avoid wiping transcript/viz state.
           sendJSON(ws, { type: 'algorithm_step', algorithm: algo });
 
-          if (algoInfo.renderer === 'graph') {
+          if (algoInfo.renderer === 'context') {
+            // Context-only (Tier 2 hash map / data structure algorithms): no main viz panel
+            const autoVizMsg = {
+              type: 'create_visualization',
+              panels: [],
+              context_panels: contextPanels,
+            };
+            sendJSON(ws, autoVizMsg);
+            registerPanels(session, [], contextPanels);
+            session._lastVizMessage = autoVizMsg;
+          } else if (algoInfo.renderer === 'graph') {
             // Always send the graph for the current algorithm run
             const graphData = registryInput.graph || algoInfo.defaultInput?.graph;
             if (graphData) {
@@ -430,6 +440,8 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           }
 
           const panelNames = contextPanels.map((p) => p.id);
+          const tier2Note = result.tier === 2 ? ' The trace was AI-generated — each step has embedded viz_actions that update the context panels automatically.' : '';
+          const contextNote = algoInfo.renderer === 'context' ? ' Context-only algorithm: no main visualization panel. Use trace_step_indices to drive context panel updates via the embedded viz_actions in each step.' : '';
           return {
             success: true,
             algorithm: algo,
@@ -443,7 +455,7 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
             capabilities: algoInfo.capabilities,
             adaptations_applied: validation.adaptations,
             warnings: validation.warnings,
-            message: `Algorithm executed. Visualization and context panels auto-configured. Use emit_segment with trace_step_indices to teach. You have ${result.trace.length} trace steps available (indices 0 to ${result.trace.length - 1}).`,
+            message: `Algorithm executed. Visualization and context panels auto-configured. Use emit_segment with trace_step_indices to teach. You have ${result.trace.length} trace steps available (indices 0 to ${result.trace.length - 1}).${tier2Note}${contextNote}`,
           };
         } catch (err) {
           return { error: err.message };
@@ -489,6 +501,11 @@ export async function handleToolCall(session, toolCall, graph, algorithm, source
           if (!step) {
             console.warn(`[Agent] trace_step_indices: index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
             mapperWarnings.push(`index ${idx} out of bounds (trace has ${activeTrace.length} steps)`);
+            continue;
+          }
+          // Tier 2 traces embed viz_actions directly in each step — use them as-is
+          if (step.viz_actions && Array.isArray(step.viz_actions) && step.viz_actions.length > 0) {
+            allVizActions.push(...step.viz_actions);
             continue;
           }
           const { viz: vizActs, ctx: ctxActs } = mapTraceStep(

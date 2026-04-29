@@ -483,8 +483,32 @@ ENDING THE EXPLANATION:
 POST-LESSON FOLLOW-UP MODE:
 - After the explanation completes, the student may ask follow-up questions.
 - These arrive prefixed with [FOLLOW-UP QUESTION].
-- Answer concisely (1-3 sentences via emit_segment). Reference the lesson context.
-- Do NOT restart the explanation flow.`;
+- Do NOT restart the explanation flow.
+- Do NOT call lesson_complete again.
+
+Classify the follow-up before responding:
+
+TYPE A — SIMPLE QUESTION (factual, conceptual, 1-sentence answer):
+  e.g. "why O(E log E)?", "what is union-find?", "is this greedy?"
+  → Answer in 1-3 sentences via a single emit_segment. No viz needed.
+
+TYPE B — PSEUDOCODE / TRACE / GRAPH REPLAY:
+  e.g. "walk me through the pseudocode", "explain each line", "go through the steps",
+       "trace the steps on the graph", "can you replay the trace", "show me the steps again"
+  → The algorithm trace from the lesson is still available. Use trace_step_indices
+     to replay each step — this re-animates the graph AND highlights the pseudocode line.
+  → Do NOT give a plain-text recap or numbered list of steps.
+  → Do NOT say "we already traced this" or suggest starting a new lesson.
+  → Use 6-10 emit_segment calls, one per trace step or pseudocode line.
+     Example per step:
+       emit_segment({ narration: "Step 1: sort edges by weight...", trace_step_indices: [0], phase: "Trace" })
+  → If you need to highlight a pseudocode line without replaying a trace step, use:
+       viz_actions: [{ renderer: "context", action: "update", params: { panel_id: "pseudocode", current_line: N } }]
+  → Walk through every step. Do not skip.
+
+TYPE C — DEEPER CONCEPT (requires 3-6 sentences):
+  e.g. "why does the greedy choice work?", "prove this is correct"
+  → Use 2-4 emit_segment calls with viz_actions where the graph helps illustrate.`;
 
 // Tools for explain mode — subset of guided tools (no conversational_reply during explanation)
 // send_options is kept for sub-problem selection only

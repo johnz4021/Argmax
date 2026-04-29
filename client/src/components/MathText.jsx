@@ -1,9 +1,33 @@
 import { useMemo } from 'react';
 import katex from 'katex';
 
+// Decode common HTML entities and render **bold** markdown in plain-text segments.
+function renderInline(text) {
+  const decoded = text
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+
+  const boldParts = decoded.split(/(\*\*[^*]+\*\*)/);
+  const nodes = [];
+  boldParts.forEach((chunk, i) => {
+    if (chunk.startsWith('**') && chunk.endsWith('**')) {
+      nodes.push(<strong key={i}>{chunk.slice(2, -2)}</strong>);
+    } else {
+      const lines = chunk.split('\n');
+      lines.forEach((line, j) => {
+        if (j > 0) nodes.push(<br key={`${i}-br-${j}`} />);
+        if (line) nodes.push(<span key={`${i}-${j}`}>{line}</span>);
+      });
+    }
+  });
+  return nodes;
+}
+
 /**
  * Renders text with inline LaTeX math delimited by $...$.
- * Non-math parts are rendered as plain text.
+ * Non-math parts support **bold**, &nbsp;, and newlines.
  */
 export default function MathText({ children, className }) {
   const rendered = useMemo(() => {
@@ -48,7 +72,7 @@ export default function MathText({ children, className }) {
     }
 
     return parts.map((part, i) => {
-      if (!part.math) return <span key={i}>{part.text}</span>;
+      if (!part.math) return <span key={i}>{renderInline(part.text)}</span>;
       try {
         const html = katex.renderToString(part.text, {
           throwOnError: false,

@@ -32,7 +32,9 @@ Prerequisite order matters — items marked with [REQUIRES] must follow their de
 
 ## Extraction Quality (from Outside Voice review)
 - [x] **Few-shot examples in extraction prompt** — BUNDLED INTO THIS PR. Per-algorithm test_case schema examples (including graph adjacency list → {nodes, edges} format) included in parseLeetcodeProblem() extraction prompt. Resolved by /plan-eng-review 2026-04-24.
-- [ ] **Extraction accuracy validation** — manually test 20 LeetCode medium problems against parseLeetcodeProblem() before launch. Target: 80% correct routing.
+- [ ] **Extraction accuracy validation** — manually test 20 LeetCode medium problems against parseLeetcodeProblem() before launch. Target: 80% correct routing. Known misses from /qa 2026-04-30: LC53 (Maximum Subarray → should hit array_manipulation, hits dc_design fallback), LC70 (Climbing Stairs → should hit recursion_memoization, hits dp_design fallback). Add few-shot examples for these in parseLeetcodeProblem() extraction prompt.
+- [ ] **ISSUE-002: LC53 routing** — Maximum Subarray does not match `array_manipulation` key. Add few-shot example to extraction prompt: `{"problem":"Maximum Subarray","algorithm_key":"array_manipulation","confidence":0.85}`. The Kadane's algorithm pattern (running max, reset on negative) is the Tier 2 trace to show.
+- [ ] **ISSUE-003: LC70 routing** — Climbing Stairs does not match `recursion_memoization` key. Add few-shot example to extraction prompt. The fib-style DP memo table is the Tier 2 trace to show.
 
 ## Infrastructure
 - [ ] **lc_sessions Supabase migration** — create table + RLS rules (user_id = auth.uid()) before deploy.

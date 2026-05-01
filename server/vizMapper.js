@@ -88,6 +88,7 @@ export function mapTraceStep(algorithm, rendererType, step, state) {
     case 'tree':   result = mapTreeStep(algorithm, step, state); break;
     case 'linked':   result = mapLinkedStep(algorithm, step, state); break;
     case 'interval': result = mapIntervalStep(algorithm, step, state); break;
+    case 'string':   result = mapStringStep(algorithm, step, state); break;
     default:         result = { viz: [], ctx: [] };
   }
 
@@ -1232,12 +1233,47 @@ function mapArrayStep(algo, step, state) {
     case 'recurse':
       break;
 
+    // ── integer sliding_window ───────────────────────────────────────────
+    case 'initial_window': {
+      v.push(viz('array', 'slide_window', { start: step.window_start, end: step.window_end }));
+      break;
+    }
+
+    case 'slide': {
+      if (algo === 'sliding_window') {
+        v.push(viz('array', 'slide_window', { start: step.window_start, end: step.window_end }));
+        if (step.outgoing_index !== undefined) {
+          v.push(viz('array', 'highlight', { indices: [step.outgoing_index], className: 'comparing' }));
+        }
+      }
+      break;
+    }
+
+    case 'new_max': {
+      if (algo === 'sliding_window') {
+        v.push(viz('array', 'slide_window', { start: step.window_start, end: step.window_end }));
+        v.push(viz('array', 'highlight', {
+          indices: Array.from({ length: step.window_end - step.window_start + 1 }, (_, i) => step.window_start + i),
+          className: 'sorted',
+        }));
+      }
+      break;
+    }
+
     case 'result':
       if (step.array) {
         v.push(viz('array', 'set_data', { values: step.array }));
-        v.push(viz('array', 'mark_sorted', {
-          indices: step.array.map((_, i) => i),
-        }));
+        if (algo === 'sliding_window' && step.max_start !== undefined) {
+          v.push(viz('array', 'slide_window', { start: step.max_start, end: step.max_end }));
+          v.push(viz('array', 'highlight', {
+            indices: Array.from({ length: step.max_end - step.max_start + 1 }, (_, i) => step.max_start + i),
+            className: 'sorted',
+          }));
+        } else {
+          v.push(viz('array', 'mark_sorted', {
+            indices: step.array.map((_, i) => i),
+          }));
+        }
       }
       break;
   }
@@ -2013,6 +2049,205 @@ function mapIntervalStep(algo, step, state) {
       }
       break;
     }
+  }
+
+  return { viz: v, ctx: c };
+}
+
+// ─── STRING mapper ────────────────────────────────────────────────────────────
+
+function mapStringStep(algo, step, state) {
+  const v = [];
+  const c = [];
+
+  function s(action, params = {}) { v.push(viz('string', action, params)); }
+  function freqEntries(obj) {
+    return Object.entries(obj || {}).map(([key, value]) => ({ key, value }));
+  }
+
+  switch (step.type) {
+    case 'init': {
+      if (algo === 'kmp_search') {
+        s('set_string', { s: step.text });
+        s('set_pattern', { p: step.pattern });
+      } else if (algo === 'find_anagrams') {
+        s('set_string', { s: step.s });
+        s('set_window', { start: 0, end: (step.p?.length ?? 1) - 1 });
+        if (step.pattern_freq) c.push(ctxUpdate('pattern_freq', { entries: freqEntries(step.pattern_freq) }));
+        if (step.window_freq) c.push(ctxUpdate('window_freq', { entries: freqEntries(step.window_freq) }));
+      } else if (algo === 'valid_palindrome') {
+        s('set_string', { s: step.s });
+        s('set_pointer', { name: 'L', index: step.L ?? 0 });
+        s('set_pointer', { name: 'R', index: step.R ?? 0 });
+        if (step.L !== undefined && step.R !== undefined) {
+          c.push(ctxUpdate('pointer_state', {
+            entries: [{ key: 'L', value: step.L }, { key: 'R', value: step.R }],
+          }));
+        }
+      } else {
+        s('set_string', { s: step.s });
+      }
+      break;
+    }
+
+    case 'expand_window': {
+      s('set_window', { start: step.window_start, end: step.window_end });
+      s('set_char_state', { index: step.new_index, state: 'in-window' });
+      if (step.char_freq) c.push(ctxUpdate('char_freq', { entries: freqEntries(step.char_freq) }));
+      break;
+    }
+
+    case 'shrink_window': {
+      s('set_window', { start: step.window_start, end: step.window_end });
+      s('set_char_state', { index: step.removed_index, state: 'default' });
+      if (step.char_freq) c.push(ctxUpdate('char_freq', { entries: freqEntries(step.char_freq) }));
+      break;
+    }
+
+    case 'window_invalid': {
+      s('set_window', { start: step.window_start, end: step.window_end, windowClass: 'mismatch' });
+      break;
+    }
+
+    case 'new_max': {
+      if (algo === 'sliding_window_string') {
+        s('set_window', { start: step.window_start, end: step.window_end, windowClass: 'active' });
+      }
+      break;
+    }
+
+    case 'compare': {
+      s('set_char_state', { index: step.L, state: 'active' });
+      s('set_char_state', { index: step.R, state: 'active' });
+      s('set_pointer', { name: 'L', index: step.L });
+      s('set_pointer', { name: 'R', index: step.R });
+      c.push(ctxUpdate('pointer_state', {
+        entries: [
+          { key: 'L', value: step.L }, { key: 'R', value: step.R },
+          { key: 'str[L]', value: step.s?.[step.L] ?? '?' },
+          { key: 'str[R]', value: step.s?.[step.R] ?? '?' },
+        ],
+      }));
+      break;
+    }
+
+    case 'match': {
+      s('set_char_state', { index: step.L, state: 'match' });
+      s('set_char_state', { index: step.R, state: 'match' });
+      if (step.next_L !== undefined) s('set_pointer', { name: 'L', index: step.next_L });
+      if (step.next_R !== undefined) s('set_pointer', { name: 'R', index: step.next_R });
+      break;
+    }
+
+    case 'mismatch': {
+      if (algo === 'valid_palindrome') {
+        s('set_char_state', { index: step.L, state: 'mismatch' });
+        s('set_char_state', { index: step.R, state: 'mismatch' });
+      } else if (algo === 'kmp_search') {
+        s('set_match', { ti: step.text_index, pi: step.pattern_index, state: 'mismatch' });
+        if (step.new_pattern_offset !== undefined) s('set_pattern_offset', { k: step.new_pattern_offset });
+        c.push(ctxLog('search_log', `Mismatch at text[${step.text_index}] vs pattern[${step.pattern_index}]`, 'warn'));
+      }
+      break;
+    }
+
+    case 'try_center': {
+      s('set_pointer', { name: 'expand-L', index: step.center });
+      s('set_pointer', { name: 'expand-R', index: step.center_type === 'even' ? step.center + 1 : step.center });
+      c.push(ctxUpdate('palindrome_state', {
+        entries: [
+          { key: 'Center', value: step.center },
+          { key: 'Type', value: step.center_type === 'odd' ? 'odd-length' : 'even-length' },
+        ],
+      }));
+      break;
+    }
+
+    case 'expand': {
+      if (step.expand_L !== undefined && step.expand_R !== undefined) {
+        s('set_char_state', { start: step.expand_L, end: step.expand_R, state: 'in-window' });
+        s('set_pointer', { name: 'expand-L', index: step.expand_L });
+        s('set_pointer', { name: 'expand-R', index: step.expand_R });
+      }
+      break;
+    }
+
+    case 'new_longest': {
+      s('set_char_state', { start: step.best_start, end: step.best_end, state: 'found' });
+      c.push(ctxUpdate('palindrome_state', {
+        entries: [
+          { key: 'Best', value: step.best_palindrome },
+          { key: 'Length', value: step.best_palindrome?.length },
+          { key: 'Range', value: `[${step.best_start}, ${step.best_end}]`, status: 'updated' },
+        ],
+      }));
+      break;
+    }
+
+    case 'slide': {
+      if (algo === 'find_anagrams') {
+        s('set_window', { start: step.window_start, end: step.window_end });
+        if (step.window_freq) c.push(ctxUpdate('window_freq', { entries: freqEntries(step.window_freq) }));
+      }
+      break;
+    }
+
+    case 'anagram_found': {
+      s('set_window', { start: step.window_start, end: step.window_end, windowClass: 'found' });
+      c.push(ctxLog('matches', `Anagram at index ${step.anagram_start}`, 'success'));
+      break;
+    }
+
+    case 'build_failure': {
+      c.push(ctxUpdate('failure_fn', {
+        entries: [{ key: String(step.failure_index), value: step.failure_value }],
+      }));
+      break;
+    }
+
+    case 'align': {
+      if (step.pattern_offset !== undefined) s('set_pattern_offset', { k: step.pattern_offset });
+      break;
+    }
+
+    case 'match_char': {
+      s('set_match', { ti: step.text_index, pi: step.pattern_index, state: 'match' });
+      break;
+    }
+
+    case 'found': {
+      if (algo === 'kmp_search') {
+        const m = step.pattern?.length ?? 1;
+        s('set_char_state', { start: step.match_index, end: step.match_index + m - 1, state: 'found' });
+        s('set_char_state', { start: 0, end: m - 1, state: 'found' });
+        c.push(ctxLog('search_log', `Match at index ${step.match_index}`, 'success'));
+      }
+      break;
+    }
+
+    case 'result': {
+      if (algo === 'sliding_window_string') {
+        s('set_window', { start: step.longest_start, end: step.longest_end, windowClass: 'found' });
+      } else if (algo === 'valid_palindrome') {
+        s('set_all_state', { state: step.is_palindrome ? 'match' : 'mismatch' });
+      } else if (algo === 'expand_palindrome') {
+        s('set_char_state', { start: step.best_start, end: step.best_end, state: 'match' });
+      } else if (algo === 'find_anagrams') {
+        for (const idx of (step.anagram_indices || [])) {
+          const pLen = step.p?.length ?? 0;
+          s('set_window', { start: idx, end: idx + pLen - 1, windowClass: 'match' });
+        }
+      } else if (algo === 'kmp_search') {
+        for (const idx of (step.matches || [])) {
+          const m = step.pattern?.length ?? 1;
+          s('set_char_state', { start: idx, end: idx + m - 1, state: 'match' });
+        }
+      }
+      break;
+    }
+
+    case 'error':
+      break;
   }
 
   return { viz: v, ctx: c };

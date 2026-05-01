@@ -263,11 +263,7 @@ export default function TableRenderer({
       style={{ cursor: 'grab', userSelect: 'none' }}
       {...panZoom.handlers}
     >
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
+
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">

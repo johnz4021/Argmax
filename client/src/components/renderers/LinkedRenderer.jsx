@@ -469,11 +469,7 @@ export default function LinkedRenderer({
 
   return (
     <div className="relative h-full flex flex-col items-center justify-center p-6">
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
+
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
@@ -503,7 +499,7 @@ export default function LinkedRenderer({
             >
               <defs>
                 <marker
-                  id="arrowhead-gray"
+                  id="arrowhead-gold"
                   markerWidth="8"
                   markerHeight="6"
                   refX="7"
@@ -511,7 +507,7 @@ export default function LinkedRenderer({
                   orient="auto"
                   markerUnits="strokeWidth"
                 >
-                  <path d="M0,0 L8,3 L0,6 Z" fill="#6b7280" />
+                  <path d="M0,0 L8,3 L0,6 Z" fill="#d4a574" />
                 </marker>
                 <marker
                   id="arrowhead-purple"
@@ -533,9 +529,9 @@ export default function LinkedRenderer({
                     y1={pos.fromY}
                     x2={pos.toX}
                     y2={pos.toY}
-                    stroke={pos.reversed ? '#a78bfa' : '#6b7280'}
+                    stroke={pos.reversed ? '#a78bfa' : '#d4a574'}
                     strokeWidth={2}
-                    markerEnd={pos.reversed ? 'url(#arrowhead-purple)' : 'url(#arrowhead-gray)'}
+                    markerEnd={pos.reversed ? 'url(#arrowhead-purple)' : 'url(#arrowhead-gold)'}
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
@@ -559,7 +555,7 @@ export default function LinkedRenderer({
                   style={{ transform: 'translateX(-50%)' }}
                 >
                   <div
-                    className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
+                    className="text-[11px] font-mono font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap"
                     style={{
                       backgroundColor: POINTER_COLORS[ptrIdx % POINTER_COLORS.length] + '33',
                       color: POINTER_COLORS[ptrIdx % POINTER_COLORS.length],
@@ -621,19 +617,6 @@ export default function LinkedRenderer({
             })}
           </div>
 
-          {/* Fallback pointer display (text) */}
-          {Object.keys(pointers).length > 0 && (
-            <div className="flex justify-center gap-4 mt-3">
-              {Object.entries(pointers).map(([name, ptr]) => (
-                <span
-                  key={name}
-                  className={`text-[11px] font-mono ${ptr.highlighted ? 'text-red-400' : 'text-gray-400'}`}
-                >
-                  {name}: [{ptr.index}]
-                </span>
-              ))}
-            </div>
-          )}
         </div>
       )}
     </div>

@@ -208,6 +208,32 @@ backtrack_grid:
   Input: { "board": [["A","B","C","E"],["S","F","C","S"],["A","D","E","E"]], "word": "ABCCED" }
   Use for: Word Search, N-Queens, Sudoku Solver. Input: board as 2D array + target.
 
+sliding_window_string:
+  Input: { "s": "abcabcbb" }
+  Use for: Longest Substring Without Repeating Characters (LC3), minimum window substring variants.
+  Key insight: variable-size window tracks unique chars via a frequency map; window shrinks from left when a duplicate enters.
+  Disambiguation: Use sliding_window_string (NOT sliding_window) when the input is a STRING, not a numeric array. sliding_window is for numeric max-sum windows.
+
+valid_palindrome:
+  Input: { "s": "racecar" }
+  Use for: Valid Palindrome (LC125). Pre-filter non-alphanumeric chars and lowercase BEFORE passing to this algorithm.
+  Key insight: two pointers from both ends moving inward.
+
+expand_palindrome:
+  Input: { "s": "babad" }
+  Use for: Longest Palindromic Substring (LC5).
+  Key insight: expand around each center (odd-length: single char, even-length: gap between chars).
+
+kmp_search:
+  Input: { "text": "hello", "pattern": "ll" }
+  Use for: Find the Index of the First Occurrence in a String (LC28), strStr.
+  Key insight: failure function (LPS array) avoids restarting pattern scan from index 0 on mismatch.
+
+find_anagrams:
+  Input: { "s": "cbaebabacd", "p": "abc" }
+  Use for: Find All Anagrams in a String (LC438), Permutation in String (LC567).
+  Key insight: fixed-size sliding window of length p.length; compare window freq map to pattern freq map.
+
 DISAMBIGUATION RULES:
 - interval_merge vs interval_scheduling: "merge" = combine overlapping ranges → interval_merge; "select max non-overlapping" → interval_scheduling
 - topological_sort vs bfs/dfs: when problem explicitly involves dependency ordering or cycle detection in directed graph → topological_sort

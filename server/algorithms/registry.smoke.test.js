@@ -75,3 +75,34 @@ describe('Phase 2 registry smoke tests', () => {
     expect(trace[0].nodes.length).toBeGreaterThan(0);
   });
 });
+
+describe('String Renderer algorithms', () => {
+  it('sliding_window_string: non-empty trace, last step type === result', () => {
+    const trace = ALGORITHMS.sliding_window_string.run(ALGORITHMS.sliding_window_string.defaultInput);
+    expect(trace.length).toBeGreaterThan(0);
+    expect(trace[trace.length - 1].type).toBe('result');
+  });
+
+  it('valid_palindrome: result.is_palindrome === true (racecar)', () => {
+    const trace = ALGORITHMS.valid_palindrome.run({ s: 'racecar' });
+    const result = trace[trace.length - 1];
+    expect(result.is_palindrome).toBe(true);
+  });
+
+  it('expand_palindrome: result palindrome length >= 3 (babad)', () => {
+    const trace = ALGORITHMS.expand_palindrome.run(ALGORITHMS.expand_palindrome.defaultInput);
+    const result = trace[trace.length - 1];
+    expect(result.best_palindrome.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('kmp_search: trace contains a found step (hello/ll)', () => {
+    const trace = ALGORITHMS.kmp_search.run(ALGORITHMS.kmp_search.defaultInput);
+    expect(trace.some(s => s.type === 'found')).toBe(true);
+  });
+
+  it('find_anagrams: anagram_found at index 0 (cbaebabacd/abc)', () => {
+    const trace = ALGORITHMS.find_anagrams.run(ALGORITHMS.find_anagrams.defaultInput);
+    const found = trace.filter(s => s.type === 'anagram_found');
+    expect(found.some(s => s.anagram_start === 0)).toBe(true);
+  });
+});

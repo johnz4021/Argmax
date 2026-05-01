@@ -319,11 +319,7 @@ export default function ArrayRenderer({
 
   return (
     <div className="relative h-full flex flex-col items-center justify-center p-6">
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
+
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
@@ -397,7 +393,7 @@ export default function ArrayRenderer({
                     >
                       <span className="text-xs font-mono text-white font-bold">{value}</span>
                     </m.div>
-                    <span className="text-[10px] text-gray-500 font-mono">{idx}</span>
+                    <span className="text-[11px] text-gray-500 font-mono">{idx}</span>
                   </div>
                 );
               })}
@@ -457,8 +453,8 @@ export default function ArrayRenderer({
                     transition={pointerSpring}
                     style={{ transform: 'translateX(-50%)' }}
                   >
-                    <div className="text-red-400 text-[10px]">▲</div>
-                    <div className="text-red-400 text-[10px] font-mono font-bold">{name}</div>
+                    <div style={{ color: '#d4a574', fontSize: 10 }}>▲</div>
+                    <div style={{ color: 'var(--color-text-secondary, #9a9690)', fontSize: 10, fontFamily: "'Instrument Sans', sans-serif", fontWeight: 500 }}>{name}</div>
                   </m.div>
                 );
               })}

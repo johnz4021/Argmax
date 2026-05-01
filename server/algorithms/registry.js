@@ -2,7 +2,7 @@ import { dijkstra, bfs, dfs, DEFAULT_GRAPH, kruskal, prim, DEFAULT_UNDIRECTED_GR
 import { mergesort } from './sorting/index.js';
 import { knapsack, editDistance, lcs, coinChange } from './dp/index.js';
 import { polyReduction, DEFAULT_REDUCTION_FORMULA } from './complexity/index.js';
-import { quickselect, slidingWindow, DEFAULT_SLIDING_WINDOW_INPUT, binarySearch, twoPointers, intervalMerge, intervalScheduling, monotonicStack } from './searching/index.js';
+import { quickselect, slidingWindow, DEFAULT_SLIDING_WINDOW_INPUT, binarySearch, twoPointers, intervalMerge, intervalScheduling, monotonicStack, slidingWindowString, DEFAULT_SLIDING_WINDOW_STRING_INPUT, validPalindrome, DEFAULT_VALID_PALINDROME_INPUT, expandPalindrome, DEFAULT_EXPAND_PALINDROME_INPUT, kmpSearch, DEFAULT_KMP_SEARCH_INPUT, findAnagrams, DEFAULT_FIND_ANAGRAMS_INPUT } from './searching/index.js';
 import { huffman } from './compression/index.js';
 import { heapOperations, trie, DEFAULT_TRIE_INPUT, bstInsert } from './tree/index.js';
 import { linkedListReversal, stackOperations, queueOperations } from './linked/index.js';
@@ -262,6 +262,43 @@ export const ALGORITHMS = {
     capabilities: { max_nodes: 30, max_depth: 3, max_edges: 40 },
   },
 
+  // ── String Renderer algorithms ────────────────────────────────────────────
+  sliding_window_string: {
+    run: (input) => slidingWindowString(input.s),
+    renderer: 'string',
+    category: 'String Algorithms',
+    defaultInput: DEFAULT_SLIDING_WINDOW_STRING_INPUT,
+    capabilities: { max_string_length: 20 },
+  },
+  valid_palindrome: {
+    run: (input) => validPalindrome(input.s),
+    renderer: 'string',
+    category: 'String Algorithms',
+    defaultInput: DEFAULT_VALID_PALINDROME_INPUT,
+    capabilities: { max_string_length: 20 },
+  },
+  expand_palindrome: {
+    run: (input) => expandPalindrome(input.s),
+    renderer: 'string',
+    category: 'String Algorithms',
+    defaultInput: DEFAULT_EXPAND_PALINDROME_INPUT,
+    capabilities: { max_string_length: 15, max_steps: 60 },
+  },
+  kmp_search: {
+    run: (input) => kmpSearch(input.text, input.pattern),
+    renderer: 'string',
+    category: 'String Algorithms',
+    defaultInput: DEFAULT_KMP_SEARCH_INPUT,
+    capabilities: { max_text_length: 20, max_pattern_length: 15 },
+  },
+  find_anagrams: {
+    run: (input) => findAnagrams(input.s, input.p),
+    renderer: 'string',
+    category: 'String Algorithms',
+    defaultInput: DEFAULT_FIND_ANAGRAMS_INPUT,
+    capabilities: { max_string_length: 20, max_pattern_length: 10 },
+  },
+
   // ── Tier 2 synthetic keys (no Tier 1 hand-written trace; generated on demand) ──
   // run: null marks these as Tier 2-only — runAlgorithmWithFallback skips to Tier 2.
   hash_map_grouping: {
@@ -424,6 +461,8 @@ function guessRenderer(algorithmId) {
   if (ALGORITHMS[algorithmId]?.renderer) return ALGORITHMS[algorithmId].renderer;
 
   const id = algorithmId.toLowerCase();
+  // String renderer: string-semantic algorithms (palindrome, KMP, anagram, window on strings)
+  if (id.includes('palindrome') || id.includes('kmp') || id.includes('anagram') || id.includes('window_string') || id.includes('rabin_karp')) return 'string';
   // Context renderer: hash maps, frequency tables, sets, counting
   if (id.includes('hash') || id.includes('freq') || id.includes('group') || id.includes('set_op') || id.includes('bit_op') || id.includes('math_sim') || id.includes('greedy_choice')) return 'context';
   if (id.includes('sort') || id.includes('search') || id.includes('pointer') || id.includes('window') || id.includes('prefix') || id.includes('array_manip') || id.includes('divide_conquer')) return 'array';

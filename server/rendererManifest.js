@@ -250,6 +250,38 @@ export const RENDERER_MANIFEST = {
   ]
 })`,
   },
+
+  string: {
+    actions: [
+      { name: 'set_string', params: { s: 'string' }, description: 'Initialize the string display (single-string mode). Renders one row of character cells.' },
+      { name: 'set_pattern', params: { p: 'string' }, description: 'Add a pattern row below the text row (dual-string mode, used for KMP). Must be called after set_string.' },
+      { name: 'set_window', params: { start: 'number', end: 'number', windowClass: 'string?' }, description: 'Highlight cells [start..end] as the current window. Optional windowClass overrides the default in-window color ("mismatch" turns window red, "found"/"match" turns it amber/green, "active" turns it blue).' },
+      { name: 'set_char_state', params: { index: 'number | (start+end)', state: 'string' }, description: 'Set the visual state of a character cell. Two forms: (1) { index, state } — single cell; (2) { start, end, state } — all cells in [start..end] inclusive.' },
+      { name: 'set_all_state', params: { state: 'string' }, description: 'Set the state of ALL character cells at once. Use for result steps that color the entire string (e.g. palindrome confirmed → all "match").' },
+      { name: 'set_pointer', params: { name: 'string', index: 'number' }, description: 'Move or create a named pointer arrow above the cell at index. Pointers animate with a spring transition. Common names: "L", "R", "expand-L", "expand-R".' },
+      { name: 'set_pattern_offset', params: { k: 'number' }, description: 'Shift the pattern row so pattern[0] aligns with text[k]. k is an absolute text index (not a delta). Used for KMP to show pattern jumping after a mismatch.' },
+      { name: 'set_match', params: { ti: 'number', pi: 'number', state: 'string' }, description: 'Color text[ti] and pattern[pi] with the given state. Used in dual-string mode to show per-character match or mismatch.' },
+    ],
+    classNames: [
+      { name: 'default', color: 'gray (bg-gray-700)' },
+      { name: 'in-window', color: 'cyan (bg-cyan-600/80) — current window range' },
+      { name: 'active', color: 'blue (bg-blue-500/80) — currently being compared' },
+      { name: 'match', color: 'green (bg-green-600/80) — characters that matched' },
+      { name: 'mismatch', color: 'red (bg-red-500/80) — characters that did not match' },
+      { name: 'visited', color: 'dim gray (bg-gray-700/40) — already processed' },
+      { name: 'found', color: 'amber (bg-[#d4a574]/80) — result highlight' },
+    ],
+    setup: 'create_visualization({ panels: [{ renderer: "string" }], context_panels: [...] })',
+    example: `emit_segment({
+  narration: "Let's watch the sliding window find the longest unique substring...",
+  viz_actions: [
+    { renderer: "string", action: "set_string", params: { s: "abcabcbb" } },
+    { renderer: "string", action: "set_window", params: { start: 0, end: 2 } },
+    { renderer: "string", action: "set_char_state", params: { index: 2, state: "active" } },
+    { renderer: "string", action: "set_pointer", params: { name: "L", index: 0 } }
+  ]
+})`,
+  },
 };
 
 /**

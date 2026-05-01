@@ -21,7 +21,14 @@ Prerequisite order matters — items marked with [REQUIRES] must follow their de
 - [ ] **Container With Most Water (11) / Trapping Rain Water (42)** — Two-pointer variants that need unsorted-array traversal logic. Different algorithm than two_pointers sorted-array. Route to text-only for now. [REQUIRES: two_pointers validated]
 - [ ] **Sorting suite (bubble, insertion, quicksort, selection)** — Files exist in server/algorithms/sorting/, array renderer handles compare/swap steps generically. Low LeetCode value; deferred until class-mode is revived. [REQUIRES: none — standalone, low priority]
 - [ ] **StackRenderer** — Dedicated renderer for stack-based algorithms. Vertical stack display + animated push/pop + input array cursor (shows what element is currently being processed) + result array panel. Would replace LinkedRenderer for `stack_operations` and `monotonic_stack`. ~200 lines: `client/src/components/renderers/StackRenderer.jsx` + `mapStackStep` in vizMapper + `case 'stack'` dispatch. [REQUIRES: monotonic_stack shipped + user feedback that stack visualization is confusing]
-- [ ] **sliding_window + union_find vizMapper coverage** — Both algorithms are registered but have no vizMapper step handlers: `sliding_window` emits `initial_window`, `slide`, `new_max`; `union_find` emits `find`, `already_connected`, `union`, `process_edge`. All produce empty viz actions currently. [REQUIRES: none — standalone fix pass]
+- [ ] **sliding_window vizMapper coverage** — Integer sliding_window is registered but has no vizMapper step handlers for `initial_window`, `slide`, `new_max`. Produces empty viz. BUNDLED INTO string-renderer PR (vizMapper fix while in vizMapper for StringRenderer work). [REQUIRES: none — in-flight]
+- [ ] **union_find vizMapper coverage** — Registered but emits `find`, `already_connected`, `union`, `process_edge` with no handlers. All produce empty viz. [REQUIRES: none — standalone fix pass]
+
+## String Renderer — Deferred (from /plan-ceo-review 2026-04-29, branch: leetcode-version)
+
+- [ ] **rabin_karp** — Rolling hash pattern matching (LC28 alternative). Rabin-Karp concept is hash arithmetic, not string-semantic — less value in StringRenderer context. [REQUIRES: kmp_search shipped + user feedback asking for hashing explanation]
+- [ ] **min_window_substring (LC76)** — Variable-size window with character requirement map. Different algorithm from sliding_window_string (LC3 pattern). [REQUIRES: sliding_window_string validated from production data]
+- [ ] **Pseudocode panels for 5 string algorithms** — sliding_window_string, valid_palindrome, expand_palindrome, kmp_search, find_anagrams all lack pseudocode panels. Inconsistent with existing algorithms (dijkstra, kruskal, knapsack all have pseudocode). [REQUIRES: algorithm implementations complete — add in follow-up PR]
 
 ## Extraction Quality (from Outside Voice review)
 - [x] **Few-shot examples in extraction prompt** — BUNDLED INTO THIS PR. Per-algorithm test_case schema examples (including graph adjacency list → {nodes, edges} format) included in parseLeetcodeProblem() extraction prompt. Resolved by /plan-eng-review 2026-04-24.
@@ -30,6 +37,10 @@ Prerequisite order matters — items marked with [REQUIRES] must follow their de
 ## Infrastructure
 - [ ] **lc_sessions Supabase migration** — create table + RLS rules (user_id = auth.uid()) before deploy.
 - [ ] **POST /api/lc-sessions/:id/master** — endpoint or WS message for marking a problem mastered. Accepted scope from CEO plan — implement in this PR alongside lc_sessions write.
+
+## Renderer UX (from /plan-design-review 2026-04-30)
+
+- [ ] **Empty states for all 7 non-String renderers** — Array, Graph, Tree, Linked, Interval, RecursionTree, Table each need ghost placeholder elements matching their renderer type (nodes/bars/intervals) + "Run an algorithm to see the visualization" instructional text. Approved direction: Variant A (ghost cells with dashed borders). Graph empty state shipped in quick-wins PR. [REQUIRES: none — standalone pass]
 
 ## DX Gaps (from /plan-devex-review 2026-04-24)
 - [ ] **Auth wall — Google OAuth or skip email verification** — Email verification makes TTHW ~4-5min, putting Argmax in "Needs Work" tier vs VisuAlgo's 30s. Supabase supports Google OAuth in ~30min. Alternatively, disable email verification for beta (Supabase dashboard toggle). [REQUIRES: none — standalone change]

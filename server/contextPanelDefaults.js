@@ -149,6 +149,26 @@ const PANEL_DEFAULTS = {
   ],
   backtracking: [],
 
+  // --- String Renderer algorithms ---
+  sliding_window_string: [
+    { id: 'char_freq', type: 'key_value', title: 'Char Freq' },
+  ],
+  valid_palindrome: [
+    { id: 'pointer_state', type: 'key_value', title: 'Pointers' },
+  ],
+  expand_palindrome: [
+    { id: 'palindrome_state', type: 'key_value', title: 'Best Palindrome' },
+  ],
+  find_anagrams: [
+    { id: 'pattern_freq', type: 'key_value', title: 'Pattern Freq' },
+    { id: 'window_freq', type: 'key_value', title: 'Window Freq' },
+    { id: 'matches', type: 'log', title: 'Matches Found' },
+  ],
+  kmp_search: [
+    { id: 'failure_fn', type: 'key_value', title: 'Failure Function' },
+    { id: 'search_log', type: 'log', title: 'Search Log' },
+  ],
+
   // --- Tier 2 synthetic algorithms (context renderer) ---
   hash_map_grouping: [
     { id: 'algorithm_state', type: 'key_value', title: 'Hash Map State' },

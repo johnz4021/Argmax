@@ -790,7 +790,7 @@ const guidedTools = [
       properties: {
         renderers: {
           type: 'array',
-          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval', 'recursion_tree'] },
+          items: { type: 'string', enum: ['graph', 'array', 'table', 'tree', 'linked', 'interval', 'recursion_tree', 'string'] },
           description: 'Which renderer(s) to get docs for',
         },
       },

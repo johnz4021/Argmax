@@ -510,11 +510,7 @@ export default function TreeRenderer({
 
   return (
     <div className="relative h-full flex flex-col">
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
+
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
@@ -544,6 +540,8 @@ export default function TreeRenderer({
               height={dimensions.height}
               className="w-full h-full"
               style={{ cursor: 'grab' }}
+              role="img"
+              aria-label="Binary tree visualization"
             >
               <g transform={zoomTransformStr}>
               <g transform={`translate(${MARGIN.left}, ${MARGIN.top})`}>
@@ -743,8 +741,8 @@ export default function TreeRenderer({
 
           {/* Heap array representation */}
           {heapArray && (
-            <div className="px-4 pb-3">
-              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1 text-center">
+            <div className="px-4 pb-3 border-t border-gray-800 pt-3">
+              <div className="text-xs uppercase tracking-wide mb-1 text-center" style={{ color: 'var(--color-text-secondary, #9a9690)' }}>
                 Heap Array
               </div>
               <div className="flex items-center justify-center gap-1">

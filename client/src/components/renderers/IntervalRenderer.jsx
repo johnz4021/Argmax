@@ -16,12 +16,21 @@ const CLASS_COLORS = {
 const MIN_PX_PER_UNIT = 60;
 
 const MACHINE_COLORS = [
-  'bg-blue-600/70 border-blue-400',
-  'bg-purple-600/70 border-purple-400',
-  'bg-teal-600/70 border-teal-400',
-  'bg-orange-600/70 border-orange-400',
-  'bg-pink-600/70 border-pink-400',
-  'bg-indigo-600/70 border-indigo-400',
+  'bg-blue-500/60 border-blue-400',
+  'bg-emerald-500/60 border-emerald-400',
+  'bg-rose-500/60 border-rose-400',
+  'bg-amber-500/60 border-amber-400',
+  'bg-sky-500/60 border-sky-400',
+  'bg-violet-500/60 border-violet-400',
+];
+
+const MACHINE_COLOR_LABELS = [
+  { bg: 'bg-blue-500/60', border: 'border-blue-400', text: 'text-blue-300' },
+  { bg: 'bg-emerald-500/60', border: 'border-emerald-400', text: 'text-emerald-300' },
+  { bg: 'bg-rose-500/60', border: 'border-rose-400', text: 'text-rose-300' },
+  { bg: 'bg-amber-500/60', border: 'border-amber-400', text: 'text-amber-300' },
+  { bg: 'bg-sky-500/60', border: 'border-sky-400', text: 'text-sky-300' },
+  { bg: 'bg-violet-500/60', border: 'border-violet-400', text: 'text-violet-300' },
 ];
 
 export default function IntervalRenderer({
@@ -350,11 +359,7 @@ export default function IntervalRenderer({
       style={{ cursor: 'grab', userSelect: 'none' }}
       {...panZoom.handlers}
     >
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
+
 
       {explanationMode && (
         <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
@@ -398,7 +403,7 @@ export default function IntervalRenderer({
                 return (
                   <div
                     key={i}
-                    className="absolute text-[10px] text-gray-500 font-mono"
+                    className="absolute text-[11px] text-gray-500 font-mono"
                     style={{ left: `${left}%`, transform: 'translateX(-50%)' }}
                   >
                     {t}
@@ -414,15 +419,16 @@ export default function IntervalRenderer({
               <div className="w-16 flex-shrink-0" />
               <div className="flex-1 relative" style={{ height: 0 }}>
                 <div
-                  className="absolute bg-red-500/80 z-20"
+                  className="absolute z-20"
                   style={{
                     left: `${((sweepLine - timeMin) / timeRange) * 100}%`,
                     width: '2px',
+                    backgroundColor: '#d4a574',
                     top: `-${(machines.length + (unassignedJobs.length > 0 || machines.length === 0 ? 1 : 0)) * 36 + 28}px`,
                     height: `${(machines.length + (unassignedJobs.length > 0 || machines.length === 0 ? 1 : 0)) * 36 + 28}px`,
                   }}
                 >
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-red-400 text-[9px] font-mono whitespace-nowrap">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 text-[9px] font-mono whitespace-nowrap" style={{ color: '#d4a574' }}>
                     t={sweepLine}
                   </div>
                 </div>
@@ -443,6 +449,21 @@ export default function IntervalRenderer({
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Machine color legend */}
+          {machines.length > 1 && (
+            <div className="flex items-center gap-3 mt-3 pl-16 flex-wrap">
+              {machines.map((name, i) => {
+                const c = MACHINE_COLOR_LABELS[i % MACHINE_COLOR_LABELS.length];
+                return (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <div className={`w-2.5 h-2.5 rounded-sm border ${c.bg} ${c.border}`} />
+                    <span className={`text-[11px] font-mono ${c.text}`}>{name}</span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

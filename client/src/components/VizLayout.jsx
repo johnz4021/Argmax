@@ -7,6 +7,7 @@ const TreeRenderer = lazy(() => import('./renderers/TreeRenderer'));
 const LinkedRenderer = lazy(() => import('./renderers/LinkedRenderer'));
 const IntervalRenderer = lazy(() => import('./renderers/IntervalRenderer'));
 const RecursionTreeRenderer = lazy(() => import('./renderers/RecursionTreeRenderer'));
+const StringRenderer = lazy(() => import('./renderers/StringRenderer'));
 
 /**
  * Error boundary that catches renderer crashes and shows a fallback.
@@ -80,6 +81,9 @@ function RendererSwitch({ type, ...props }) {
     case 'recursion_tree':
       Renderer = RecursionTreeRenderer;
       break;
+    case 'string':
+      Renderer = StringRenderer;
+      break;
     default:
       return (
         <div className="flex items-center justify-center h-full text-gray-500">
@@ -126,7 +130,7 @@ export default function VizLayout({ panels, explanationMode, segmentCount, rewin
     <div className={layoutClass}>
       {panels.map((panel) => (
         <div key={panel.id} className="bg-gray-950 overflow-hidden h-full relative">
-          {panel.props?.title && (
+          {panels.length > 1 && panel.props?.title && (
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-2 py-0.5 text-xs font-medium text-text-secondary bg-surface-1 border border-border rounded">
               {typeof panel.props.title === 'string' ? panel.props.title : panel.props.title?.text || String(panel.props.title)}
             </div>

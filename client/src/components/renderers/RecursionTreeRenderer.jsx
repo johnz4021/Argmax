@@ -447,18 +447,32 @@ export default function RecursionTreeRenderer({
 
   return (
     <div className="relative h-full flex flex-col">
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
-        </div>
-      )}
 
-      {explanationMode && (
-        <div className="absolute top-3 right-3 z-10 bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
-          <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
-          Explaining...
-        </div>
-      )}
+
+      <div className="absolute top-3 right-3 z-10 flex flex-col items-end gap-2">
+        {(bigO || masterCase) && (
+          <div className="bg-gray-800/90 px-3 py-1.5 rounded-lg border border-gray-700 text-right">
+            {masterCase && (
+              <div className="text-[10px] text-gray-400 mb-0.5 font-mono">
+                {masterCase === 'root_heavy' ? 'Case 3: Root-heavy' :
+                 masterCase === 'balanced' ? 'Case 2: Balanced' :
+                 'Case 1: Leaf-heavy'}
+              </div>
+            )}
+            {bigO && (
+              <div className="text-sm font-mono font-bold" style={{ color: '#d4a574' }}>
+                {bigO}
+              </div>
+            )}
+          </div>
+        )}
+        {explanationMode && (
+          <div className="bg-purple-900/90 text-sm text-purple-200 px-3 py-1.5 rounded-lg border border-purple-700 flex items-center gap-2">
+            <span className="w-2 h-2 bg-purple-400 rounded-full animate-pulse" />
+            Explaining...
+          </div>
+        )}
+      </div>
 
       <div ref={containerRef} className="relative flex-1 w-full pb-3" style={{ minHeight: '300px' }}>
         {!treeData || treeData.nodes.length === 0 ? (
@@ -481,6 +495,8 @@ export default function RecursionTreeRenderer({
             height={dimensions.height}
             className="w-full h-full"
             style={{ cursor: 'grab' }}
+            role="img"
+            aria-label="Recursion tree visualization"
           >
             <g transform={zoomTransformStr}>
             {/* ── Tree area (left portion) ── */}
@@ -669,40 +685,6 @@ export default function RecursionTreeRenderer({
               </g>
             )}
 
-            {/* ── Bottom summary ── */}
-            {masterCase && (
-              <m.text
-                x={treeWidth / 2}
-                y={dimensions.height - 36}
-                textAnchor="middle"
-                fill="#9CA3AF"
-                fontSize={11}
-                fontFamily="monospace"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-              >
-                {masterCase === 'root_heavy' ? 'Case 3: Root-heavy (d > log_b(a))' :
-                 masterCase === 'balanced' ? 'Case 2: Balanced (d = log_b(a))' :
-                 'Case 1: Leaf-heavy (d < log_b(a))'}
-              </m.text>
-            )}
-            {bigO && (
-              <m.text
-                x={treeWidth / 2}
-                y={dimensions.height - 16}
-                textAnchor="middle"
-                fill="#60A5FA"
-                fontSize={14}
-                fontFamily="monospace"
-                fontWeight="bold"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-              >
-                Total: {bigO}
-              </m.text>
-            )}
             </g>{/* end zoom wrapper */}
           </svg>
           </>

@@ -10,6 +10,7 @@ import SessionFeedback from './components/SessionFeedback';
 import SessionGate from './components/SessionGate';
 import ContextPanelHost from './components/context/ContextPanelHost';
 import ContextOverlay from './components/context/ContextOverlay';
+import PseudocodePanel from './components/context/PseudocodePanel';
 import ResizableSplit from './components/ResizableSplit';
 import ExitConfirmModal from './components/ExitConfirmModal';
 import Logo from './components/Logo';
@@ -17,7 +18,7 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { useAudioPlayer } from './hooks/useAudioPlayer';
 import { useAuth } from './hooks/useAuth';
 import { useTutorState, normalizeVizActions } from './hooks/useTutorState';
-import { applyActions, applyActionsSequenced, killActiveTimeline, flushActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
+import { applyActions, applyAction, applyActionsSequenced, killActiveTimeline, flushActiveTimeline, loadGraphImmediate } from './lib/rendererRegistry';
 import { initContextManager, destroyContextManager } from './lib/contextManager';
 import { supabase } from './lib/supabase';
 import { posthog, POSTHOG_KEY } from './lib/posthog';
@@ -46,6 +47,8 @@ export default function App() {
   contextPanelsRef.current = state.contextPanels;
   const vizPanelsRef = useRef(state.vizPanels);
   vizPanelsRef.current = state.vizPanels;
+  // Stores the string input from lc_viz_ready so we can re-initialize after guided_start resets.
+  const lcStringInputRef = useRef(null);
 
   useEffect(() => {
     initContextManager(dispatchContext);
@@ -86,6 +89,11 @@ export default function App() {
         for (const panel of msg.panels) {
           if (panel.renderer === 'graph' && panel.config?.graph) {
             loadGraphImmediate(panel.id || 'graph', panel.config.graph);
+          }
+          // For string panels: buffer set_string so it fires when the renderer mounts.
+          // This survives guided_start resets that wipe vizPanels.
+          if (panel.renderer === 'string' && lcStringInputRef.current) {
+            applyAction({ renderer: panel.id || 'string', action: 'set_string', params: { s: lcStringInputRef.current } });
           }
         }
       }
@@ -230,6 +238,10 @@ export default function App() {
             // Initialize an empty Cytoscape canvas so add_node/add_edge actions land correctly.
             loadGraphImmediate(graphPanelId, { nodes: [], edges: [], directed: false });
           }
+        }
+        // For string renderer: store the input string so we can re-initialize after guided_start resets.
+        if (msg.renderer === 'string' && msg.input?.s) {
+          lcStringInputRef.current = msg.input.s;
         }
         // context renderer: no main viz panel needed — panels are set up when agent calls run_algorithm
       }
@@ -487,6 +499,10 @@ export default function App() {
   const contextOnly = noVis && state.contextPanels.length > 0;
   const transcriptOnly = noVis && state.contextPanels.length === 0 && !showSelector;
 
+  // Split context panels: pseudocode lives alongside the viz; state panels live in the sidebar
+  const pseudocodePanel = state.contextPanels.find(p => p.type === 'pseudocode') || null;
+  const statePanels = state.contextPanels.filter(p => p.type !== 'pseudocode');
+
   return (
     <LazyMotion features={domAnimation}>
     <>
@@ -645,9 +661,10 @@ export default function App() {
           </div>
         ) : (
           <>
-            {/* Visualization panel - 60% */}
-            <div className="w-2/3 h-full overflow-hidden border-r border-border">
-              <ContextOverlay panels={state.contextPanels}>
+            {/* Left: visualization + optional pseudocode section */}
+            <div className="w-2/3 h-full overflow-hidden border-r border-border flex flex-col">
+              {/* Viz — expands to fill when no pseudocode, or takes ~62% when pseudocode exists */}
+              <div className="overflow-hidden min-h-0" style={{ flex: pseudocodePanel ? '3 3 0' : '1 1 0' }}>
                 {useVizLayout ? (
                   <VizLayout
                     key={state.algorithm}
@@ -674,11 +691,33 @@ export default function App() {
                     onElementClick={handleElementClick}
                   />
                 )}
-              </ContextOverlay>
+              </div>
+
+              {/* Pseudocode section — only when algorithm has a pseudocode panel */}
+              {pseudocodePanel && (
+                <>
+                  <div className="h-px bg-border flex-shrink-0" />
+                  <div className="overflow-y-auto min-h-0 bg-gray-950 flex flex-col" style={{ flex: '2 2 0' }}>
+                    <div className="px-4 py-2 border-b border-gray-800 shrink-0">
+                      <span className="text-[11px] font-medium uppercase tracking-wide" style={{ color: 'var(--color-text-secondary, #9a9690)' }}>
+                        {pseudocodePanel.title || 'Algorithm'}
+                      </span>
+                    </div>
+                    <div className="p-2 flex-1">
+                      <PseudocodePanel data={pseudocodePanel.data} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Transcript panel */}
+            {/* Right: state panels (capped) + transcript + controls */}
             <div className="w-1/3 flex flex-col overflow-hidden bg-surface-1">
+              {statePanels.length > 0 && (
+                <div className="flex-shrink-0 border-b border-border overflow-y-auto" style={{ maxHeight: 200 }}>
+                  <ContextPanelHost panels={statePanels} />
+                </div>
+              )}
               <div className="flex-1 overflow-hidden">
                 <Transcript segments={state.segments} agentStatus={state.agentStatus} />
               </div>
@@ -691,8 +730,8 @@ export default function App() {
                 onResume={handleResume}
                 onRestart={handleRestart}
                 onSpeedChange={handleSpeedChange}
-              onTtsMuteToggle={handleTtsMuteToggle}
-              ttsMuted={ttsMuted}
+                onTtsMuteToggle={handleTtsMuteToggle}
+                ttsMuted={ttsMuted}
                 explanationMode={state.explanationMode}
                 guidedOptions={state.guidedOptions}
                 onGuidedResponse={handleGuidedResponse}

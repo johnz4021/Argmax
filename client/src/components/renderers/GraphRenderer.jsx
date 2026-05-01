@@ -64,6 +64,7 @@ const CYTOSCAPE_STYLE = [
       'border-color': '#f59e0b',
       'line-color': '#fbbf24',
       'target-arrow-color': '#fbbf24',
+      color: '#111827',
       width: 3,
     },
   },
@@ -357,6 +358,7 @@ export default function GraphRenderer({
   const preToggleSnapshotRef = useRef(null);
   const [annotations, setAnnotations] = useState([]);
   const [showingResidual, setShowingResidual] = useState(false);
+  const [hasGraph, setHasGraph] = useState(false);
 
   // Initialize Cytoscape and register with renderer registry
   useEffect(() => {
@@ -497,7 +499,8 @@ export default function GraphRenderer({
     }
 
     cy.fit(undefined, 40);
-  }, []);
+    if (graphData.nodes.length > 0) setHasGraph(true);
+  }, [setHasGraph]);
 
   // Load graph data (also handles React prop changes / initial mount).
   // Skipped if the registry already loaded the same graph object synchronously.
@@ -659,12 +662,23 @@ export default function GraphRenderer({
 
   return (
     <div className="relative h-full">
-      {phase && (
-        <div className="absolute top-3 left-3 z-10 bg-gray-800/90 text-sm text-blue-300 px-3 py-1.5 rounded-lg border border-gray-700">
-          {phase}
+      <div ref={containerRef} className="w-full h-full" />
+
+      {!hasGraph && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 pointer-events-none z-20">
+          <svg width="160" height="80" viewBox="0 0 160 80" aria-hidden="true">
+            <line x1="40" y1="48" x2="80" y2="16" stroke="#374151" strokeWidth="1.5" strokeDasharray="4 3" />
+            <line x1="80" y1="16" x2="120" y2="48" stroke="#374151" strokeWidth="1.5" strokeDasharray="4 3" />
+            <line x1="40" y1="48" x2="120" y2="48" stroke="#374151" strokeWidth="1.5" strokeDasharray="4 3" />
+            <circle cx="40" cy="48" r="14" fill="#111827" stroke="#374151" strokeWidth="1.5" opacity="0.7" />
+            <circle cx="80" cy="16" r="14" fill="#111827" stroke="#374151" strokeWidth="1.5" opacity="0.7" />
+            <circle cx="120" cy="48" r="14" fill="#111827" stroke="#374151" strokeWidth="1.5" opacity="0.7" />
+          </svg>
+          <p style={{ fontSize: 12, color: 'var(--color-text-tertiary, #6b7280)' }}>
+            Run an algorithm to see the visualization
+          </p>
         </div>
       )}
-      <div ref={containerRef} className="w-full h-full" />
 
       {algorithm === 'maxflow' && residualEdges && (
         <button

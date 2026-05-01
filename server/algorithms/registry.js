@@ -426,7 +426,7 @@ export async function runAlgorithmWithFallback(algorithmId, input, context) {
   // Generate new trace generator
   const { generateTraceGenerator } = await import('../authorAgent.js');
   const code = await generateTraceGenerator(algorithmId, renderer, undefined, context);
-  const trace = executeTraceInSandbox(code, actualInput, 5000, renderer === 'context' ? null : renderer);
+  const trace = executeTraceInSandbox(code, actualInput, 5000, renderer);
 
   // Validate node IDs in trace exist in input graph (for graph algorithms)
   if (renderer === 'graph' && actualInput?.graph?.nodes) {
@@ -444,8 +444,8 @@ export async function runAlgorithmWithFallback(algorithmId, input, context) {
     }
   }
 
-  // Basic verification before caching
-  if (trace.length >= 2) {
+  // Require at least 3 steps (init + ≥1 algorithm step + result) before caching
+  if (trace.length >= 3) {
     await cacheGenerator(algorithmId, { code, renderer, verifiedAt: Date.now() });
   }
 

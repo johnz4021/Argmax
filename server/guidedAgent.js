@@ -1007,6 +1007,18 @@ RULES:
  * vizState = { vizActive, segmentsWithoutVizActions } — mutable refs updated in place.
  */
 function applyClassification(plan, session, ws, vizState) {
+  // If a LeetCode algorithm key is already known, the solver may misclassify the problem
+  // (e.g. calling Two Sum "greedy_design"). Force algorithm_execution so the right panels load.
+  if (session._leetcodeAlgorithmKey && plan.reasoning_mode !== 'algorithm_execution') {
+    console.log(`[GuidedAgent] LeetCode override: solver returned mode=${plan.reasoning_mode} but _leetcodeAlgorithmKey=${session._leetcodeAlgorithmKey} — forcing algorithm_execution`);
+    plan = {
+      ...plan,
+      reasoning_mode: 'algorithm_execution',
+      is_in_scope: true,
+      target_algorithm: session._leetcodeAlgorithmKey,
+    };
+  }
+
   session.sessionPlan = plan;
   session.modelContract = plan.internal_model_contract;
   session.reasoningMode = plan.reasoning_mode;
@@ -1136,7 +1148,7 @@ export async function startGuidedSession(session, problemText, imageBase64, imag
     } else if (session._leetcodeTier === 2) {
       const trace = session._leetcodeTrace;
       const traceLen = trace ? trace.length : 0;
-      lcContext += `\n\n[TIER 2 TRACE] A generated trace (${traceLen} steps) is pre-loaded for ${session._leetcodeAlgorithmKey}. The context panel "algorithm_state" is already configured and visible to the student. When teaching, call run_solver first to classify the problem, then call run_algorithm with algorithm="${session._leetcodeAlgorithmKey}" to load the trace — the viz and panels will auto-configure. Use emit_segment with trace_step_indices to narrate each step. The trace steps have embedded viz_actions that update the algorithm_state panel automatically.`;
+      lcContext += `\n\n[TIER 2 TRACE] A generated trace (${traceLen} steps) is pre-loaded for ${session._leetcodeAlgorithmKey}. The context panel "algorithm_state" is already configured and visible to the student. When teaching, call run_solver to get the optimal solution context, then call run_algorithm with algorithm="${session._leetcodeAlgorithmKey}" to load the trace — the viz and panels will auto-configure to algorithm_execution mode. Use emit_segment with trace_step_indices to narrate each step. The trace steps have embedded viz_actions that update the algorithm_state panel automatically.`;
     }
   }
 

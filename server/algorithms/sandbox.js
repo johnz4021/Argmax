@@ -91,5 +91,19 @@ export function validateTraceStructure(trace, renderer) {
       }
       break;
     }
+    case 'context': {
+      const stepsWithoutViz = trace.filter(s => {
+        if (!s.viz_actions || !Array.isArray(s.viz_actions)) return true;
+        return !s.viz_actions.some(
+          a => a.renderer === 'context' && a.params?.panel_id === 'algorithm_state'
+        );
+      });
+      if (stepsWithoutViz.length > 0) {
+        throw new Error(
+          `Context trace has ${stepsWithoutViz.length} step(s) missing viz_actions[algorithm_state]: ${stepsWithoutViz.map(s => s.type).join(', ')}`
+        );
+      }
+      break;
+    }
   }
 }
